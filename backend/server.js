@@ -225,6 +225,111 @@ app.post('/api/sessions/:id/delete-last', (req, res) => {
   }
 });
 
+// ============ 搜索 API ============
+
+// 搜索消息
+app.get('/api/search/messages', (req, res) => {
+  const { query, sessionId, limit = 50 } = req.query;
+  
+  if (!query) {
+    return res.status(400).json({ error: 'query参数是必需的' });
+  }
+  
+  try {
+    const results = [];
+    const searchLower = query.toLowerCase();
+    
+    // 获取所有会话
+    const sessions = sessionManager.listSessions();
+    
+    for (const session of sessions) {
+      // 如果指定了sessionId，只搜索该会话
+      if (sessionId && session.id !== sessionId) continue;
+      
+      const sessionData = sessionManager.getSession(session.id);
+      if (!sessionData || !sessionData.messages) continue;
+      
+      sessionData.messages.forEach((msg, index) => {
+        const content = typeof msg.content === 'string' 
+          ? msg.content 
+          : JSON.stringify(msg.content);
+        
+        if (content.toLowerCase().includes(searchLower)) {
+          // 提取匹配的上下文
+          const contentLower = content.toLowerCase();
+          const matchIndex = contentLower.indexOf(searchLower);
+          const start = Math.max(0, matchIndex - 50);
+          const end = Math.min(content.length, matchIndex + query.length + 50);
+          const snippet = (start > 0 ? '...' : '') + 
+            content.slice(start, end) + 
+            (end < content.length ? '...' : '');
+          
+          results.push({
+            sessionId: session.id,
+            sessionTitle: session.title || session.workdir.split('/').pop(),
+            messageIndex: index,
+            role: msg.role,
+            snippet,
+            timestamp: msg.time,
+            matchCount: (contentLower.match(new RegExp(searchLower, 'g')) || []).length
+          });
+        }
+      });
+      
+      if (results.length >= parseInt(limit)) break;
+    }
+    
+    // 按时间倒序排列
+    results.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    
+    res.json({
+      query,
+      total: results.length,
+      results: results.slice(0, parseInt(limit))
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 搜索会话
+app.get('/api/search/sessions', (req, res) => {
+  const { query, limit = 20 } = req.query;
+  
+  if (!query) {
+    return res.status(400).json({ error: 'query参数是必需的' });
+  }
+  
+  try {
+    const searchLower = query.toLowerCase();
+    const sessions = sessionManager.listSessions();
+    
+    const results = sessions
+      .filter(session => {
+        const title = (session.title || '').toLowerCase();
+        const workdir = session.workdir.toLowerCase();
+        return title.includes(searchLower) || workdir.includes(searchLower);
+      })
+      .slice(0, parseInt(limit))
+      .map(session => ({
+        id: session.id,
+        title: session.title || session.workdir.split('/').pop(),
+        workdir: session.workdir,
+        messageCount: session.messageCount,
+        lastMessageAt: session.lastMessageAt,
+        isPinned: session.isPinned
+      }));
+    
+    res.json({
+      query,
+      total: results.length,
+      results
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============ 权限 API ============
 
 // 获取所有权限配置
@@ -294,6 +399,28 @@ app.get('/api/files/content', (req, res) => {
   try {
     const content = fs.readFileSync(filePath, 'utf8');
     res.json({ content });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 保存文件内容
+app.put('/api/files/content', (req, res) => {
+  const { path: filePath, content } = req.body;
+  
+  if (!filePath || content === undefined) {
+    return res.status(400).json({ error: 'path和content参数是必需的' });
+  }
+
+  try {
+    // 检查文件是否存在
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: '文件不存在' });
+    }
+    
+    // 写入文件
+    fs.writeFileSync(filePath, content, 'utf8');
+    res.json({ success: true, message: '文件已保存' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -656,6 +783,79 @@ app.get('/api/options', (req, res) => {
     efforts: EFFORT_LEVELS
   });
 });
+
+// ============ 导出 API ============
+
+// 导出会话为Markdown
+app.get('/api/export/session/:id', (req, res) => {
+  try {
+    const session = sessionManager.getSession(req.params.id)
+    if (!session) {
+      return res.status(404).json({ error: '会话不存在' })
+    }
+    
+    const title = session.title || session.workdir.split('/').pop()
+    const createdAt = new Date(session.createdAt).toLocaleString('zh-CN')
+    
+    let markdown = `# ${title}\n\n`
+    markdown += `- **项目路径**: ${session.workdir}\n`
+    markdown += `- **创建时间**: ${createdAt}\n`
+    markdown += `- **消息数量**: ${session.messages.length}\n\n`
+    markdown += `---\n\n`
+    
+    for (const msg of session.messages) {
+      const role = msg.role === 'user' ? '👤 用户' : '🤖 助手'
+      const time = new Date(msg.time).toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+      const content = typeof msg.content === 'string' 
+        ? msg.content 
+        : JSON.stringify(msg.content, null, 2)
+      
+      markdown += `### ${role} (${time})\n\n${content}\n\n---\n\n`
+    }
+    
+    // 设置下载头
+    const filename = `${title}_${new Date().toISOString().slice(0, 10)}.md`
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`)
+    res.send(markdown)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// 导出所有会话列表
+app.get('/api/export/sessions', (req, res) => {
+  try {
+    const sessions = sessionManager.listSessions()
+    
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      version: '1.0',
+      sessions: sessions.map(s => ({
+        id: s.id,
+        title: s.title,
+        workdir: s.workdir,
+        agentName: s.agentName,
+        messageCount: s.messageCount,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        isPinned: s.isPinned,
+        isArchived: s.isArchived,
+        conversationId: s.conversationId
+      }))
+    }
+    
+    const filename = `agent-hub-backup_${new Date().toISOString().slice(0, 10)}.json`
+    res.setHeader('Content-Type', 'application/json; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`)
+    res.json(exportData)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
 
 // ============ WebSocket ============
 

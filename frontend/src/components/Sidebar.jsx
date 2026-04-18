@@ -391,14 +391,38 @@ export default function Sidebar({
       </div>
 
       {/* 底部状态 */}
-      <div className="p-3 border-t border-gray-800 text-xs text-gray-500">
+      <div className="p-3 border-t border-gray-800 space-y-2">
+        {/* 导出按钮 */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              if (activeSession) {
+                window.open(`${API_BASE}/export/session/${activeSession}`, '_blank')
+              }
+            }}
+            disabled={!activeSession}
+            className="flex-1 px-2 py-1.5 text-xs bg-gray-800 text-gray-400 rounded hover:bg-gray-700 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            title="导出当前会话为Markdown"
+          >
+            📄 导出会话
+          </button>
+          <button
+            onClick={() => window.open(`${API_BASE}/export/sessions`, '_blank')}
+            className="flex-1 px-2 py-1.5 text-xs bg-gray-800 text-gray-400 rounded hover:bg-gray-700 hover:text-white"
+            title="导出所有会话备份"
+          >
+            💾 全部备份
+          </button>
+        </div>
+        
+        {/* 连接状态 */}
         {activeSession ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 text-xs text-gray-500">
             <span className="w-2 h-2 bg-green-500 rounded-full"></span>
             会话已连接
           </div>
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 text-xs text-gray-500">
             <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
             未选择会话
           </div>

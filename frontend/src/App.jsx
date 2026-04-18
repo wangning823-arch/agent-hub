@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar'
 import RightSidebar from './components/RightSidebar'
 import ContextManager from './components/ContextManager'
 import FileViewer from './components/FileViewer'
+import SearchPanel from './components/SearchPanel'
 
 const API_BASE = '/api'
 
@@ -22,6 +23,9 @@ export default function App() {
   
   // 文件查看状态
   const [viewingFile, setViewingFile] = useState(null) // { path, content }
+  
+  // 搜索状态
+  const [showSearch, setShowSearch] = useState(false)
   
   // 侧边栏状态
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
@@ -74,6 +78,24 @@ export default function App() {
       })
       .catch(console.error)
   }, [])
+
+  // 键盘快捷键
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl+K 或 Cmd+K 打开搜索
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        setShowSearch(true)
+      }
+      // ESC 关闭搜索
+      if (e.key === 'Escape' && showSearch) {
+        setShowSearch(false)
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showSearch])
 
   // 创建新会话
   const createSession = async (workdir, agentType = 'claude-code', options = {}) => {
@@ -306,6 +328,15 @@ export default function App() {
               ⚙️
             </button>
 
+            {/* 搜索 */}
+            <button
+              onClick={() => setShowSearch(true)}
+              className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg"
+              title="搜索 (Ctrl+K)"
+            >
+              🔍
+            </button>
+
             {/* 右侧边栏开关 */}
             <button
               onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
@@ -328,6 +359,9 @@ export default function App() {
               file={viewingFile.path}
               content={viewingFile.content}
               onClose={() => setViewingFile(null)}
+              onSave={(newContent) => {
+                setViewingFile(prev => ({ ...prev, content: newContent }))
+              }}
             />
           ) : activeSession ? (
             <ChatPanel
@@ -398,6 +432,17 @@ export default function App() {
         <ContextManager
           sessionId={activeSession}
           onClose={() => setShowContextManager(false)}
+        />
+      )}
+
+      {/* 搜索面板 */}
+      {showSearch && (
+        <SearchPanel
+          onSelectSession={(id) => {
+            setActiveSession(id)
+            if (isMobile) setLeftSidebarOpen(false)
+          }}
+          onClose={() => setShowSearch(false)}
         />
       )}
     </div>
