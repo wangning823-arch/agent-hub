@@ -9,6 +9,8 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }) {
   const [gitStatus, setGitStatus] = useState(null)
   const [loading, setLoading] = useState(false)
   const [commitMessage, setCommitMessage] = useState('')
+  const [gitOutput, setGitOutput] = useState('')  // Git命令输出
+  const [gitError, setGitError] = useState('')    // Git错误
 
   useEffect(() => {
     if (workdir) {
@@ -59,6 +61,86 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }) {
     if (onViewFile) {
       onViewFile(filePath)
     }
+  }
+
+  // 执行Git命令并显示结果
+  const runGitCommand = async (command) => {
+    if (!workdir) {
+      setGitError('未设置工作目录')
+      return
+    }
+    setGitOutput('执行中...')
+    setGitError('')
+    try {
+      const res = await fetch(`${API_BASE}/git/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workdir, command })
+      })
+      const data = await res.json()
+      if (data.error && !data.output) {
+        setGitError(data.error)
+        setGitOutput('')
+      } else {
+        setGitOutput(data.output || '命令执行成功（无输出）')
+        setGitError('')
+      }
+      loadGitStatus()
+    } catch (error) {
+      setGitError('请求失败: ' + error.message)
+      setGitOutput('')
+    }
+  }
+
+  // Git提交
+  const runGitCommit = async () => {
+    if (!workdir || !commitMessage.trim()) {
+      setGitError('请输入提交信息')
+      return
+    }
+    setGitOutput('提交中...')
+    setGitError('')
+    try {
+      const res = await fetch(`${API_BASE}/git/commit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workdir, message: commitMessage.trim() })
+      })
+      const data = await res.json()
+      if (data.error) {
+        setGitError(data.error)
+        setGitOutput('')
+      } else {
+        setGitOutput(data.output || '提交成功')
+        setGitError('')
+        setCommitMessage('')
+      }
+      loadGitStatus()
+    } catch (error) {
+      setGitError('提交失败: ' + error.message)
+      setGitOutput('')
+    }
+  }
+
+  // 安全Git Pull - 有本地修改时先确认
+  const safePull = async () => {
+    if (!workdir) {
+      setGitError('未设置工作目录')
+      return
+    }
+    // 检查是否有本地修改
+    const hasChanges = (gitStatus?.modified?.length > 0) || (gitStatus?.staged?.length > 0)
+    if (hasChanges) {
+      const fileList = [
+        ...(gitStatus.modified || []).map(f => `  修改: ${f}`),
+        ...(gitStatus.staged || []).map(f => `  暂存: ${f}`)
+      ].join('\n')
+      const confirmed = confirm(
+        `⚠️ 有本地未提交的修改，Pull 可能覆盖这些更改：\n\n${fileList}\n\n确定要继续 Pull 吗？建议先 commit 或 stash。`
+      )
+      if (!confirmed) return
+    }
+    runGitCommand('git pull')
   }
 
   // 获取文件图标
@@ -177,35 +259,13 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }) {
             {/* Git操作按钮 */}
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={async () => {
-                  try {
-                    await fetch(`${API_BASE}/git/command`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ workdir, command: 'git pull' })
-                    })
-                    loadGitStatus()
-                  } catch (error) {
-                    alert('Pull失败: ' + error.message)
-                  }
-                }}
+                onClick={safePull}
                 className="px-3 py-2 bg-gray-800 text-gray-300 rounded hover:bg-gray-700 text-sm flex items-center justify-center gap-1"
               >
                 📥 Pull
               </button>
               <button
-                onClick={async () => {
-                  try {
-                    await fetch(`${API_BASE}/git/command`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ workdir, command: 'git push' })
-                    })
-                    loadGitStatus()
-                  } catch (error) {
-                    alert('Push失败: ' + error.message)
-                  }
-                }}
+                onClick={() => runGitCommand('git push')}
                 className="px-3 py-2 bg-gray-800 text-gray-300 rounded hover:bg-gray-700 text-sm flex items-center justify-center gap-1"
               >
                 📤 Push
@@ -227,39 +287,44 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }) {
             {/* 修改的文件 */}
             {gitStatus?.modified?.length > 0 && (
               <div>
-                <div className="text-xs text-gray-400 mb-2">📝 已修改</div>
-                {gitStatus.modified.map((file, idx) => (
-                  <div key={idx} className="px-2 py-1.5 text-sm text-yellow-400 flex items-center gap-2">
-                    <span>●</span>
-                    <span className="truncate">{file}</span>
-                  </div>
-                ))}
+                <div className="text-xs text-gray-400 mb-2">📝 已修改 ({gitStatus.modified.length})</div>
+                <div className="max-h-32 overflow-y-auto">
+                  {gitStatus.modified.map((file, idx) => (
+                    <div key={idx} className="px-2 py-1.5 text-sm text-yellow-400 flex items-center gap-2">
+                      <span>●</span>
+                      <span className="truncate">{file}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
             {/* 暂存的文件 */}
             {gitStatus?.staged?.length > 0 && (
               <div>
-                <div className="text-xs text-gray-400 mb-2">✅ 已暂存</div>
-                {gitStatus.staged.map((file, idx) => (
-                  <div key={idx} className="px-2 py-1.5 text-sm text-green-400 flex items-center gap-2">
-                    <span>●</span>
-                    <span className="truncate">{file}</span>
-                  </div>
-                ))}
+                <div className="text-xs text-gray-400 mb-2">✅ 已暂存 ({gitStatus.staged.length})</div>
+                <div className="max-h-32 overflow-y-auto">
+                  {gitStatus.staged.map((file, idx) => (
+                    <div key={idx} className="px-2 py-1.5 text-sm text-green-400 flex items-center gap-2">
+                      <span>●</span>
+                      <span className="truncate">{file}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-
             {/* 未跟踪的文件 */}
             {gitStatus?.untracked?.length > 0 && (
               <div>
-                <div className="text-xs text-gray-400 mb-2">❓ 未跟踪</div>
-                {gitStatus.untracked.map((file, idx) => (
-                  <div key={idx} className="px-2 py-1.5 text-sm text-gray-500 flex items-center gap-2">
-                    <span>●</span>
-                    <span className="truncate">{file}</span>
-                  </div>
-                ))}
+                <div className="text-xs text-gray-400 mb-2">❓ 未跟踪 ({gitStatus.untracked.length})</div>
+                <div className="max-h-32 overflow-y-auto">
+                  {gitStatus.untracked.map((file, idx) => (
+                    <div key={idx} className="px-2 py-1.5 text-sm text-gray-500 flex items-center gap-2">
+                      <span>●</span>
+                      <span className="truncate">{file}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -273,23 +338,7 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }) {
                 rows={2}
               />
               <button
-                onClick={async () => {
-                  if (!commitMessage.trim()) {
-                    alert('请输入提交信息')
-                    return
-                  }
-                  try {
-                    await fetch(`${API_BASE}/git/commit`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ workdir, message: commitMessage })
-                    })
-                    setCommitMessage('')
-                    loadGitStatus()
-                  } catch (error) {
-                    alert('提交失败: ' + error.message)
-                  }
-                }}
+                onClick={runGitCommit}
                 className="w-full mt-2 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
               >
                 ✓ 提交更改
@@ -301,78 +350,53 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }) {
               <div className="text-xs text-gray-400 mb-2">快捷命令</div>
               <div className="flex flex-wrap gap-1.5">
                 <button
-                  onClick={async () => {
-                    try {
-                      const data = await fetch(`${API_BASE}/git/command`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ workdir, command: 'git log --oneline -10' })
-                      }).then(r => r.json())
-                      alert(data.output || '无日志')
-                    } catch (error) {
-                      alert('获取日志失败')
-                    }
-                  }}
+                  onClick={() => runGitCommand('git log --oneline -10')}
                   className="px-2 py-1 bg-gray-800 text-gray-400 rounded text-xs hover:bg-gray-700 hover:text-white"
                 >
                   git log
                 </button>
                 <button
-                  onClick={async () => {
-                    try {
-                      const data = await fetch(`${API_BASE}/git/command`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ workdir, command: 'git diff' })
-                      }).then(r => r.json())
-                      alert(data.output || '无差异')
-                    } catch (error) {
-                      alert('获取差异失败')
-                    }
-                  }}
+                  onClick={() => runGitCommand('git diff')}
                   className="px-2 py-1 bg-gray-800 text-gray-400 rounded text-xs hover:bg-gray-700 hover:text-white"
                 >
                   git diff
                 </button>
                 <button
-                  onClick={async () => {
-                    try {
-                      await fetch(`${API_BASE}/git/command`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ workdir, command: 'git stash' })
-                      })
-                      loadGitStatus()
-                    } catch (error) {
-                      alert('Stash失败')
-                    }
-                  }}
+                  onClick={() => runGitCommand('git fetch')}
+                  className="px-2 py-1 bg-gray-800 text-gray-400 rounded text-xs hover:bg-gray-700 hover:text-white"
+                >
+                  git fetch
+                </button>
+                <button
+                  onClick={() => runGitCommand('git stash')}
                   className="px-2 py-1 bg-gray-800 text-gray-400 rounded text-xs hover:bg-gray-700 hover:text-white"
                 >
                   git stash
                 </button>
-                <button
-                  onClick={() => {
-                    if (confirm('确定要重置所有更改吗？')) {
-                      // TODO: git reset
-                    }
-                  }}
-                  className="px-2 py-1 bg-gray-800 text-gray-400 rounded text-xs hover:bg-gray-700 hover:text-white"
-                >
-                  git reset
-                </button>
               </div>
             </div>
+
+            {/* Git命令输出 */}
+            {(gitOutput || gitError) && (
+              <div className="border-t border-gray-800 pt-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-gray-400">输出</span>
+                  <button
+                    onClick={() => { setGitOutput(''); setGitError('') }}
+                    className="text-xs text-gray-500 hover:text-white"
+                  >
+                    ✕ 清除
+                  </button>
+                </div>
+                <pre className={`text-xs p-3 rounded overflow-auto max-h-40 whitespace-pre-wrap break-all ${
+                  gitError ? 'bg-red-900/30 text-red-300' : 'bg-gray-800 text-gray-300'
+                }`}>
+                  {gitError || gitOutput}
+                </pre>
+              </div>
+            )}
           </div>
         )}
-      </div>
-
-      {/* 底部信息 */}
-      <div className="p-3 border-t border-gray-800 text-xs text-gray-500">
-        <div className="flex items-center justify-between">
-          <span>{files.length} 个项目</span>
-          <span>{currentPath.split('/').length} 层深度</span>
-        </div>
       </div>
     </div>
   )
