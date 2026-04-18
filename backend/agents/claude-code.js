@@ -43,7 +43,6 @@ class ClaudeCodeAgent extends Agent {
 
       // 构建命令参数
       const args = [
-        claudePath,
         '--print',
         '--verbose',
         '--dangerously-skip-permissions',
@@ -75,7 +74,7 @@ class ClaudeCodeAgent extends Agent {
       // 添加用户消息
       args.push('-p', message);
 
-      const proc = spawn('node', args, {
+      const proc = spawn(claudePath, args, {
         cwd: this.workdir,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
