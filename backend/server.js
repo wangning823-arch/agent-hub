@@ -39,6 +39,10 @@ function validatePath(requestPath) {
 // 中间件
 app.use(express.json({ limit: '5mb' }));
 
+// 前端静态文件服务
+const DIST_PATH = path.join(__dirname, '..', 'frontend', 'dist');
+app.use(express.static(DIST_PATH));
+
 // 静态文件服务（上传的文件）
 app.use('/uploads', express.static(UPLOAD_DIR));
 
@@ -1283,6 +1287,12 @@ wss.on('connection', (ws, req) => {
     console.log(`WebSocket断开: session=${sessionId}`);
     sessionManager.removeClient(sessionId, ws);
   });
+});
+
+// SPA fallback
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api") || req.path.startsWith("/ws") || req.path.startsWith("/uploads")) return next();
+  res.sendFile(path.join(DIST_PATH, "index.html"));
 });
 
 // ============ 启动服务器 ============
