@@ -152,9 +152,9 @@ class SessionManager {
     // 解析绝对路径（展开 ~）
     let absoluteWorkdir = workdir;
     if (workdir.startsWith('~/')) {
-      absoluteWorkdir = path.join(process.env.HOME || '/data/data/com.termux/files/home', workdir.slice(2));
+      absoluteWorkdir = path.join(process.env.HOME || '/root', workdir.slice(2));
     } else if (!workdir.startsWith('/')) {
-      absoluteWorkdir = path.resolve(process.env.HOME || '/data/data/com.termux/files/home', workdir);
+      absoluteWorkdir = path.resolve(process.env.HOME || '/root', workdir);
     }
     
     // 如果目录不存在，自动创建

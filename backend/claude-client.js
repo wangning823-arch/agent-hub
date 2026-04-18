@@ -7,10 +7,8 @@ const fs = require('fs');
 const path = require('path');
 
 function loadClaudeConfig() {
-  const configPath = path.join(
-    process.env.HOME || '/data/data/com.termux/files/home',
-    '.claude', 'settings.json'
-  );
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '/root';
+  const configPath = path.join(homeDir, '.claude', 'settings.json');
   try {
     if (fs.existsSync(configPath)) {
       const settings = JSON.parse(fs.readFileSync(configPath, 'utf8'));

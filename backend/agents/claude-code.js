@@ -39,17 +39,21 @@ class ClaudeCodeAgent extends Agent {
 
     return new Promise((resolve, reject) => {
       // 直接调用 Claude Code CLI（不使用 wrapper 脚本）
-      const claudePath = process.env.CLAUDE_CLI_PATH || '/data/data/com.termux/files/usr/bin/claude';
-      
+      const claudePath = process.env.CLAUDE_CLI_PATH || 'claude';
+
       // 构建命令参数
       const args = [
         claudePath,
         '--print',
         '--verbose',
         '--dangerously-skip-permissions',
-        '--output-format', 'stream-json',
-        '--model', this.options.model || 'mimo-v2-pro'
+        '--output-format', 'stream-json'
       ];
+
+      // 指定模型（如果用户选了的话）
+      if (this.options.model) {
+        args.push('--model', this.options.model);
+      }
       
       // 添加模式参数
       if (this.options.mode) {
@@ -75,9 +79,7 @@ class ClaudeCodeAgent extends Agent {
         cwd: this.workdir,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
-          ...process.env,
-          PATH: '/data/data/com.termux/files/usr/bin:' + (process.env.PATH || '/usr/local/bin:/usr/bin:/bin'),
-          HOME: process.env.HOME || '/data/data/com.termux/files/home'
+          ...process.env
         }
       });
 

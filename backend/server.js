@@ -26,7 +26,7 @@ const permissionManager = new PermissionManager();
 const projectManager = new ProjectManager();
 
 // 允许的文件操作根目录（防止路径穿越）
-const ALLOWED_ROOT = process.env.ALLOWED_ROOT || '/data/data/com.termux/files/home';
+const ALLOWED_ROOT = process.env.ALLOWED_ROOT || process.env.HOME || '/root';
 
 /**
  * 校验路径是否在允许的根目录内（防止路径穿越）
