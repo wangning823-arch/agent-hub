@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useToast } from './Toast'
 
 const API_BASE = '/api'
 
@@ -6,6 +7,7 @@ export default function ContextManager({ sessionId, onClose }) {
   const [contextInfo, setContextInfo] = useState(null)
   const [tokenStats, setTokenStats] = useState(null)
   const [loading, setLoading] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
     if (sessionId) {
@@ -40,10 +42,10 @@ export default function ContextManager({ sessionId, onClose }) {
     setLoading(true)
     try {
       await fetch(`${API_BASE}/sessions/${sessionId}/compact`, { method: 'POST' })
-      alert('已发送压缩命令')
+      toast.success('已发送压缩命令')
       setTimeout(loadContextInfo, 1000)
     } catch (error) {
-      alert('压缩失败: ' + error.message)
+      toast.error('压缩失败: ' + error.message)
     }
     setLoading(false)
   }
@@ -57,7 +59,7 @@ export default function ContextManager({ sessionId, onClose }) {
       await fetch(`${API_BASE}/tokens/${sessionId}`, { method: 'DELETE' })
       loadTokenStats()
     } catch (error) {
-      alert('清除失败: ' + error.message)
+      toast.error('清除失败: ' + error.message)
     }
   }
 

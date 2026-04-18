@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useToast } from './Toast'
 
 const API_BASE = '/api'
 
@@ -9,6 +10,7 @@ export default function ProjectManager({ onSelectProject, onClose }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const toast = useToast()
   const [newProject, setNewProject] = useState({
     name: '',
     workdir: '',
@@ -86,7 +88,7 @@ export default function ProjectManager({ onSelectProject, onClose }) {
         effort: 'medium'
       })
     } catch (error) {
-      alert('创建项目失败: ' + error.message)
+      toast.error('创建项目失败: ' + error.message)
     }
   }
 
@@ -117,7 +119,7 @@ export default function ProjectManager({ onSelectProject, onClose }) {
 
       onSelectProject(result)
     } catch (error) {
-      alert('启动项目失败: ' + error.message)
+      toast.error('启动项目失败: ' + error.message)
     }
   }
 

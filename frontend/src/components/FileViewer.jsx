@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useToast } from './Toast'
 
 const API_BASE = '/api'
 
@@ -7,6 +8,7 @@ export default function FileViewer({ file, content, onClose, onSave }) {
   const [editedContent, setEditedContent] = useState(content)
   const [saving, setSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
     setEditedContent(content)
@@ -59,10 +61,10 @@ export default function FileViewer({ file, content, onClose, onSave }) {
         }
       } else {
         const data = await response.json()
-        alert('保存失败: ' + (data.error || '未知错误'))
+        toast.error('保存失败: ' + (data.error || '未知错误'))
       }
     } catch (error) {
-      alert('保存失败: ' + error.message)
+      toast.error('保存失败: ' + error.message)
     }
     setSaving(false)
   }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useToast } from './Toast'
 
 const API_BASE = '/api'
 
@@ -14,6 +15,7 @@ export default function ControlPanel({ sessionId, currentOptions, onUpdateOption
     effort: currentOptions?.effort || 'medium'
   })
   const [loading, setLoading] = useState(false)
+  const toast = useToast()
 
   // 加载选项
   useEffect(() => {
@@ -51,11 +53,11 @@ export default function ControlPanel({ sessionId, currentOptions, onUpdateOption
 
       ws.onerror = () => {
         setLoading(false)
-        alert('更新失败')
+        toast.error('更新失败')
       }
     } catch (error) {
       setLoading(false)
-      alert('更新失败: ' + error.message)
+      toast.error('更新失败: ' + error.message)
     }
   }
 
