@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react'
 import { useTheme } from './ThemeContext'
+import { useNotification } from '../hooks/useNotification'
 
 const API_BASE = '/api'
 
 export default function SettingsPanel({ onClose }) {
   const [permissions, setPermissions] = useState({})
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('theme') // theme | permissions
+  const [activeTab, setActiveTab] = useState('theme') // theme | permissions | notifications
   const { theme, themeName, themes, changeTheme } = useTheme()
+  const notification = useNotification()
 
   useEffect(() => {
     fetchPermissions()
@@ -79,6 +81,16 @@ export default function SettingsPanel({ onClose }) {
             }`}
           >
             🔐 权限
+          </button>
+          <button
+            onClick={() => setActiveTab('notifications')}
+            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'notifications'
+                ? 'text-blue-400 border-b-2 border-blue-400'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            🔔 通知
           </button>
         </div>
 
@@ -186,6 +198,80 @@ export default function SettingsPanel({ onClose }) {
                 </div>
               )}
             </>
+          )}
+
+          {activeTab === 'notifications' && (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-400 mb-4">配置桌面通知</p>
+              
+              <div className="p-4 bg-gray-800/50 rounded-lg">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="font-medium text-white">📱 桌面通知</div>
+                    <div className="text-sm text-gray-500">Agent回复时发送桌面通知</div>
+                  </div>
+                  <div className={`px-3 py-1 rounded-full text-xs ${
+                    Notification.permission === 'granted' 
+                      ? 'bg-green-900/50 text-green-400'
+                      : Notification.permission === 'denied'
+                      ? 'bg-red-900/50 text-red-400'
+                      : 'bg-yellow-900/50 text-yellow-400'
+                  }`}>
+                    {Notification.permission === 'granted' ? '已开启' :
+                     Notification.permission === 'denied' ? '已拒绝' : '未开启'}
+                  </div>
+                </div>
+                
+                {Notification.permission !== 'granted' && (
+                  <button
+                    onClick={async () => {
+                      const granted = await notification.requestPermission()
+                      if (granted) {
+                        notification.sendNotification('通知已开启', {
+                          body: '现在你将收到Agent回复的桌面通知'
+                        })
+                      }
+                    }}
+                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    开启通知权限
+                  </button>
+                )}
+                
+                {Notification.permission === 'granted' && (
+                  <button
+                    onClick={() => notification.sendNotification('测试通知', {
+                      body: '如果你看到这条消息，说明通知功能正常'
+                    })}
+                    className="w-full px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                  >
+                    发送测试通知
+                  </button>
+                )}
+              </div>
+
+              <div className="p-4 bg-gray-800/50 rounded-lg">
+                <div className="text-sm text-gray-400 space-y-2">
+                  <p>💡 <strong>通知规则:</strong></p>
+                  <ul className="list-disc list-inside space-y-1 ml-2">
+                    <li>仅在页面处于后台时发送通知</li>
+                    <li>Agent回复时会显示消息预览</li>
+                    <li>错误消息会特别标记</li>
+                    <li>点击通知会自动聚焦窗口</li>
+                  </ul>
+                </div>
+              </div>
+
+              {Notification.permission === 'denied' && (
+                <div className="p-4 bg-red-900/20 border border-red-700/50 rounded-lg">
+                  <p className="text-sm text-red-300">
+                    ⚠️ 通知权限已被拒绝。请在浏览器设置中手动开启：
+                    <br />
+                    点击地址栏左侧的锁图标 → 网站设置 → 通知 → 允许
+                  </p>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import Message from './Message'
+import QuoteReply from './QuoteReply'
 import { useToast } from './Toast'
+import { useNotification } from '../hooks/useNotification'
 
 const API_BASE = '/api'
 
 export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) {
   const toast = useToast()
+  const notification = useNotification()
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [connected, setConnected] = useState(false)
@@ -18,6 +21,9 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
   const [loadingMore, setLoadingMore] = useState(false)
   const [messageOffset, setMessageOffset] = useState(0)
   const PAGE_SIZE = 50
+  
+  // 引用回复状态
+  const [quoteReply, setQuoteReply] = useState(null)
   
   // 模型和模式选项
   const [modes, setModes] = useState([])
@@ -165,6 +171,19 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ usage: msg.content })
             }).catch(err => console.error('记录Token失败:', err))
+          }
+          
+          // Agent回复时发送通知（如果页面不在前台）
+          if (msg.type === 'assistant' && document.hidden) {
+            const content = typeof msg.content === 'string' 
+              ? msg.content 
+              : JSON.stringify(msg.content)
+            notification.notifyAgentReply('Agent回复', content)
+          }
+          
+          // 错误消息通知
+          if (msg.type === 'error') {
+            notification.notifyError(msg.content)
           }
         } catch (e) {
           console.error('解析消息失败:', e)
@@ -491,17 +510,20 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
     setMessages(prev => [...prev, {
       type: 'user',
       content: messageContent,
-      attachments: attachments.length > 0 ? [...attachments] : undefined
+      attachments: attachments.length > 0 ? [...attachments] : undefined,
+      quote: quoteReply || undefined
     }])
 
     wsRef.current.send(JSON.stringify({
       type: 'user_input',
       content: messageContent,
-      attachments: attachments.length > 0 ? attachments : undefined
+      attachments: attachments.length > 0 ? attachments : undefined,
+      quote: quoteReply || undefined
     }))
 
     setInput('')
     setAttachments([])
+    setQuoteReply(null) // 清除引用
   }
 
   // 按Enter发送
@@ -574,6 +596,7 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
             message={msg} 
             index={idx}
             onDelete={handleDeleteMessage}
+            onQuote={setQuoteReply}
           />
         ))}
 
@@ -695,6 +718,16 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
             >
               🔄 重新生成回复
             </button>
+          </div>
+        )}
+
+        {/* 引用预览 */}
+        {quoteReply && (
+          <div className="px-4 pt-2">
+            <QuoteReply 
+              quote={quoteReply}
+              onRemove={() => setQuoteReply(null)}
+            />
           </div>
         )}
 

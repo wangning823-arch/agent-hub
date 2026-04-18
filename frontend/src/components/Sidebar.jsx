@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useToast } from './Toast'
+import { Tag, TagFilter } from './Tag'
 
 const API_BASE = '/api'
 
@@ -15,7 +16,8 @@ export default function Sidebar({
   onUpdateOptions,
   onRenameSession,
   onPinSession,
-  onArchiveSession
+  onArchiveSession,
+  onUpdateTags
 }) {
   const toast = useToast()
   const [expandedSection, setExpandedSection] = useState('sessions') // sessions | controls | commands
@@ -24,10 +26,14 @@ export default function Sidebar({
   const [showArchived, setShowArchived] = useState(false)
   const [editingSession, setEditingSession] = useState(null)
   const [editTitle, setEditTitle] = useState('')
+  const [allTags, setAllTags] = useState([])
+  const [selectedTags, setSelectedTags] = useState([])
+  const [editingTags, setEditingTags] = useState(null)
 
   useEffect(() => {
     loadOptions()
     loadCommands()
+    loadTags()
   }, [])
 
   const loadOptions = async () => {
@@ -45,6 +51,15 @@ export default function Sidebar({
       setCommands(data.commands || [])
     } catch (error) {
       console.error('加载命令失败:', error)
+    }
+  }
+
+  const loadTags = async () => {
+    try {
+      const data = await fetch(`${API_BASE}/tags`).then(r => r.json())
+      setAllTags(data.tags || [])
+    } catch (error) {
+      console.error('加载标签失败:', error)
     }
   }
 
@@ -85,7 +100,16 @@ export default function Sidebar({
 
   // 排序会话：置顶优先，然后按更新时间
   const sortedSessions = [...sessions]
-    .filter(s => showArchived ? s.isArchived : !s.isArchived)
+    .filter(s => {
+      // 归档筛选
+      if (showArchived ? !s.isArchived : s.isArchived) return false
+      // 标签筛选
+      if (selectedTags.length > 0) {
+        const sessionTags = s.tags || []
+        return selectedTags.some(tag => sessionTags.includes(tag))
+      }
+      return true
+    })
     .sort((a, b) => {
       // 置顶优先
       if (a.isPinned && !b.isPinned) return -1
@@ -147,6 +171,24 @@ export default function Sidebar({
 
           {expandedSection === 'sessions' && (
             <div className="pb-2">
+              {/* 标签筛选 */}
+              {allTags.length > 0 && (
+                <div className="px-4 py-2 border-b border-gray-800">
+                  <TagFilter
+                    tags={allTags}
+                    selectedTags={selectedTags}
+                    onToggleTag={(tag) => {
+                      setSelectedTags(prev => 
+                        prev.includes(tag) 
+                          ? prev.filter(t => t !== tag)
+                          : [...prev, tag]
+                      )
+                    }}
+                    onClearTags={() => setSelectedTags([])}
+                  />
+                </div>
+              )}
+
               {/* 归档切换 */}
               <div className="px-4 py-2 flex items-center justify-between">
                 <span className="text-xs text-gray-500">
@@ -178,28 +220,41 @@ export default function Sidebar({
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       {session.isPinned && <span className="text-yellow-500">📌</span>}
                       {!session.isActive && <span className="text-gray-500">⏸️</span>}
-                      {editingSession === session.id ? (
-                        <input
-                          type="text"
-                          value={editTitle}
-                          onChange={(e) => setEditTitle(e.target.value)}
-                          onBlur={() => handleRename(session.id)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleRename(session.id)
-                            if (e.key === 'Escape') {
-                              setEditingSession(null)
-                              setEditTitle('')
-                            }
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          className="flex-1 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
-                          autoFocus
-                        />
-                      ) : (
-                        <span className="truncate">
-                          {session.title || getDisplayName(session.workdir)}
-                        </span>
-                      )}
+                      <div className="flex-1 min-w-0">
+                        {editingSession === session.id ? (
+                          <input
+                            type="text"
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            onBlur={() => handleRename(session.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleRename(session.id)
+                              if (e.key === 'Escape') {
+                                setEditingSession(null)
+                                setEditTitle('')
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
+                            autoFocus
+                          />
+                        ) : (
+                          <span className="truncate block">
+                            {session.title || getDisplayName(session.workdir)}
+                          </span>
+                        )}
+                        {/* 标签显示 */}
+                        {session.tags && session.tags.length > 0 && (
+                          <div className="flex gap-1 mt-1 flex-wrap">
+                            {session.tags.slice(0, 3).map(tag => (
+                              <Tag key={tag} name={tag} small />
+                            ))}
+                            {session.tags.length > 3 && (
+                              <span className="text-xs text-gray-500">+{session.tags.length - 3}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     
                     {/* 操作按钮 */}
@@ -236,6 +291,18 @@ export default function Sidebar({
                         title={session.isArchived ? '取消归档' : '归档'}
                       >
                         📦
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setEditingTags(editingTags === session.id ? null : session.id)
+                        }}
+                        className={`p-1 rounded hover:bg-gray-700 ${
+                          session.tags && session.tags.length > 0 ? 'text-blue-400' : 'text-gray-500'
+                        }`}
+                        title="标签"
+                      >
+                        🏷️
                       </button>
                       <button
                         onClick={(e) => {

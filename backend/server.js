@@ -191,6 +191,64 @@ app.post('/api/sessions/:id/archive', (req, res) => {
   }
 });
 
+// 获取所有标签
+app.get('/api/tags', (req, res) => {
+  try {
+    const tags = sessionManager.getAllTags();
+    res.json({ tags });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 设置会话标签
+app.put('/api/sessions/:id/tags', (req, res) => {
+  try {
+    const { tags } = req.body;
+    if (!Array.isArray(tags)) {
+      return res.status(400).json({ error: 'tags必须是数组' });
+    }
+    const session = sessionManager.setSessionTags(req.params.id, tags);
+    res.json({ success: true, session });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 添加会话标签
+app.post('/api/sessions/:id/tags', (req, res) => {
+  try {
+    const { tag } = req.body;
+    if (!tag) {
+      return res.status(400).json({ error: 'tag是必需的' });
+    }
+    const session = sessionManager.addSessionTag(req.params.id, tag);
+    res.json({ success: true, session });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 删除会话标签
+app.delete('/api/sessions/:id/tags/:tag', (req, res) => {
+  try {
+    const session = sessionManager.removeSessionTag(req.params.id, req.params.tag);
+    res.json({ success: true, session });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 按标签筛选会话
+app.get('/api/sessions/tag/:tag', (req, res) => {
+  try {
+    const sessions = sessionManager.getSessionsByTag(req.params.tag);
+    res.json(sessions);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 获取会话消息列表
 app.get('/api/sessions/:id/messages', (req, res) => {
   try {

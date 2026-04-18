@@ -17,7 +17,7 @@ marked.setOptions({
   gfm: true
 })
 
-export default function Message({ message, index, onDelete, onCopy }) {
+export default function Message({ message, index, onDelete, onCopy, onQuote }) {
   const { type, content, metadata, attachments } = message
   const contentRef = useRef(null)
 
@@ -36,6 +36,17 @@ export default function Message({ message, index, onDelete, onCopy }) {
   const handleDelete = () => {
     if (onDelete && index !== undefined) {
       onDelete(index)
+    }
+  }
+
+  // 引用回复
+  const handleQuote = () => {
+    if (onQuote) {
+      onQuote({
+        role: type,
+        content,
+        timestamp: message.timestamp || Date.now()
+      })
     }
   }
 
@@ -65,6 +76,13 @@ export default function Message({ message, index, onDelete, onCopy }) {
               title="复制"
             >
               📋
+            </button>
+            <button
+              onClick={handleQuote}
+              className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-gray-700/80 rounded-lg backdrop-blur-sm"
+              title="引用回复"
+            >
+              💬
             </button>
             <button
               onClick={handleDelete}
@@ -174,6 +192,13 @@ export default function Message({ message, index, onDelete, onCopy }) {
               title="复制"
             >
               📋
+            </button>
+            <button
+              onClick={handleQuote}
+              className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-gray-700/80 rounded-lg backdrop-blur-sm"
+              title="引用回复"
+            >
+              💬
             </button>
             <button
               onClick={handleDelete}

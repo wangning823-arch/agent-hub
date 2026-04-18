@@ -37,7 +37,8 @@ class Session {
       // 新增字段
       title: this.title || null,
       isPinned: this.isPinned || false,
-      isArchived: this.isArchived || false
+      isArchived: this.isArchived || false,
+      tags: this.tags || []
     };
   }
 }
@@ -392,6 +393,81 @@ class SessionManager {
       session.updatedAt = new Date();
       this.saveData();
     }
+  }
+
+  /**
+   * 设置会话标签
+   */
+  setSessionTags(sessionId, tags) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`会话不存在: ${sessionId}`);
+    }
+    session.tags = tags;
+    session.updatedAt = new Date();
+    this.saveData();
+    return session.toJSON();
+  }
+
+  /**
+   * 添加会话标签
+   */
+  addSessionTag(sessionId, tag) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`会话不存在: ${sessionId}`);
+    }
+    if (!session.tags) {
+      session.tags = [];
+    }
+    if (!session.tags.includes(tag)) {
+      session.tags.push(tag);
+      session.updatedAt = new Date();
+      this.saveData();
+    }
+    return session.toJSON();
+  }
+
+  /**
+   * 移除会话标签
+   */
+  removeSessionTag(sessionId, tag) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`会话不存在: ${sessionId}`);
+    }
+    if (session.tags) {
+      session.tags = session.tags.filter(t => t !== tag);
+      session.updatedAt = new Date();
+      this.saveData();
+    }
+    return session.toJSON();
+  }
+
+  /**
+   * 获取所有标签
+   */
+  getAllTags() {
+    const tags = new Set();
+    for (const session of this.sessions.values()) {
+      if (session.tags) {
+        session.tags.forEach(tag => tags.add(tag));
+      }
+    }
+    return Array.from(tags);
+  }
+
+  /**
+   * 按标签筛选会话
+   */
+  getSessionsByTag(tag) {
+    const sessions = [];
+    for (const session of this.sessions.values()) {
+      if (session.tags && session.tags.includes(tag)) {
+        sessions.push(session.toJSON());
+      }
+    }
+    return sessions;
   }
 }
 
