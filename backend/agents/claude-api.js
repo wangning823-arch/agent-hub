@@ -88,10 +88,9 @@ class ClaudeApiAgent extends Agent {
     let assistantText = '';
     let thinkingText = '';
 
-    // 监听流式事件
+    // 监听流式事件（仅累积，不逐条发送）
     stream.on('text', (text) => {
       assistantText += text;
-      this.emit('message', { type: 'text', content: text });
     });
 
     stream.on('thinking', (thinking) => {
@@ -102,7 +101,12 @@ class ClaudeApiAgent extends Agent {
     const finalMessage = await stream.finalMessage();
     this.abortController = null;
 
-    // 将完整回复添加到历史
+    // 发送完整的文本回复（合并为一条消息）
+    if (assistantText) {
+      this.emit('message', { type: 'text', content: assistantText });
+    }
+
+    // 处理工具调用
     const assistantContent = [];
     for (const block of finalMessage.content) {
       if (block.type === 'text') {
@@ -155,7 +159,9 @@ class ClaudeApiAgent extends Agent {
     let message = error.message || '未知错误';
 
     if (status === 401) {
-      message = 'API Key 无效，请检查 ANTHROPIC_API_KEY 环境变量';
+      message = 'API Key 无效，请检查配置';
+    } else if (status === 403) {
+      message = 'API 访问被拒绝（403），可能是模型不支持或代理不兼容，建议切换到 Claude Code 模式';
     } else if (status === 429) {
       message = 'API 请求过于频繁，请稍后重试';
     } else if (status === 413) {

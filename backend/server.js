@@ -423,8 +423,6 @@ app.post('/api/permissions/check', (req, res) => {
 
 // ============ 文件 API ============
 
-const fs = require('fs');
-
 // 获取文件列表
 app.get('/api/files', (req, res) => {
   const dirPath = req.query.path;

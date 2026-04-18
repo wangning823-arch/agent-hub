@@ -72,11 +72,25 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
       const data = await response.json()
       
       if (data.messages && data.messages.length > 0) {
-        const formattedMessages = data.messages.map(msg => ({
-          type: msg.role === 'user' ? 'user' : 'assistant',
-          content: typeof msg.content === 'object' ? JSON.stringify(msg.content) : msg.content,
-          timestamp: msg.time
-        }))
+        const formattedMessages = data.messages.map(msg => {
+          let displayContent
+          let displayType = msg.role === 'user' ? 'user' : 'assistant'
+          
+          if (msg.role === 'user') {
+            displayContent = msg.content
+          } else if (typeof msg.content === 'object' && msg.content !== null) {
+            displayType = msg.content.type || 'assistant'
+            displayContent = msg.content.content || msg.content
+          } else {
+            displayContent = msg.content
+          }
+          
+          return {
+            type: displayType,
+            content: displayContent,
+            timestamp: msg.time
+          }
+        })
         
         // 将新加载的消息添加到列表前面
         setMessages(prev => [...formattedMessages, ...prev])
@@ -97,26 +111,42 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
 
   // WebSocket连接
   useEffect(() => {
+    // Clear old messages when switching sessions
+    setMessages([])
+
     // 加载历史消息
     const loadHistory = async () => {
       try {
-        const session = await fetch(`${API_BASE}/sessions/${sessionId}`).then(r => r.json())
-        if (session.messages && session.messages.length > 0) {
-          const formattedMessages = session.messages.map(msg => ({
-            type: msg.role === 'user' ? 'user' : 'assistant',
-            content: typeof msg.content === 'object' ? JSON.stringify(msg.content) : msg.content,
-            timestamp: msg.time
-          }))
-          
-          // 只加载最新的PAGE_SIZE条消息
-          if (formattedMessages.length > PAGE_SIZE) {
-            setMessages(formattedMessages.slice(-PAGE_SIZE))
-            setMessageOffset(formattedMessages.length - PAGE_SIZE)
-            setHasMore(true)
-          } else {
-            setMessages(formattedMessages)
-            setHasMore(false)
-          }
+        const data = await fetch(`${API_BASE}/sessions/${sessionId}/messages?limit=${PAGE_SIZE}&offset=0`).then(r => r.json())
+        if (data.messages && data.messages.length > 0) {
+          const formattedMessages = data.messages.map(msg => {
+            // 用户消息: msg.content 是字符串
+            // 助手消息: msg.content 是 { type: 'text', content: '...' } 等结构
+            let displayContent
+            let displayType = msg.role === 'user' ? 'user' : 'assistant'
+            
+            if (msg.role === 'user') {
+              displayContent = msg.content
+            } else if (typeof msg.content === 'object' && msg.content !== null) {
+              // 保持对象结构，让 Message 组件自己渲染
+              displayType = msg.content.type || 'assistant'
+              displayContent = msg.content.content || msg.content
+            } else {
+              displayContent = msg.content
+            }
+            
+            return {
+              type: displayType,
+              content: displayContent,
+              timestamp: msg.time
+            }
+          })
+          setMessages(formattedMessages)
+          setHasMore(data.messages.length >= PAGE_SIZE)
+          setMessageOffset(formattedMessages.length)
+        } else {
+          setMessages([])
+          setHasMore(false)
         }
       } catch (error) {
         console.error('加载历史消息失败:', error)

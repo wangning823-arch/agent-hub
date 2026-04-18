@@ -203,71 +203,82 @@ export default function Sidebar({
                     key={session.id}
                     onClick={() => session.isActive ? onSelectSession(session.id) : onResumeSession(session.id)}
                     className={`sidebar-item group ${activeSession === session.id ? 'active' : ''}`}
+                    style={{ flexDirection: 'column', alignItems: 'stretch' }}
                   >
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      {session.isPinned && <span className="text-xs" style={{ color: 'var(--warning)' }}>📌</span>}
+                    <div className="flex items-center gap-2 min-w-0 w-full">
+                      {session.isPinned && <span className="text-xs flex-shrink-0" style={{ color: 'var(--warning)' }}>📌</span>}
                       {!session.isActive && <IconPause />}
-                      <div className="flex-1 min-w-0">
-                        {editingSession === session.id ? (
-                          <input
-                            type="text"
-                            value={editTitle}
-                            onChange={(e) => setEditTitle(e.target.value)}
-                            onBlur={() => handleRename(session.id)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleRename(session.id)
-                              if (e.key === 'Escape') { setEditingSession(null); setEditTitle('') }
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            className="input-field text-sm py-1 px-2"
-                            autoFocus
-                          />
-                        ) : (
-                          <span className="truncate block text-sm">
-                            {session.title || getDisplayName(session.workdir)}
-                          </span>
-                        )}
-                        {session.tags && session.tags.length > 0 && (
-                          <div className="flex gap-1 mt-1 flex-wrap">
-                            {session.tags.slice(0, 3).map(tag => (
-                              <Tag key={tag} name={tag} small />
-                            ))}
-                            {session.tags.length > 3 && (
-                              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>+{session.tags.length - 3}</span>
-                            )}
-                          </div>
+                      {editingSession === session.id ? (
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          onBlur={() => handleRename(session.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleRename(session.id)
+                            if (e.key === 'Escape') { setEditingSession(null); setEditTitle('') }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="input-field text-sm py-1 px-2 flex-1 min-w-0"
+                          autoFocus
+                        />
+                      ) : (
+                        <span className="text-xs flex-1 min-w-0 truncate" style={{ lineHeight: '1.4' }}>
+                          {session.title || getDisplayName(session.workdir)}
+                        </span>
+                      )}
+                    </div>
+                    {session.tags && session.tags.length > 0 && (
+                      <div className="flex gap-1 mt-0.5 flex-wrap">
+                        {session.tags.slice(0, 3).map(tag => (
+                          <Tag key={tag} name={tag} small />
+                        ))}
+                        {session.tags.length > 3 && (
+                          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>+{session.tags.length - 3}</span>
                         )}
                       </div>
-                    </div>
+                    )}
                     
-                    {/* Action buttons */}
-                    <div className="flex items-center gap-0.5 flex-shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                    {/* Action buttons - on new line, visible on hover/focus */}
+                    <div className="flex items-center gap-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ borderBottom: 'none' }}
+                    >
                       <button
                         onClick={(e) => { e.stopPropagation(); onPinSession(session.id) }}
-                        className="btn-icon w-6 h-6"
-                        style={{ color: session.isPinned ? 'var(--warning)' : 'var(--text-muted)' }}
+                        className="btn-icon text-xs"
+                        style={{ color: session.isPinned ? 'var(--warning)' : 'var(--text-muted)', width: 22, height: 22 }}
                         title={session.isPinned ? '取消置顶' : '置顶'}
                       >
                         <IconPin />
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); setEditingSession(session.id); setEditTitle(session.title || getDisplayName(session.workdir)) }}
-                        className="btn-icon w-6 h-6"
+                        className="btn-icon text-xs"
+                        style={{ width: 22, height: 22 }}
                         title="重命名"
                       >
                         <IconEdit />
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); onArchiveSession(session.id) }}
-                        className="btn-icon w-6 h-6"
+                        className="btn-icon text-xs"
+                        style={{ width: 22, height: 22 }}
                         title={session.isArchived ? '取消归档' : '归档'}
                       >
                         <IconArchive />
                       </button>
                       <button
+                        onClick={(e) => { e.stopPropagation(); setEditingTags(editingTags === session.id ? null : session.id) }}
+                        className="btn-icon text-xs"
+                        style={{ color: session.tags?.length > 0 ? 'var(--accent-primary)' : 'var(--text-muted)', width: 22, height: 22 }}
+                        title="标签"
+                      >
+                        <IconTag />
+                      </button>
+                      <button
                         onClick={(e) => { e.stopPropagation(); onCloseSession(session.id) }}
-                        className="btn-icon w-6 h-6"
-                        style={{ color: 'var(--text-muted)' }}
+                        className="btn-icon text-xs"
+                        style={{ color: 'var(--text-muted)', width: 22, height: 22 }}
                         title="删除"
                         onMouseEnter={(e) => e.currentTarget.style.color = 'var(--error)'}
                         onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
@@ -278,7 +289,7 @@ export default function Sidebar({
                   </div>
                 ))
               )}
-
+              
               <button
                 onClick={onNewSession}
                 className="sidebar-item w-full justify-center gap-2"
