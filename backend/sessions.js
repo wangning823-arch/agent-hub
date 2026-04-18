@@ -27,12 +27,17 @@ class Session {
       workdir: this.workdir,
       messageCount: this.messages.length,
       createdAt: this.createdAt,
+      updatedAt: this.updatedAt || this.createdAt,
       options: this.options,
       isActive: this.isActive,
       conversationId: this.conversationId,
       lastMessageAt: this.messages.length > 0
         ? this.messages[this.messages.length - 1].time
-        : this.createdAt
+        : this.createdAt,
+      // 新增字段
+      title: this.title || null,
+      isPinned: this.isPinned || false,
+      isArchived: this.isArchived || false
     };
   }
 }
@@ -66,9 +71,33 @@ class SessionManager {
             agentName: sessionData.agentName,
             messages: sessionData.messages || [],
             createdAt: new Date(sessionData.createdAt),
+            updatedAt: sessionData.updatedAt ? new Date(sessionData.updatedAt) : new Date(sessionData.createdAt),
             options: sessionData.options || {},
             isActive: false, // 需要重新启动
-            conversationId: sessionData.conversationId || null
+            conversationId: sessionData.conversationId || null,
+            title: sessionData.title || null,
+            isPinned: sessionData.isPinned || false,
+            isArchived: sessionData.isArchived || false,
+            // 添加toJSON方法
+            toJSON: function() {
+              return {
+                id: this.id,
+                agentName: this.agentName || 'unknown',
+                workdir: this.workdir,
+                messageCount: this.messages.length,
+                createdAt: this.createdAt,
+                updatedAt: this.updatedAt,
+                options: this.options,
+                isActive: this.isActive,
+                conversationId: this.conversationId,
+                lastMessageAt: this.messages.length > 0
+                  ? this.messages[this.messages.length - 1].time
+                  : this.createdAt,
+                title: this.title,
+                isPinned: this.isPinned,
+                isArchived: this.isArchived
+              };
+            }
           };
           this.sessions.set(session.id, session);
         }
@@ -260,9 +289,108 @@ class SessionManager {
   async removeSession(sessionId) {
     const session = this.sessions.get(sessionId);
     if (session) {
-      await session.agent.stop();
+      if (session.agent) {
+        await session.agent.stop();
+      }
       this.sessions.delete(sessionId);
       this.wsClients.delete(sessionId);
+      this.saveData();
+    }
+  }
+
+  /**
+   * 重命名会话
+   */
+  renameSession(sessionId, title) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`会话不存在: ${sessionId}`);
+    }
+    session.title = title;
+    session.updatedAt = new Date();
+    this.saveData();
+    return session.toJSON();
+  }
+
+  /**
+   * 置顶/取消置顶会话
+   */
+  togglePinSession(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`会话不存在: ${sessionId}`);
+    }
+    session.isPinned = !session.isPinned;
+    session.updatedAt = new Date();
+    this.saveData();
+    return session.toJSON();
+  }
+
+  /**
+   * 归档/取消归档会话
+   */
+  toggleArchiveSession(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`会话不存在: ${sessionId}`);
+    }
+    session.isArchived = !session.isArchived;
+    session.updatedAt = new Date();
+    this.saveData();
+    return session.toJSON();
+  }
+
+  /**
+   * 获取会话消息列表
+   */
+  getMessages(sessionId, limit = 100, offset = 0) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`会话不存在: ${sessionId}`);
+    }
+    const messages = session.messages.slice(-(limit + offset), offset > 0 ? -offset : undefined);
+    return messages;
+  }
+
+  /**
+   * 删除消息
+   */
+  deleteMessage(sessionId, messageIndex) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`会话不存在: ${sessionId}`);
+    }
+    if (messageIndex < 0 || messageIndex >= session.messages.length) {
+      throw new Error('消息索引无效');
+    }
+    session.messages.splice(messageIndex, 1);
+    session.updatedAt = new Date();
+    this.saveData();
+    return { success: true, messageCount: session.messages.length };
+  }
+
+  /**
+   * 删除最后N条消息（用于重新生成）
+   */
+  deleteLastMessages(sessionId, count = 2) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`会话不存在: ${sessionId}`);
+    }
+    const removed = session.messages.splice(-Math.min(count, session.messages.length));
+    session.updatedAt = new Date();
+    this.saveData();
+    return { success: true, removed: removed.length, messageCount: session.messages.length };
+  }
+
+  /**
+   * 更新会话时间戳
+   */
+  touchSession(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.updatedAt = new Date();
+      this.saveData();
     }
   }
 }

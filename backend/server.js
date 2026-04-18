@@ -157,6 +157,74 @@ app.post('/api/sessions/:id/resume', async (req, res) => {
   }
 });
 
+// 重命名会话
+app.put('/api/sessions/:id/rename', (req, res) => {
+  try {
+    const { title } = req.body;
+    if (!title) {
+      return res.status(400).json({ error: '标题是必需的' });
+    }
+    const session = sessionManager.renameSession(req.params.id, title);
+    res.json({ success: true, session });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 置顶/取消置顶会话
+app.post('/api/sessions/:id/pin', (req, res) => {
+  try {
+    const session = sessionManager.togglePinSession(req.params.id);
+    res.json({ success: true, session });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 归档/取消归档会话
+app.post('/api/sessions/:id/archive', (req, res) => {
+  try {
+    const session = sessionManager.toggleArchiveSession(req.params.id);
+    res.json({ success: true, session });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 获取会话消息列表
+app.get('/api/sessions/:id/messages', (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 100;
+    const offset = parseInt(req.query.offset) || 0;
+    const messages = sessionManager.getMessages(req.params.id, limit, offset);
+    res.json({ messages });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 删除单条消息
+app.delete('/api/sessions/:id/messages/:index', (req, res) => {
+  try {
+    const messageIndex = parseInt(req.params.index);
+    const result = sessionManager.deleteMessage(req.params.id, messageIndex);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 删除最后N条消息（用于重新生成）
+app.post('/api/sessions/:id/delete-last', (req, res) => {
+  try {
+    const count = req.body.count || 2;
+    const result = sessionManager.deleteLastMessages(req.params.id, count);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============ 权限 API ============
 
 // 获取所有权限配置

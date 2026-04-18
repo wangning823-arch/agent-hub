@@ -6,6 +6,7 @@ import ProjectManager from './components/ProjectManager'
 import Sidebar from './components/Sidebar'
 import RightSidebar from './components/RightSidebar'
 import ContextManager from './components/ContextManager'
+import FileViewer from './components/FileViewer'
 
 const API_BASE = '/api'
 
@@ -18,6 +19,9 @@ export default function App() {
   const [showProjectManager, setShowProjectManager] = useState(false)
   const [showContextManager, setShowContextManager] = useState(false)
   const [agents, setAgents] = useState([])
+  
+  // 文件查看状态
+  const [viewingFile, setViewingFile] = useState(null) // { path, content }
   
   // 侧边栏状态
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
@@ -163,6 +167,63 @@ export default function App() {
     }))
   }
 
+  // 查看文件
+  const handleViewFile = async (filePath) => {
+    try {
+      const data = await fetch(`${API_BASE}/files/content?path=${encodeURIComponent(filePath)}`).then(r => r.json())
+      setViewingFile({ path: filePath, content: data.content || '' })
+    } catch (error) {
+      alert('加载文件失败: ' + error.message)
+    }
+  }
+
+  // 重命名会话
+  const renameSession = async (sessionId, title) => {
+    try {
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/rename`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title })
+      })
+      const result = await res.json()
+      if (result.session) {
+        setSessions(prev => prev.map(s => s.id === sessionId ? result.session : s))
+      }
+    } catch (error) {
+      alert('重命名失败: ' + error.message)
+    }
+  }
+
+  // 置顶/取消置顶会话
+  const pinSession = async (sessionId) => {
+    try {
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/pin`, {
+        method: 'POST'
+      })
+      const result = await res.json()
+      if (result.session) {
+        setSessions(prev => prev.map(s => s.id === sessionId ? result.session : s))
+      }
+    } catch (error) {
+      alert('置顶操作失败: ' + error.message)
+    }
+  }
+
+  // 归档/取消归档会话
+  const archiveSession = async (sessionId) => {
+    try {
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/archive`, {
+        method: 'POST'
+      })
+      const result = await res.json()
+      if (result.session) {
+        setSessions(prev => prev.map(s => s.id === sessionId ? result.session : s))
+      }
+    } catch (error) {
+      alert('归档操作失败: ' + error.message)
+    }
+  }
+
   const currentOptions = activeSession ? sessionOptions[activeSession] || {} : {}
   const currentSession = sessions.find(s => s.id === activeSession)
 
@@ -198,6 +259,9 @@ export default function App() {
           onNewSession={() => setShowNewModal(true)}
           onOpenProject={() => setShowProjectManager(true)}
           onUpdateOptions={handleUpdateOptions}
+          onRenameSession={renameSession}
+          onPinSession={pinSession}
+          onArchiveSession={archiveSession}
         />
       </div>
 
@@ -259,7 +323,13 @@ export default function App() {
 
         {/* 聊天区域 */}
         <div className="flex-1 overflow-hidden">
-          {activeSession ? (
+          {viewingFile ? (
+            <FileViewer
+              file={viewingFile.path}
+              content={viewingFile.content}
+              onClose={() => setViewingFile(null)}
+            />
+          ) : activeSession ? (
             <ChatPanel
               sessionId={activeSession}
               options={currentOptions}
@@ -300,6 +370,7 @@ export default function App() {
         <RightSidebar
           sessionId={activeSession}
           workdir={currentSession?.workdir}
+          onViewFile={handleViewFile}
         />
       </div>
 

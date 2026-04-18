@@ -157,5 +157,35 @@
     },
     "isActive": true,
     "conversationId": null
+  },
+  {
+    "id": "dacb668e-22a5-4b5d-b543-0ab0bf21d251",
+    "workdir": "/data/data/com.termux/files/home/agent-hub",
+    "agentType": "claude-code",
+    "agentName": "claude-code",
+    "messages": [],
+    "createdAt": "2026-04-18T01:26:15.997Z",
+    "options": {
+      "mode": "auto",
+      "model": null,
+      "effort": "medium"
+    },
+    "isActive": true,
+    "conversationId": null
+  },
+  {
+    "id": "a9d40e20-06fe-44fc-b1e4-30b9a8350e4a",
+    "workdir": "/data/data/com.termux/files/home/agent-hub",
+    "agentType": "claude-code",
+    "agentName": "claude-code",
+    "messages": [],
+    "createdAt": "2026-04-18T01:28:52.643Z",
+    "options": {
+      "mode": "auto",
+      "model": null,
+      "effort": "medium"
+    },
+    "isActive": true,
+    "conversationId": null
   }
 ]

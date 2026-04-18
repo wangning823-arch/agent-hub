@@ -11,11 +11,17 @@ export default function Sidebar({
   onResumeSession,
   onNewSession,
   onOpenProject,
-  onUpdateOptions
+  onUpdateOptions,
+  onRenameSession,
+  onPinSession,
+  onArchiveSession
 }) {
   const [expandedSection, setExpandedSection] = useState('sessions') // sessions | controls | commands
   const [options, setOptions] = useState({ modes: [], models: [], efforts: [] })
   const [commands, setCommands] = useState([])
+  const [showArchived, setShowArchived] = useState(false)
+  const [editingSession, setEditingSession] = useState(null)
+  const [editTitle, setEditTitle] = useState('')
 
   useEffect(() => {
     loadOptions()
@@ -75,6 +81,26 @@ export default function Sidebar({
     return parts[parts.length - 1] || workdir
   }
 
+  // 排序会话：置顶优先，然后按更新时间
+  const sortedSessions = [...sessions]
+    .filter(s => showArchived ? s.isArchived : !s.isArchived)
+    .sort((a, b) => {
+      // 置顶优先
+      if (a.isPinned && !b.isPinned) return -1
+      if (!a.isPinned && b.isPinned) return 1
+      // 按更新时间排序
+      return new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)
+    })
+
+  // 处理重命名
+  const handleRename = (sessionId) => {
+    if (editTitle.trim()) {
+      onRenameSession(sessionId, editTitle.trim())
+    }
+    setEditingSession(null)
+    setEditTitle('')
+  }
+
   // 按分类分组命令
   const groupedCommands = commands.reduce((groups, cmd) => {
     const category = cmd.category || '其他'
@@ -112,19 +138,32 @@ export default function Sidebar({
           >
             <span className="flex items-center gap-2">
               💬 会话列表
-              <span className="text-xs bg-gray-700 px-2 py-0.5 rounded">{sessions.length}</span>
+              <span className="text-xs bg-gray-700 px-2 py-0.5 rounded">{sortedSessions.length}</span>
             </span>
             <span className="text-gray-500">{expandedSection === 'sessions' ? '▼' : '▶'}</span>
           </button>
 
           {expandedSection === 'sessions' && (
             <div className="pb-2">
-              {sessions.length === 0 ? (
+              {/* 归档切换 */}
+              <div className="px-4 py-2 flex items-center justify-between">
+                <span className="text-xs text-gray-500">
+                  {showArchived ? '📦 已归档' : '📋 活跃会话'}
+                </span>
+                <button
+                  onClick={() => setShowArchived(!showArchived)}
+                  className="text-xs text-blue-400 hover:text-blue-300"
+                >
+                  {showArchived ? '查看活跃' : '查看归档'}
+                </button>
+              </div>
+
+              {sortedSessions.length === 0 ? (
                 <div className="px-4 py-3 text-gray-500 text-sm text-center">
-                  还没有会话
+                  {showArchived ? '没有已归档的会话' : '还没有会话'}
                 </div>
               ) : (
-                sessions.map(session => (
+                sortedSessions.map(session => (
                   <div
                     key={session.id}
                     onClick={() => session.isActive ? onSelectSession(session.id) : onResumeSession(session.id)}
@@ -134,19 +173,79 @@ export default function Sidebar({
                         : 'text-gray-400 hover:bg-gray-800/50'
                     }`}
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      {!session.isActive && <span className="text-yellow-500">⏸️</span>}
-                      <span className="truncate">{getDisplayName(session.workdir)}</span>
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      {session.isPinned && <span className="text-yellow-500">📌</span>}
+                      {!session.isActive && <span className="text-gray-500">⏸️</span>}
+                      {editingSession === session.id ? (
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          onBlur={() => handleRename(session.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleRename(session.id)
+                            if (e.key === 'Escape') {
+                              setEditingSession(null)
+                              setEditTitle('')
+                            }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex-1 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm"
+                          autoFocus
+                        />
+                      ) : (
+                        <span className="truncate">
+                          {session.title || getDisplayName(session.workdir)}
+                        </span>
+                      )}
                     </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onCloseSession(session.id)
-                      }}
-                      className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 px-1"
-                    >
-                      ✕
-                    </button>
+                    
+                    {/* 操作按钮 */}
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onPinSession(session.id)
+                        }}
+                        className={`p-1 rounded hover:bg-gray-700 ${
+                          session.isPinned ? 'text-yellow-500' : 'text-gray-500'
+                        }`}
+                        title={session.isPinned ? '取消置顶' : '置顶'}
+                      >
+                        📌
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setEditingSession(session.id)
+                          setEditTitle(session.title || getDisplayName(session.workdir))
+                        }}
+                        className="p-1 text-gray-500 rounded hover:bg-gray-700"
+                        title="重命名"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onArchiveSession(session.id)
+                        }}
+                        className="p-1 text-gray-500 rounded hover:bg-gray-700"
+                        title={session.isArchived ? '取消归档' : '归档'}
+                      >
+                        📦
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onCloseSession(session.id)
+                        }}
+                        className="p-1 text-gray-500 hover:text-red-400 rounded hover:bg-gray-700"
+                        title="删除"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                 ))
               )}

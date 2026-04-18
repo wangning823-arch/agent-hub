@@ -69,53 +69,96 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
 
     loadHistory()
 
-    const wsUrl = `ws://${window.location.hostname}:3001?session=${sessionId}`
-    const ws = new WebSocket(wsUrl)
-    wsRef.current = ws
+    let reconnectAttempts = 0
+    const maxReconnectAttempts = 5
+    let reconnectTimeout = null
 
-    ws.onopen = () => {
-      setConnected(true)
-      console.log('WebSocket已连接')
-    }
+    const connectWebSocket = () => {
+      const wsUrl = `ws://${window.location.hostname}:3001?session=${sessionId}`
+      const ws = new WebSocket(wsUrl)
+      wsRef.current = ws
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data)
-        setMessages(prev => [...prev, msg])
+      ws.onopen = () => {
+        setConnected(true)
+        reconnectAttempts = 0 // 重置重连计数
+        console.log('WebSocket已连接')
         
-        // 处理对话ID保存
-        if (msg.type === 'conversation_id' && msg.conversationId) {
-          fetch(`${API_BASE}/sessions/${sessionId}/conversation`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ conversationId: msg.conversationId })
-          }).catch(err => console.error('保存对话ID失败:', err))
+        // 显示连接成功提示
+        if (reconnectAttempts > 0) {
+          setMessages(prev => [...prev, { 
+            type: 'status', 
+            content: '✅ 已重新连接到服务器' 
+          }])
         }
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data)
+          setMessages(prev => [...prev, msg])
+          
+          // 处理对话ID保存
+          if (msg.type === 'conversation_id' && msg.conversationId) {
+            fetch(`${API_BASE}/sessions/${sessionId}/conversation`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ conversationId: msg.conversationId })
+            }).catch(err => console.error('保存对话ID失败:', err))
+          }
+          
+          // 处理Token统计
+          if (msg.type === 'token_usage' && msg.content) {
+            fetch(`${API_BASE}/tokens/${sessionId}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ usage: msg.content })
+            }).catch(err => console.error('记录Token失败:', err))
+          }
+        } catch (e) {
+          console.error('解析消息失败:', e)
+        }
+      }
+
+      ws.onclose = () => {
+        setConnected(false)
+        console.log('WebSocket已断开')
         
-        // 处理Token统计
-        if (msg.type === 'token_usage' && msg.content) {
-          fetch(`${API_BASE}/tokens/${sessionId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ usage: msg.content })
-          }).catch(err => console.error('记录Token失败:', err))
+        // 自动重连
+        if (reconnectAttempts < maxReconnectAttempts) {
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000) // 指数退避，最大30秒
+          console.log(`${delay}ms后尝试重连 (${reconnectAttempts + 1}/${maxReconnectAttempts})`)
+          
+          setMessages(prev => [...prev, { 
+            type: 'status', 
+            content: `⚠️ 连接断开，${delay/1000}秒后自动重连...` 
+          }])
+          
+          reconnectTimeout = setTimeout(() => {
+            reconnectAttempts++
+            connectWebSocket()
+          }, delay)
+        } else {
+          setMessages(prev => [...prev, { 
+            type: 'error', 
+            content: '❌ 连接失败，请刷新页面重试' 
+          }])
         }
-      } catch (e) {
-        console.error('解析消息失败:', e)
+      }
+
+      ws.onerror = (error) => {
+        console.error('WebSocket错误:', error)
       }
     }
 
-    ws.onclose = () => {
-      setConnected(false)
-      console.log('WebSocket已断开')
-    }
-
-    ws.onerror = (error) => {
-      console.error('WebSocket错误:', error)
-    }
+    connectWebSocket()
 
     return () => {
-      ws.close()
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout)
+      }
+      if (wsRef.current) {
+        wsRef.current.close()
+      }
     }
   }, [sessionId])
 
@@ -165,6 +208,60 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
     window.addEventListener('send-message', handleSendMessage)
     return () => window.removeEventListener('send-message', handleSendMessage)
   }, [])
+
+  // 删除消息
+  const handleDeleteMessage = async (index) => {
+    if (!confirm('确定要删除这条消息吗？')) return
+    
+    try {
+      const response = await fetch(`${API_BASE}/sessions/${sessionId}/messages/${index}`, {
+        method: 'DELETE'
+      })
+      const data = await response.json()
+      if (data.success) {
+        // 从本地消息列表中移除
+        setMessages(prev => prev.filter((_, i) => i !== index))
+      }
+    } catch (error) {
+      console.error('删除消息失败:', error)
+      alert('删除失败: ' + error.message)
+    }
+  }
+
+  // 重新生成回复
+  const handleRegenerate = async () => {
+    if (messages.length < 2) return
+    
+    try {
+      // 删除最后两条消息（用户消息+助手回复）
+      const response = await fetch(`${API_BASE}/sessions/${sessionId}/delete-last`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: 2 })
+      })
+      const data = await response.json()
+      if (data.success) {
+        // 从本地移除最后两条
+        setMessages(prev => prev.slice(0, -2))
+        // 获取倒数第二条消息（用户消息）并重新发送
+        const lastUserMessage = messages[messages.length - 2]
+        if (lastUserMessage && lastUserMessage.type === 'user') {
+          setTimeout(() => {
+            if (wsRef.current && wsRef.current.readyState === 1) {
+              setMessages(prev => [...prev, { type: 'user', content: lastUserMessage.content }])
+              wsRef.current.send(JSON.stringify({
+                type: 'user_input',
+                content: lastUserMessage.content
+              }))
+            }
+          }, 100)
+        }
+      }
+    } catch (error) {
+      console.error('重新生成失败:', error)
+      alert('重新生成失败: ' + error.message)
+    }
+  }
 
   // 处理剪切板粘贴
   const handlePaste = useCallback(async (e) => {
@@ -400,7 +497,12 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
         )}
 
         {messages.map((msg, idx) => (
-          <Message key={idx} message={msg} />
+          <Message 
+            key={idx} 
+            message={msg} 
+            index={idx}
+            onDelete={handleDeleteMessage}
+          />
         ))}
 
         <div ref={messagesEndRef} />
@@ -511,6 +613,18 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
             </div>
           </div>
         </div>
+
+        {/* 重新生成按钮 */}
+        {messages.length >= 2 && messages[messages.length - 1]?.type !== 'user' && (
+          <div className="px-4 py-2 border-b border-gray-800">
+            <button
+              onClick={handleRegenerate}
+              className="px-3 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors flex items-center gap-2"
+            >
+              🔄 重新生成回复
+            </button>
+          </div>
+        )}
 
         {/* 输入框 */}
         <div className="p-4">

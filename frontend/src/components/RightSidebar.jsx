@@ -2,12 +2,10 @@ import React, { useState, useEffect } from 'react'
 
 const API_BASE = '/api'
 
-export default function RightSidebar({ sessionId, workdir }) {
+export default function RightSidebar({ sessionId, workdir, onViewFile }) {
   const [expandedSection, setExpandedSection] = useState('files') // files | git
   const [files, setFiles] = useState([])
   const [currentPath, setCurrentPath] = useState(workdir || '~')
-  const [selectedFile, setSelectedFile] = useState(null)
-  const [fileContent, setFileContent] = useState('')
   const [gitStatus, setGitStatus] = useState(null)
   const [loading, setLoading] = useState(false)
   const [commitMessage, setCommitMessage] = useState('')
@@ -48,8 +46,6 @@ export default function RightSidebar({ sessionId, workdir }) {
   const enterDirectory = (dirPath) => {
     setCurrentPath(dirPath)
     loadFiles(dirPath)
-    setSelectedFile(null)
-    setFileContent('')
   }
 
   // 返回上级目录
@@ -59,13 +55,9 @@ export default function RightSidebar({ sessionId, workdir }) {
   }
 
   // 查看文件内容
-  const viewFile = async (filePath) => {
-    try {
-      const data = await fetch(`${API_BASE}/files/content?path=${encodeURIComponent(filePath)}`).then(r => r.json())
-      setSelectedFile(filePath)
-      setFileContent(data.content || '')
-    } catch (error) {
-      console.error('加载文件内容失败:', error)
+  const viewFile = (filePath) => {
+    if (onViewFile) {
+      onViewFile(filePath)
     }
   }
 
@@ -136,9 +128,7 @@ export default function RightSidebar({ sessionId, workdir }) {
                   <div
                     key={idx}
                     onClick={() => file.isDirectory ? enterDirectory(file.path) : viewFile(file.path)}
-                    className={`px-3 py-2 cursor-pointer flex items-center gap-2 hover:bg-gray-800 ${
-                      selectedFile === file.path ? 'bg-gray-800' : ''
-                    }`}
+                    className="px-3 py-2 cursor-pointer flex items-center gap-2 hover:bg-gray-800"
                   >
                     <span>{getFileIcon(file.name, file.isDirectory)}</span>
                     <span className="text-sm text-gray-300 truncate flex-1">
@@ -149,18 +139,6 @@ export default function RightSidebar({ sessionId, workdir }) {
                 ))
               )}
             </div>
-
-            {/* 文件内容预览 */}
-            {selectedFile && (
-              <div className="border-t border-gray-800 max-h-40 overflow-auto">
-                <div className="px-3 py-1.5 text-xs text-gray-500 bg-gray-800/50 sticky top-0">
-                  {selectedFile.split('/').pop()}
-                </div>
-                <pre className="p-3 text-xs text-gray-400 whitespace-pre-wrap font-mono">
-                  {fileContent.slice(0, 1000)}{fileContent.length > 1000 ? '\n...' : ''}
-                </pre>
-              </div>
-            )}
           </div>
         )}
       </div>
