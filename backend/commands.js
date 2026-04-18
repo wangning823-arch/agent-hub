@@ -148,14 +148,47 @@ const PERMISSION_MODES = [
   { id: 'dontAsk', name: '不询问', description: '不询问直接执行' }
 ];
 
-// 模型选项
-const MODELS = [
-  { id: 'claude-sonnet-4-6', name: 'Sonnet 4', description: '快速，适合日常开发' },
-  { id: 'claude-opus-4-6', name: 'Opus 4', description: '最强能力，适合复杂任务' },
-  { id: 'sonnet', name: 'Sonnet (最新)', description: '最新的Sonnet模型' },
-  { id: 'opus', name: 'Opus (最新)', description: '最新的Opus模型' },
-  { id: 'mimo-v2-pro', name: 'MiMo v2 Pro', description: '小米MiMo模型' }
-];
+// 模型选项 - 从 Claude 配置文件动态读取
+const fs = require('fs');
+const path = require('path');
+
+function loadModelsFromClaudeConfig() {
+  const settingsPath = path.join(process.env.HOME || '/root', '.claude', 'settings.json');
+  try {
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+    const env = settings.env || {};
+    
+    // 从 Claude 配置中收集所有模型ID
+    const modelIds = new Set();
+    const defaultModel = env.ANTHROPIC_MODEL;
+    if (defaultModel) modelIds.add(defaultModel);
+    if (env.ANTHROPIC_DEFAULT_SONNET_MODEL) modelIds.add(env.ANTHROPIC_DEFAULT_SONNET_MODEL);
+    if (env.ANTHROPIC_DEFAULT_OPUS_MODEL) modelIds.add(env.ANTHROPIC_DEFAULT_OPUS_MODEL);
+    if (env.ANTHROPIC_DEFAULT_HAIKU_MODEL) modelIds.add(env.ANTHROPIC_DEFAULT_HAIKU_MODEL);
+    
+    // 构建模型列表，默认模型排第一
+    const models = [];
+    if (defaultModel) {
+      models.push({ id: defaultModel, name: defaultModel, description: '当前默认模型' });
+    }
+    for (const id of modelIds) {
+      if (id !== defaultModel) {
+        models.push({ id, name: id, description: '' });
+      }
+    }
+    
+    // 如果配置文件没有任何模型，fallback
+    if (models.length === 0) {
+      return [{ id: 'claude-sonnet-4-6', name: 'Sonnet 4', description: '默认模型' }];
+    }
+    return models;
+  } catch (e) {
+    console.warn('读取 Claude 配置失败，使用默认模型列表:', e.message);
+    return [{ id: 'claude-sonnet-4-6', name: 'Sonnet 4', description: '默认模型' }];
+  }
+}
+
+const MODELS = loadModelsFromClaudeConfig();
 
 // 努力程度选项
 const EFFORT_LEVELS = [
@@ -171,3 +204,4 @@ module.exports = {
   MODELS,
   EFFORT_LEVELS
 };
+
