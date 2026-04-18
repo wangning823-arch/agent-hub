@@ -1,23 +1,23 @@
 {
   "projects": [
     [
-      "project_1776472613947_orv7j02fx",
+      "project_1776491810632_kvzysc2sg",
       {
-        "id": "project_1776472613947_orv7j02fx",
-        "name": "测试项目",
-        "workdir": "~/agent-hub",
+        "id": "project_1776491810632_kvzysc2sg",
+        "name": "scix-oncopilot",
+        "workdir": "/data/data/com.termux/files/home/scix-oncopilot",
         "agentType": "claude-code",
         "mode": "auto",
         "model": null,
         "effort": "medium",
-        "createdAt": "2026-04-18T00:36:53.947Z",
-        "updatedAt": "2026-04-18T01:28:52.644Z",
-        "lastSessionId": "a9d40e20-06fe-44fc-b1e4-30b9a8350e4a",
-        "lastUsedAt": "2026-04-18T01:28:52.644Z"
+        "createdAt": "2026-04-18T05:56:50.632Z",
+        "updatedAt": "2026-04-18T06:59:12.536Z",
+        "lastSessionId": "6e9d5008-1d74-461e-b7d5-c8760e687a7c",
+        "lastUsedAt": "2026-04-18T06:59:12.536Z"
       }
     ]
   ],
   "recentProjects": [
-    "project_1776472613947_orv7j02fx"
+    "project_1776491810632_kvzysc2sg"
   ]
 }
