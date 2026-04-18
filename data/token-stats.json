@@ -142,5 +142,185 @@
         "cost": 0
       }
     ]
+  },
+  "5744b218-18f2-4ec3-b8e1-6654f613b1cf": {
+    "totalInputTokens": 0,
+    "totalOutputTokens": 0,
+    "totalCacheReadTokens": 0,
+    "totalCacheWriteTokens": 0,
+    "totalCost": 0,
+    "messageCount": 4,
+    "history": [
+      {
+        "timestamp": "2026-04-18T09:10:17.734Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0
+      },
+      {
+        "timestamp": "2026-04-18T09:11:03.108Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0
+      },
+      {
+        "timestamp": "2026-04-18T09:14:56.567Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0
+      },
+      {
+        "timestamp": "2026-04-18T09:23:48.332Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0
+      }
+    ]
+  },
+  "241ab40d-3b7f-4f66-a94b-f835eb59ee9b": {
+    "totalInputTokens": 163280,
+    "totalOutputTokens": 13831,
+    "totalCacheReadTokens": 3914496,
+    "totalCacheWriteTokens": 0,
+    "totalCost": 4.2650879999999995,
+    "messageCount": 7,
+    "history": [
+      {
+        "timestamp": "2026-04-18T10:06:25.400Z",
+        "inputTokens": 28919,
+        "outputTokens": 8,
+        "cost": 0.144795
+      },
+      {
+        "timestamp": "2026-04-18T10:06:25.419Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0
+      },
+      {
+        "timestamp": "2026-04-18T10:10:46.406Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0.062832
+      },
+      {
+        "timestamp": "2026-04-18T10:10:46.455Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0
+      },
+      {
+        "timestamp": "2026-04-18T10:13:44.370Z",
+        "inputTokens": 31395,
+        "outputTokens": 1484,
+        "cost": 1.290572
+      },
+      {
+        "timestamp": "2026-04-18T10:13:44.403Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0
+      },
+      {
+        "timestamp": "2026-04-18T10:22:23.302Z",
+        "inputTokens": 102966,
+        "outputTokens": 12339,
+        "cost": 2.7668889999999995
+      }
+    ]
+  },
+  "46dbacbe-02e6-4b7c-a132-6d8895eda6e1": {
+    "totalInputTokens": 440456,
+    "totalOutputTokens": 4313,
+    "totalCacheReadTokens": 2835584,
+    "totalCacheWriteTokens": 0,
+    "totalCost": 3.7278969999999996,
+    "messageCount": 14,
+    "history": [
+      {
+        "timestamp": "2026-04-18T10:34:39.027Z",
+        "inputTokens": 100346,
+        "outputTokens": 128,
+        "cost": 0.50493
+      },
+      {
+        "timestamp": "2026-04-18T10:34:39.063Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0
+      },
+      {
+        "timestamp": "2026-04-18T10:36:13.624Z",
+        "inputTokens": 1385,
+        "outputTokens": 586,
+        "cost": 0.22323900000000002
+      },
+      {
+        "timestamp": "2026-04-18T10:36:13.649Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0
+      },
+      {
+        "timestamp": "2026-04-18T10:38:09.464Z",
+        "inputTokens": 104534,
+        "outputTokens": 305,
+        "cost": 0.581207
+      },
+      {
+        "timestamp": "2026-04-18T10:38:09.497Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0
+      },
+      {
+        "timestamp": "2026-04-18T10:38:21.656Z",
+        "inputTokens": 2573,
+        "outputTokens": 328,
+        "cost": 0.12573700000000002
+      },
+      {
+        "timestamp": "2026-04-18T10:38:21.681Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0
+      },
+      {
+        "timestamp": "2026-04-18T10:40:19.709Z",
+        "inputTokens": 2001,
+        "outputTokens": 668,
+        "cost": 0.295985
+      },
+      {
+        "timestamp": "2026-04-18T10:40:19.732Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0
+      },
+      {
+        "timestamp": "2026-04-18T10:41:44.781Z",
+        "inputTokens": 114106,
+        "outputTokens": 1529,
+        "cost": 1.1141309999999998
+      },
+      {
+        "timestamp": "2026-04-18T10:41:44.811Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0
+      },
+      {
+        "timestamp": "2026-04-18T10:42:06.539Z",
+        "inputTokens": 115511,
+        "outputTokens": 769,
+        "cost": 0.882668
+      },
+      {
+        "timestamp": "2026-04-18T10:42:06.566Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0
+      }
+    ]
   }
 }

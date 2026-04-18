@@ -31,9 +31,26 @@
         "lastSessionId": "996bce15-b19e-464c-873d-326cfdffb5e2",
         "lastUsedAt": "2026-04-18T08:57:40.203Z"
       }
+    ],
+    [
+      "project_1776502873319_masqsh71g",
+      {
+        "id": "project_1776502873319_masqsh71g",
+        "name": "agent-hub",
+        "workdir": "/data/data/com.termux/files/home/projects/agent-hub",
+        "agentType": "claude-code",
+        "mode": "auto",
+        "model": null,
+        "effort": "medium",
+        "createdAt": "2026-04-18T09:01:13.319Z",
+        "updatedAt": "2026-04-18T09:03:04.444Z",
+        "lastSessionId": "5744b218-18f2-4ec3-b8e1-6654f613b1cf",
+        "lastUsedAt": "2026-04-18T09:03:04.444Z"
+      }
     ]
   ],
   "recentProjects": [
+    "project_1776502873319_masqsh71g",
     "project_1776502460135_59xhvbriu",
     "project_1776491810632_kvzysc2sg"
   ]
