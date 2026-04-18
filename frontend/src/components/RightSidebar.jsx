@@ -32,7 +32,7 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }) {
     setLoading(false)
   }
 
-  // 加载Git状态
+  // 加载Git状态（静默）
   const loadGitStatus = async () => {
     if (!workdir) return
     try {
@@ -42,6 +42,16 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }) {
       console.error('加载Git状态失败:', error)
       setGitStatus({ branch: 'main', modified: [], staged: [], untracked: [] })
     }
+  }
+
+  // 显示完整状态
+  const showFullStatus = async () => {
+    runGitCommand('git status')
+  }
+
+  // 显示分支列表
+  const showBranches = async () => {
+    runGitCommand('git branch -a')
   }
 
   // 进入目录
@@ -271,13 +281,13 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }) {
                 📤 Push
               </button>
               <button
-                onClick={() => {/* TODO: 分支管理 */}}
+                onClick={showBranches}
                 className="px-3 py-2 bg-gray-800 text-gray-300 rounded hover:bg-gray-700 text-sm flex items-center justify-center gap-1"
               >
                 🌿 分支
               </button>
               <button
-                onClick={loadGitStatus}
+                onClick={showFullStatus}
                 className="px-3 py-2 bg-gray-800 text-gray-300 rounded hover:bg-gray-700 text-sm flex items-center justify-center gap-1"
               >
                 📋 状态

@@ -127,10 +127,16 @@
     "totalCacheReadTokens": 0,
     "totalCacheWriteTokens": 0,
     "totalCost": 0,
-    "messageCount": 1,
+    "messageCount": 2,
     "history": [
       {
         "timestamp": "2026-04-18T05:58:50.659Z",
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cost": 0
+      },
+      {
+        "timestamp": "2026-04-18T08:26:35.221Z",
         "inputTokens": 0,
         "outputTokens": 0,
         "cost": 0

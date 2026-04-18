@@ -884,7 +884,7 @@ app.post('/api/git/command', async (req, res) => {
   }
 
   // 安全检查：只允许特定git命令
-  const allowedCommands = ['pull', 'push', 'status', 'log', 'diff', 'stash', 'fetch'];
+  const allowedCommands = ['pull', 'push', 'status', 'log', 'diff', 'stash', 'fetch', 'branch'];
   const cmd = command.replace('git ', '').split(' ')[0];
   
   if (!allowedCommands.includes(cmd)) {
