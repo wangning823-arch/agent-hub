@@ -271,24 +271,28 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }) {
               <button
                 onClick={safePull}
                 className="px-3 py-2 bg-gray-800 text-gray-300 rounded hover:bg-gray-700 text-sm flex items-center justify-center gap-1"
+                title="拉取远程更新到本地（有修改时会确认）"
               >
                 📥 Pull
               </button>
               <button
                 onClick={() => runGitCommand('git push')}
                 className="px-3 py-2 bg-gray-800 text-gray-300 rounded hover:bg-gray-700 text-sm flex items-center justify-center gap-1"
+                title="推送本地提交到远程仓库"
               >
                 📤 Push
               </button>
               <button
                 onClick={showBranches}
                 className="px-3 py-2 bg-gray-800 text-gray-300 rounded hover:bg-gray-700 text-sm flex items-center justify-center gap-1"
+                title="查看所有分支（本地和远程）"
               >
                 🌿 分支
               </button>
               <button
                 onClick={showFullStatus}
                 className="px-3 py-2 bg-gray-800 text-gray-300 rounded hover:bg-gray-700 text-sm flex items-center justify-center gap-1"
+                title="查看工作区状态（修改、暂存、未跟踪文件）"
               >
                 📋 状态
               </button>
@@ -362,24 +366,28 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }) {
                 <button
                   onClick={() => runGitCommand('git log --oneline -10')}
                   className="px-2 py-1 bg-gray-800 text-gray-400 rounded text-xs hover:bg-gray-700 hover:text-white"
+                  title="查看最近10条提交记录"
                 >
                   git log
                 </button>
                 <button
                   onClick={() => runGitCommand('git diff')}
                   className="px-2 py-1 bg-gray-800 text-gray-400 rounded text-xs hover:bg-gray-700 hover:text-white"
+                  title="查看未暂存的文件差异"
                 >
                   git diff
                 </button>
                 <button
                   onClick={() => runGitCommand('git fetch')}
                   className="px-2 py-1 bg-gray-800 text-gray-400 rounded text-xs hover:bg-gray-700 hover:text-white"
+                  title="从远程下载更新但不合并"
                 >
                   git fetch
                 </button>
                 <button
                   onClick={() => runGitCommand('git stash')}
                   className="px-2 py-1 bg-gray-800 text-gray-400 rounded text-xs hover:bg-gray-700 hover:text-white"
+                  title="暂存当前修改（方便切换分支）"
                 >
                   git stash
                 </button>
