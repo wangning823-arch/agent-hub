@@ -122,6 +122,7 @@ export default function App() {
 
   // 删除会话
   const removeSession = async (sessionId) => {
+    if (!confirm('确定要删除这个会话吗？')) return
     try {
       await fetch(`${API_BASE}/sessions/${sessionId}`, { method: 'DELETE' })
       setSessions(prev => prev.filter(s => s.id !== sessionId))

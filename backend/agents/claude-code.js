@@ -79,7 +79,7 @@ class ClaudeCodeAgent extends Agent {
           PATH: '/data/data/com.termux/files/usr/bin:' + (process.env.PATH || '/usr/local/bin:/usr/bin:/bin'),
           HOME: process.env.HOME || '/data/data/com.termux/files/home',
           // MiMo API 配置（从 wrapper 脚本提取）
-          ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || 'tp-c55lkpn7dilt03avbcjynmbu4aupyhum322cnqdusldc9b60',
+          ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
           ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL || 'https://token-plan-cn.xiaomimimo.com/anthropic'
         }
       });

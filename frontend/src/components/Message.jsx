@@ -14,7 +14,8 @@ marked.setOptions({
     return hljs.highlightAuto(code).value
   },
   breaks: true,
-  gfm: true
+  gfm: true,
+  sanitize: true
 })
 
 export default function Message({ message, index, onDelete, onCopy, onQuote }) {

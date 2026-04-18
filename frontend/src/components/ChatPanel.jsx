@@ -3,8 +3,7 @@ import Message from './Message'
 import QuoteReply from './QuoteReply'
 import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
-
-const API_BASE = '/api'
+import { API_BASE, getWebSocketUrl } from '../config'
 
 export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) {
   const toast = useToast()
@@ -140,7 +139,7 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
         wsRef.current.close()
       }
       
-      const wsUrl = `ws://${window.location.hostname}:3001?session=${sessionId}`
+      const wsUrl = getWebSocketUrl(sessionId)
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 

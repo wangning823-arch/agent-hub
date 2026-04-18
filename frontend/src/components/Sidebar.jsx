@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useToast } from './Toast'
 import { Tag, TagFilter } from './Tag'
-
-const API_BASE = '/api'
+import { API_BASE, getWebSocketUrl } from '../config'
 
 export default function Sidebar({
   sessions,
@@ -71,7 +70,7 @@ export default function Sidebar({
     const newOptions = { ...currentOptions, [type]: value }
 
     // 通过WebSocket发送命令
-    const ws = new WebSocket(`ws://${window.location.hostname}:3001?session=${activeSession}`)
+    const ws = new WebSocket(getWebSocketUrl(activeSession))
     ws.onopen = () => {
       ws.send(JSON.stringify({
         type: 'command',

@@ -6,6 +6,8 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+const fs = require('fs');
+const { execSync, exec } = require('child_process');
 const SessionManager = require('./sessions');
 const PermissionManager = require('./permissions');
 const ProjectManager = require('./projects');
@@ -23,17 +25,28 @@ const sessionManager = new SessionManager(tokenTracker);
 const permissionManager = new PermissionManager();
 const projectManager = new ProjectManager();
 
+// 允许的文件操作根目录（防止路径穿越）
+const ALLOWED_ROOT = process.env.ALLOWED_ROOT || '/data/data/com.termux/files/home';
+
+/**
+ * 校验路径是否在允许的根目录内（防止路径穿越）
+ */
+function validatePath(requestPath) {
+  const resolved = path.resolve(requestPath);
+  return resolved.startsWith(ALLOWED_ROOT);
+}
+
 // 中间件
-app.use(express.json({ limit: '50mb' })); // 增加limit以支持base64图片
+app.use(express.json({ limit: '5mb' }));
 
 // 静态文件服务（上传的文件）
 app.use('/uploads', express.static(UPLOAD_DIR));
 
-// CORS (开发环境)
+// CORS
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'Content-Type');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,DELETE');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE');
   next();
 });
 
@@ -60,9 +73,14 @@ app.get('/api/agents', (req, res) => {
 app.post('/api/sessions', async (req, res) => {
   try {
     const { workdir, agentType = 'claude-code' } = req.body;
-    
+
     if (!workdir) {
       return res.status(400).json({ error: 'workdir是必需的' });
+    }
+
+    const validAgentTypes = ['claude-code', 'claude-api', 'opencode', 'codex'];
+    if (!validAgentTypes.includes(agentType)) {
+      return res.status(400).json({ error: `不支持的Agent类型: ${agentType}` });
     }
 
     const session = await sessionManager.createSession(workdir, agentType);
@@ -132,26 +150,12 @@ app.post('/api/sessions/:id/resume', async (req, res) => {
       return res.json({ message: '会话已经是活跃状态', session: session.toJSON() });
     }
 
-    // 准备选项，包含对话ID用于恢复
-    const resumeOptions = {
-      ...session.options,
-      conversationId: session.conversationId
-    };
-
-    // 重新启动agent
-    const newSession = await sessionManager.createSession(
-      session.workdir,
-      session.agentType || 'claude-code',
-      resumeOptions
-    );
-
-    // 恢复历史消息
-    newSession.messages = session.messages;
-    newSession.conversationId = session.conversationId;
+    // 使用内部方法恢复 agent（不创建新会话）
+    await sessionManager.resumeSession(req.params.id);
 
     res.json({
       message: '会话已恢复',
-      session: newSession.toJSON()
+      session: session.toJSON()
     });
   } catch (error) {
     console.error('恢复会话失败:', error);
@@ -428,6 +432,10 @@ app.get('/api/files', (req, res) => {
     return res.status(400).json({ error: 'path参数是必需的' });
   }
 
+  if (!validatePath(dirPath)) {
+    return res.status(403).json({ error: '路径不在允许的范围内' });
+  }
+
   try {
     const items = fs.readdirSync(dirPath, { withFileTypes: true });
     const files = items.map(item => ({
@@ -435,14 +443,14 @@ app.get('/api/files', (req, res) => {
       path: `${dirPath}/${item.name}`.replace(/\/+/g, '/'),
       isDirectory: item.isDirectory()
     }));
-    
+
     // 排序：目录在前，文件在后
     files.sort((a, b) => {
       if (a.isDirectory && !b.isDirectory) return -1;
       if (!a.isDirectory && b.isDirectory) return 1;
       return a.name.localeCompare(b.name);
     });
-    
+
     res.json({ files });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -456,6 +464,10 @@ app.get('/api/files/content', (req, res) => {
     return res.status(400).json({ error: 'path参数是必需的' });
   }
 
+  if (!validatePath(filePath)) {
+    return res.status(403).json({ error: '路径不在允许的范围内' });
+  }
+
   try {
     const content = fs.readFileSync(filePath, 'utf8');
     res.json({ content });
@@ -467,9 +479,13 @@ app.get('/api/files/content', (req, res) => {
 // 保存文件内容
 app.put('/api/files/content', (req, res) => {
   const { path: filePath, content } = req.body;
-  
+
   if (!filePath || content === undefined) {
     return res.status(400).json({ error: 'path和content参数是必需的' });
+  }
+
+  if (!validatePath(filePath)) {
+    return res.status(403).json({ error: '路径不在允许的范围内' });
   }
 
   try {
@@ -477,7 +493,7 @@ app.put('/api/files/content', (req, res) => {
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在' });
     }
-    
+
     // 写入文件
     fs.writeFileSync(filePath, content, 'utf8');
     res.json({ success: true, message: '文件已保存' });
@@ -846,7 +862,7 @@ app.post('/api/sessions/:id/review', async (req, res) => {
     const { execSync } = require('child_process');
     let diff;
     try {
-      diff = execSync('git diff', {
+      diff = execSync('git', ['diff'], {
         cwd: session.workdir,
         encoding: 'utf8',
         maxBuffer: 5 * 1024 * 1024
@@ -920,20 +936,20 @@ app.get('/api/git/status', async (req, res) => {
 
   try {
     const { execSync } = require('child_process');
-    
+
     // 获取当前分支
     let branch = 'main';
     try {
-      branch = execSync('git branch --show-current', { cwd: workdir, encoding: 'utf8' }).trim();
+      branch = execSync('git', ['branch', '--show-current'], { cwd: workdir, encoding: 'utf8' }).trim();
     } catch (e) {}
 
     // 获取修改的文件
     let modified = [];
     let staged = [];
     let untracked = [];
-    
+
     try {
-      const status = execSync('git status --porcelain', { cwd: workdir, encoding: 'utf8' });
+      const status = execSync('git', ['status', '--porcelain'], { cwd: workdir, encoding: 'utf8' });
       status.split('\n').filter(Boolean).forEach(line => {
         const statusChar = line.slice(0, 2);
         const file = line.slice(3);
@@ -961,17 +977,27 @@ app.post('/api/git/command', async (req, res) => {
     return res.status(400).json({ error: 'workdir和command是必需的' });
   }
 
-  // 安全检查：只允许特定git命令
-  const allowedCommands = ['pull', 'push', 'status', 'log', 'diff', 'stash', 'fetch', 'branch'];
-  const cmd = command.replace('git ', '').split(' ')[0];
-  
-  if (!allowedCommands.includes(cmd)) {
+  // 安全检查：只允许特定git子命令，使用execFile避免shell注入
+  const allowedSubCommands = ['pull', 'push', 'status', 'log', 'diff', 'stash', 'fetch', 'branch'];
+  const parts = command.replace(/^git\s+/, '').split(/\s+/);
+  const subCmd = parts[0];
+
+  if (!allowedSubCommands.includes(subCmd)) {
     return res.status(403).json({ error: '不允许的命令' });
   }
 
+  // 通过权限管理器检查危险命令
+  const decision = permissionManager.checkPermission('shell_exec', { command });
+  if (decision === 'deny') {
+    return res.status(403).json({ error: '命令被权限策略拒绝' });
+  }
+
   try {
-    const { execSync } = require('child_process');
-    const output = execSync(command, { cwd: workdir, encoding: 'utf8', maxBuffer: 1024 * 1024 });
+    const output = execSync('git', [subCmd, ...parts.slice(1)], {
+      cwd: workdir,
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024
+    });
     res.json({ output: output.trim() });
   } catch (error) {
     res.status(500).json({ error: error.message, output: error.stderr || error.message });
@@ -986,21 +1012,19 @@ app.post('/api/git/commit', async (req, res) => {
   }
 
   try {
-    const { execSync } = require('child_process');
-    
-    // 暂存文件
+    // 暂存文件 - 使用execFile避免shell注入
     if (files && files.length > 0) {
-      execSync(`git add ${files.map(f => `"${f}"`).join(' ')}`, { cwd: workdir });
+      execSync('git', ['add', ...files], { cwd: workdir });
     } else {
-      execSync('git add -A', { cwd: workdir });
+      execSync('git', ['add', '-A'], { cwd: workdir });
     }
-    
-    // 提交
-    const output = execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, {
+
+    // 提交 - 使用execFile避免shell注入
+    const output = execSync('git', ['commit', '-m', message], {
       cwd: workdir,
       encoding: 'utf8'
     });
-    
+
     res.json({ success: true, output: output.trim() });
   } catch (error) {
     res.status(500).json({ error: error.message });

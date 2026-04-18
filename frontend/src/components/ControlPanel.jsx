@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useToast } from './Toast'
-
-const API_BASE = '/api'
+import { API_BASE, getWebSocketUrl } from '../config'
 
 export default function ControlPanel({ sessionId, currentOptions, onUpdateOptions, onClose }) {
   const [options, setOptions] = useState({
@@ -35,7 +34,7 @@ export default function ControlPanel({ sessionId, currentOptions, onUpdateOption
     setLoading(true)
     try {
       // 通过WebSocket发送命令
-      const ws = new WebSocket(`ws://${window.location.hostname}:3001?session=${sessionId}`)
+      const ws = new WebSocket(getWebSocketUrl(sessionId))
       
       ws.onopen = () => {
         ws.send(JSON.stringify({

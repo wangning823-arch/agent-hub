@@ -126,7 +126,7 @@ class SessionManager {
         workdir: s.workdir,
         agentType: s.agentType || 'claude-code',
         agentName: s.agent?.name || s.agentName,
-        messages: s.messages.slice(-50), // 只保留最近50条消息
+        messages: s.messages.slice(-200), // 保留最近200条消息
         createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
         updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
         options: s.options || {},
@@ -246,6 +246,22 @@ class SessionManager {
   }
 
   /**
+   * 恢复一个非活跃会话（重新启动agent，保留原会话ID和消息）
+   */
+  async resumeSession(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`会话不存在: ${sessionId}`);
+    }
+    if (session.isActive) {
+      return session;
+    }
+    await this._resumeAgent(session);
+    this.saveData();
+    return session;
+  }
+
+  /**
    * 内部方法：为加载的旧会话重新启动agent
    */
   async _resumeAgent(session) {
@@ -322,7 +338,11 @@ class SessionManager {
   broadcast(sessionId, message) {
     const session = this.sessions.get(sessionId);
     if (session) {
-      session.messages.push({ role: 'assistant', content: message, time: new Date() });
+      // 只将实际对话内容存入消息历史，过滤状态/token/标题更新等元消息
+      const metaTypes = ['status', 'token_usage', 'conversation_id', 'title_update'];
+      if (!metaTypes.includes(message.type)) {
+        session.messages.push({ role: 'assistant', content: message, time: new Date() });
+      }
       
       // 如果消息包含对话ID，保存它
       if (message.conversationId) {

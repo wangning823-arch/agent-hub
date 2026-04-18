@@ -5,7 +5,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 
 const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || 'tp-c55lkpn7dilt03avbcjynmbu4aupyhum322cnqdusldc9b60',
+  apiKey: process.env.ANTHROPIC_API_KEY,
   baseURL: process.env.ANTHROPIC_BASE_URL || 'https://token-plan-cn.xiaomimimo.com/anthropic',
 });
 

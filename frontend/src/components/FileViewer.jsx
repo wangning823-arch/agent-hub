@@ -88,6 +88,30 @@ export default function FileViewer({ file, content, onClose, onSave }) {
   const filename = file.split('/').pop()
   const lines = (isEditing ? editedContent : content).split('\n')
 
+  // 键盘快捷键
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!isEditing) return
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        if (hasChanges && !saving) handleSave()
+      }
+      if (e.key === 'Escape') {
+        handleCancel()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isEditing, hasChanges, saving, editedContent])
+
+  // 同步行号和代码的滚动
+  const handleCodeScroll = (e) => {
+    const lineNumbers = e.target.previousElementSibling
+    if (lineNumbers) {
+      lineNumbers.scrollTop = e.target.scrollTop
+    }
+  }
+
   return (
     <div className="h-full flex flex-col bg-gray-950">
       {/* 标题栏 */}
@@ -153,16 +177,16 @@ export default function FileViewer({ file, content, onClose, onSave }) {
       {/* 文件内容 */}
       <div className="flex-1 overflow-hidden flex">
         {/* 行号 */}
-        <div className="flex-shrink-0 py-4 px-2 text-right select-none bg-gray-900/50 border-r border-gray-800 overflow-y-auto">
+        <div className="flex-shrink-0 py-4 px-2 text-right select-none bg-gray-900/50 border-r border-gray-800 overflow-hidden">
           {lines.map((_, i) => (
             <div key={i} className="text-xs text-gray-600 leading-6">
               {i + 1}
             </div>
           ))}
         </div>
-        
+
         {/* 代码内容 */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto" onScroll={handleCodeScroll}>
           {isEditing ? (
             <textarea
               value={editedContent}
