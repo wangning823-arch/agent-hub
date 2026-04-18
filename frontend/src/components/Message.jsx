@@ -1,7 +1,25 @@
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
+import { marked } from 'marked'
+import hljs from 'highlight.js'
+import 'highlight.js/styles/github-dark.css'
+
+// 配置marked
+marked.setOptions({
+  highlight: function(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        return hljs.highlight(code, { language: lang }).value
+      } catch (err) {}
+    }
+    return hljs.highlightAuto(code).value
+  },
+  breaks: true,
+  gfm: true
+})
 
 export default function Message({ message, index, onDelete, onCopy }) {
   const { type, content, metadata, attachments } = message
+  const contentRef = useRef(null)
 
   // 复制消息内容
   const handleCopy = () => {
@@ -18,6 +36,19 @@ export default function Message({ message, index, onDelete, onCopy }) {
   const handleDelete = () => {
     if (onDelete && index !== undefined) {
       onDelete(index)
+    }
+  }
+
+  // 渲染Markdown内容
+  const renderMarkdown = (text) => {
+    if (!text) return null
+    
+    try {
+      const html = marked.parse(text)
+      return <div dangerouslySetInnerHTML={{ __html: html }} />
+    } catch (err) {
+      console.error('Markdown渲染失败:', err)
+      return <div>{text}</div>
     }
   }
 
@@ -46,7 +77,7 @@ export default function Message({ message, index, onDelete, onCopy }) {
           <div className="bubble-user text-white px-4 py-3 shadow-lg">
             {/* 文本内容 */}
             {content && (
-              <div className="whitespace-pre-wrap break-words">{renderContent(content)}</div>
+              <div className="whitespace-pre-wrap break-words">{content}</div>
             )}
 
             {/* 附件 */}
@@ -72,7 +103,7 @@ export default function Message({ message, index, onDelete, onCopy }) {
   // 错误消息
   if (type === 'error') {
     return (
-      <div className="flex justify-start">
+      <div className="flex justify-start message">
         <div className="max-w-[80%] md:max-w-[70%]">
           <div className="bg-red-900/50 border border-red-700 text-red-300 rounded-2xl rounded-bl-sm px-4 py-3">
             <div className="flex items-center gap-2 mb-1">
@@ -89,7 +120,7 @@ export default function Message({ message, index, onDelete, onCopy }) {
   // 状态消息
   if (type === 'status') {
     return (
-      <div className="flex justify-center">
+      <div className="flex justify-center message">
         <div className="bg-gray-800 text-gray-400 rounded-full px-4 py-2 text-sm">
           {content}
         </div>
@@ -100,15 +131,15 @@ export default function Message({ message, index, onDelete, onCopy }) {
   // 工具调用
   if (type === 'tool_use') {
     return (
-      <div className="flex justify-start">
+      <div className="flex justify-start message">
         <div className="max-w-[80%] md:max-w-[70%]">
           <div className="bg-gray-800 border border-gray-700 rounded-2xl rounded-bl-sm px-4 py-3">
             <div className="flex items-center gap-2 mb-2 text-gray-400">
               <span>🔧</span>
               <span className="text-sm font-medium">{metadata?.tool || '工具调用'}</span>
             </div>
-            <pre className="text-xs text-gray-300 bg-gray-900 rounded p-2 overflow-x-auto">
-              {content}
+            <pre className="text-xs text-gray-300 bg-gray-900 rounded p-3 overflow-x-auto">
+              <code>{content}</code>
             </pre>
           </div>
         </div>
@@ -116,12 +147,17 @@ export default function Message({ message, index, onDelete, onCopy }) {
     )
   }
 
-  // Agent文本消息
+  // Agent文本消息（支持Markdown渲染）
   return (
     <div className="flex justify-start group message">
       <div className="max-w-[80%] md:max-w-[70%]">
         <div className="bubble-assistant text-gray-200 px-4 py-3 shadow-lg">
-          <div className="whitespace-pre-wrap break-words">{renderContent(content)}</div>
+          <div 
+            ref={contentRef}
+            className="markdown-content"
+          >
+            {renderMarkdown(content)}
+          </div>
         </div>
         <div className="flex items-center justify-between mt-1.5">
           <div className="text-xs text-gray-500">
@@ -151,94 +187,6 @@ export default function Message({ message, index, onDelete, onCopy }) {
       </div>
     </div>
   )
-}
-
-// 渲染内容（支持Markdown风格的链接和图片）
-function renderContent(content) {
-  if (!content) return null
-
-  // 处理图片链接 ![name](url)
-  const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g
-  // 处理普通链接 [name](url)
-  const linkRegex = /(?<!!)\[([^\]]*)\]\(([^)]+)\)/g
-  // 处理代码块 ```code```
-  const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g
-  // 处理行内代码 `code`
-  const inlineCodeRegex = /`([^`]+)`/g
-
-  let parts = []
-  let lastIndex = 0
-  let match
-
-  // 先处理代码块
-  const processedContent = content.replace(codeBlockRegex, (match, lang, code) => {
-    return `<CODEBLOCK:${lang || 'text'}:${code}>`
-  })
-
-  // 处理图片
-  const withImages = processedContent.replace(imageRegex, (match, alt, url) => {
-    return `<IMAGE:${alt}:${url}>`
-  })
-
-  // 处理链接
-  const withLinks = withImages.replace(linkRegex, (match, text, url) => {
-    return `<LINK:${text}:${url}>`
-  })
-
-  // 分割并渲染
-  const segments = withLinks.split(/(<(?:CODEBLOCK|IMAGE|LINK):[^>]+>)/)
-
-  return segments.map((segment, idx) => {
-    if (segment.startsWith('<CODEBLOCK:')) {
-      const [, lang, code] = segment.match(/<CODEBLOCK:([^:]+):(.+)>/s) || []
-      return (
-        <pre key={idx} className="bg-gray-900 rounded p-3 my-2 overflow-x-auto">
-          <code className="text-sm text-gray-300">{code}</code>
-        </pre>
-      )
-    }
-    if (segment.startsWith('<IMAGE:')) {
-      const [, alt, url] = segment.match(/<IMAGE:([^:]*):(.+)>/) || []
-      return (
-        <img
-          key={idx}
-          src={url}
-          alt={alt || '图片'}
-          className="max-w-full rounded-lg my-2 cursor-pointer hover:opacity-90"
-          onClick={() => window.open(url, '_blank')}
-        />
-      )
-    }
-    if (segment.startsWith('<LINK:')) {
-      const [, text, url] = segment.match(/<LINK:([^:]*):(.+)>/) || []
-      return (
-        <a
-          key={idx}
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-400 hover:text-blue-300 underline"
-        >
-          {text || url}
-        </a>
-      )
-    }
-    // 普通文本 - 处理行内代码
-    return (
-      <span key={idx}>
-        {segment.split(/(`[^`]+`)/).map((part, i) => {
-          if (part.startsWith('`') && part.endsWith('`')) {
-            return (
-              <code key={i} className="bg-gray-900 px-1.5 py-0.5 rounded text-sm text-pink-400">
-                {part.slice(1, -1)}
-              </code>
-            )
-          }
-          return part
-        })}
-      </span>
-    )
-  })
 }
 
 // 附件预览组件

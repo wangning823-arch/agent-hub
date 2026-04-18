@@ -17,6 +17,7 @@ export default function Sidebar({
   onPinSession,
   onArchiveSession
 }) {
+  const toast = useToast()
   const [expandedSection, setExpandedSection] = useState('sessions') // sessions | controls | commands
   const [options, setOptions] = useState({ modes: [], models: [], efforts: [] })
   const [commands, setCommands] = useState([])
@@ -393,7 +394,7 @@ export default function Sidebar({
 
       {/* 底部状态 */}
       <div className="p-3 border-t border-gray-800 space-y-2">
-        {/* 导出按钮 */}
+        {/* 导出/导入按钮 */}
         <div className="flex gap-2">
           <button
             onClick={() => {
@@ -405,14 +406,56 @@ export default function Sidebar({
             className="flex-1 px-2 py-1.5 text-xs bg-gray-800 text-gray-400 rounded hover:bg-gray-700 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
             title="导出当前会话为Markdown"
           >
-            📄 导出会话
+            📄 导出
           </button>
           <button
             onClick={() => window.open(`${API_BASE}/export/sessions`, '_blank')}
             className="flex-1 px-2 py-1.5 text-xs bg-gray-800 text-gray-400 rounded hover:bg-gray-700 hover:text-white"
             title="导出所有会话备份"
           >
-            💾 全部备份
+            💾 备份
+          </button>
+          <button
+            onClick={() => {
+              const input = document.createElement('input')
+              input.type = 'file'
+              input.accept = '.json'
+              input.onchange = async (e) => {
+                const file = e.target.files[0]
+                if (!file) return
+                
+                try {
+                  const text = await file.text()
+                  const data = JSON.parse(text)
+                  
+                  if (!data.sessions) {
+                    toast.error('无效的备份文件')
+                    return
+                  }
+                  
+                  const response = await fetch(`${API_BASE}/import/sessions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessions: data.sessions })
+                  })
+                  
+                  const result = await response.json()
+                  if (result.success) {
+                    toast.success(`导入完成: ${result.imported} 个会话已导入, ${result.skipped} 个已跳过`)
+                    window.location.reload()
+                  } else {
+                    toast.error('导入失败: ' + (result.error || '未知错误'))
+                  }
+                } catch (err) {
+                  toast.error('导入失败: ' + err.message)
+                }
+              }
+              input.click()
+            }}
+            className="flex-1 px-2 py-1.5 text-xs bg-gray-800 text-gray-400 rounded hover:bg-gray-700 hover:text-white"
+            title="导入备份文件"
+          >
+            📥 导入
           </button>
         </div>
         

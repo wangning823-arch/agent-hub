@@ -857,6 +857,74 @@ app.get('/api/export/sessions', (req, res) => {
   }
 })
 
+// 导入备份
+app.post('/api/import/sessions', (req, res) => {
+  const { sessions: importedSessions, overwrite = false } = req.body
+  
+  if (!importedSessions || !Array.isArray(importedSessions)) {
+    return res.status(400).json({ error: '无效的备份数据' })
+  }
+  
+  try {
+    const results = {
+      imported: 0,
+      skipped: 0,
+      errors: []
+    }
+    
+    const existingSessions = sessionManager.listSessions()
+    
+    for (const sessionData of importedSessions) {
+      try {
+        // 检查是否已存在
+        const exists = existingSessions.find(s => 
+          s.id === sessionData.id || 
+          (s.workdir === sessionData.workdir && s.title === sessionData.title)
+        )
+        
+        if (exists && !overwrite) {
+          results.skipped++
+          continue
+        }
+        
+        // 创建新会话
+        const newSession = {
+          id: sessionData.id || require('uuid').v4(),
+          workdir: sessionData.workdir,
+          agentType: sessionData.agentName === 'Claude Code' ? 'claude-code' : 
+                    sessionData.agentName === 'Codex' ? 'codex' : 'opencode',
+          title: sessionData.title,
+          isPinned: sessionData.isPinned || false,
+          isArchived: sessionData.isArchived || false,
+          conversationId: sessionData.conversationId,
+          messages: [],
+          createdAt: new Date(sessionData.createdAt || Date.now()),
+          updatedAt: new Date(sessionData.updatedAt || Date.now())
+        }
+        
+        // 添加到会话管理器
+        sessionManager.sessions.set(newSession.id, newSession)
+        results.imported++
+      } catch (err) {
+        results.errors.push({
+          session: sessionData.title || sessionData.id,
+          error: err.message
+        })
+      }
+    }
+    
+    // 保存数据
+    sessionManager.saveData()
+    
+    res.json({
+      success: true,
+      ...results
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
 // ============ WebSocket ============
 
 /**
