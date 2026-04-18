@@ -1,3 +1,4 @@
+const os = require("os");
 /**
  * Agent Hub - 后端服务器
  */
@@ -556,7 +557,7 @@ app.post('/api/projects/import-git', async (req, res) => {
     }
 
     // 检查项目是否已存在（在 projects.json 中）
-    const existingProject = projectManager.getAllProjects().find(p => {
+    const existingProject = projectManager.listProjects().find(p => {
       const dirName = p.workdir.split('/').pop();
       return dirName === repoName || p.workdir.includes(`/${repoName}`);
     });
