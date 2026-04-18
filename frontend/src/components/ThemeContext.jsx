@@ -1,87 +1,142 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 
-const ThemeContext = createContext(null)
+const ThemeContext = createContext()
 
-// 主题配置
 const themes = {
   dark: {
-    name: '深色',
+    name: '暗夜',
     icon: '🌙',
     colors: {
-      bg: '#0a0a0a',
-      bgSecondary: '#111111',
-      bgTertiary: '#1a1a1a',
-      border: '#2a2a2a',
-      text: '#fafafa',
-      textSecondary: '#a1a1aa',
-      textMuted: '#71717a',
-      primary: '#3b82f6',
-      primaryHover: '#2563eb',
-      success: '#10b981',
-      warning: '#f59e0b',
-      error: '#ef4444',
-      userBubble: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
-      assistantBubble: 'linear-gradient(135deg, #1f2937 0%, #374151 100%)'
+      '--bg-primary': '#0a0a0f',
+      '--bg-secondary': '#12121a',
+      '--bg-tertiary': '#1a1a26',
+      '--bg-elevated': '#22222e',
+      '--bg-hover': '#2a2a38',
+      '--bg-active': '#32324a',
+      '--border-primary': '#2a2a3a',
+      '--border-subtle': '#1e1e2e',
+      '--text-primary': '#e8e8f0',
+      '--text-secondary': '#a0a0b8',
+      '--text-muted': '#6a6a82',
+      '--accent-primary': '#6366f1',
+      '--accent-primary-hover': '#818cf8',
+      '--accent-primary-soft': 'rgba(99,102,241,0.15)',
+      '--accent-secondary': '#8b5cf6',
+      '--success': '#34d399',
+      '--success-soft': 'rgba(52,211,153,0.15)',
+      '--warning': '#fbbf24',
+      '--warning-soft': 'rgba(251,191,36,0.15)',
+      '--error': '#f87171',
+      '--error-soft': 'rgba(248,113,113,0.15)',
+      '--gradient-header': 'linear-gradient(135deg, #12121a 0%, #1a1a2e 100%)',
+      '--gradient-btn-primary': 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+      '--gradient-btn-hover': 'linear-gradient(135deg, #818cf8 0%, #a78bfa 100%)',
+      '--shadow-sm': '0 1px 3px rgba(0,0,0,0.4)',
+      '--shadow-md': '0 4px 12px rgba(0,0,0,0.5)',
+      '--shadow-lg': '0 8px 32px rgba(0,0,0,0.6)',
+      '--shadow-glow': '0 0 20px rgba(99,102,241,0.2)',
     }
   },
   light: {
-    name: '浅色',
+    name: '亮白',
     icon: '☀️',
     colors: {
-      bg: '#ffffff',
-      bgSecondary: '#f9fafb',
-      bgTertiary: '#f3f4f6',
-      border: '#e5e7eb',
-      text: '#111827',
-      textSecondary: '#4b5563',
-      textMuted: '#9ca3af',
-      primary: '#3b82f6',
-      primaryHover: '#2563eb',
-      success: '#10b981',
-      warning: '#f59e0b',
-      error: '#ef4444',
-      userBubble: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
-      assistantBubble: 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)'
+      '--bg-primary': '#f8f9fc',
+      '--bg-secondary': '#ffffff',
+      '--bg-tertiary': '#f0f1f5',
+      '--bg-elevated': '#ffffff',
+      '--bg-hover': '#e8eaf0',
+      '--bg-active': '#dde0ea',
+      '--border-primary': '#d4d8e0',
+      '--border-subtle': '#e8ebf0',
+      '--text-primary': '#1a1a2e',
+      '--text-secondary': '#4a4a62',
+      '--text-muted': '#8a8aa0',
+      '--accent-primary': '#4f46e5',
+      '--accent-primary-hover': '#6366f1',
+      '--accent-primary-soft': 'rgba(79,70,229,0.08)',
+      '--accent-secondary': '#7c3aed',
+      '--success': '#059669',
+      '--success-soft': 'rgba(5,150,105,0.08)',
+      '--warning': '#d97706',
+      '--warning-soft': 'rgba(217,119,6,0.08)',
+      '--error': '#dc2626',
+      '--error-soft': 'rgba(220,38,38,0.08)',
+      '--gradient-header': 'linear-gradient(135deg, #ffffff 0%, #f0f1f5 100%)',
+      '--gradient-btn-primary': 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+      '--gradient-btn-hover': 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+      '--shadow-sm': '0 1px 3px rgba(0,0,0,0.08)',
+      '--shadow-md': '0 4px 12px rgba(0,0,0,0.1)',
+      '--shadow-lg': '0 8px 32px rgba(0,0,0,0.12)',
+      '--shadow-glow': '0 0 20px rgba(79,70,229,0.15)',
     }
   },
-  blue: {
-    name: '蓝色',
-    icon: '💙',
+  midnight: {
+    name: '深夜蓝',
+    icon: '🌌',
     colors: {
-      bg: '#0f172a',
-      bgSecondary: '#1e293b',
-      bgTertiary: '#334155',
-      border: '#475569',
-      text: '#f1f5f9',
-      textSecondary: '#cbd5e1',
-      textMuted: '#94a3b8',
-      primary: '#38bdf8',
-      primaryHover: '#0ea5e9',
-      success: '#34d399',
-      warning: '#fbbf24',
-      error: '#f87171',
-      userBubble: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
-      assistantBubble: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)'
+      '--bg-primary': '#070b14',
+      '--bg-secondary': '#0d1321',
+      '--bg-tertiary': '#141c2e',
+      '--bg-elevated': '#1a2540',
+      '--bg-hover': '#1f2d4a',
+      '--bg-active': '#243555',
+      '--border-primary': '#1e2d4a',
+      '--border-subtle': '#152035',
+      '--text-primary': '#c8d6e5',
+      '--text-secondary': '#7f8fa6',
+      '--text-muted': '#576574',
+      '--accent-primary': '#0abde3',
+      '--accent-primary-hover': '#48dbfb',
+      '--accent-primary-soft': 'rgba(10,189,227,0.12)',
+      '--accent-secondary': '#a29bfe',
+      '--success': '#00d2d3',
+      '--success-soft': 'rgba(0,210,211,0.12)',
+      '--warning': '#feca57',
+      '--warning-soft': 'rgba(254,202,87,0.12)',
+      '--error': '#ff6b6b',
+      '--error-soft': 'rgba(255,107,107,0.12)',
+      '--gradient-header': 'linear-gradient(135deg, #0d1321 0%, #1a2540 100%)',
+      '--gradient-btn-primary': 'linear-gradient(135deg, #0abde3 0%, #a29bfe 100%)',
+      '--gradient-btn-hover': 'linear-gradient(135deg, #48dbfb 0%, #c8c4ff 100%)',
+      '--shadow-sm': '0 1px 3px rgba(0,0,0,0.5)',
+      '--shadow-md': '0 4px 12px rgba(0,0,0,0.6)',
+      '--shadow-lg': '0 8px 32px rgba(0,0,0,0.7)',
+      '--shadow-glow': '0 0 20px rgba(10,189,227,0.2)',
     }
   },
-  purple: {
-    name: '紫色',
-    icon: '💜',
+  sakura: {
+    name: '樱粉',
+    icon: '🌸',
     colors: {
-      bg: '#1a1625',
-      bgSecondary: '#231f35',
-      bgTertiary: '#2d2745',
-      border: '#3f3758',
-      text: '#f5f3ff',
-      textSecondary: '#c4b5fd',
-      textMuted: '#a78bfa',
-      primary: '#a78bfa',
-      primaryHover: '#8b5cf6',
-      success: '#34d399',
-      warning: '#fbbf24',
-      error: '#f87171',
-      userBubble: 'linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)',
-      assistantBubble: 'linear-gradient(135deg, #2d2745 0%, #3f3758 100%)'
+      '--bg-primary': '#1a0f14',
+      '--bg-secondary': '#221520',
+      '--bg-tertiary': '#2c1a28',
+      '--bg-elevated': '#361f32',
+      '--bg-hover': '#40253c',
+      '--bg-active': '#4a2b46',
+      '--border-primary': '#3a2038',
+      '--border-subtle': '#2a1828',
+      '--text-primary': '#f0d8e8',
+      '--text-secondary': '#c8a0b8',
+      '--text-muted': '#8a6a80',
+      '--accent-primary': '#f472b6',
+      '--accent-primary-hover': '#f9a8d4',
+      '--accent-primary-soft': 'rgba(244,114,182,0.15)',
+      '--accent-secondary': '#c084fc',
+      '--success': '#a3e635',
+      '--success-soft': 'rgba(163,230,53,0.12)',
+      '--warning': '#fbbf24',
+      '--warning-soft': 'rgba(251,191,36,0.12)',
+      '--error': '#fb7185',
+      '--error-soft': 'rgba(251,113,133,0.12)',
+      '--gradient-header': 'linear-gradient(135deg, #221520 0%, #2c1a28 100%)',
+      '--gradient-btn-primary': 'linear-gradient(135deg, #f472b6 0%, #c084fc 100%)',
+      '--gradient-btn-hover': 'linear-gradient(135deg, #f9a8d4 0%, #d8b4fe 100%)',
+      '--shadow-sm': '0 1px 3px rgba(0,0,0,0.4)',
+      '--shadow-md': '0 4px 12px rgba(0,0,0,0.5)',
+      '--shadow-lg': '0 8px 32px rgba(0,0,0,0.6)',
+      '--shadow-glow': '0 0 20px rgba(244,114,182,0.2)',
     }
   }
 }
@@ -90,23 +145,16 @@ export function ThemeProvider({ children }) {
   const [themeName, setThemeName] = useState(() => {
     return localStorage.getItem('agent-hub-theme') || 'dark'
   })
-  
+
   const theme = themes[themeName]
 
-  // 应用主题到CSS变量
   useEffect(() => {
     const root = document.documentElement
     const colors = theme.colors
-    
     Object.entries(colors).forEach(([key, value]) => {
-      root.style.setProperty(`--color-${key}`, value)
+      root.style.setProperty(key, value)
     })
-    
-    // 应用背景色
-    document.body.style.backgroundColor = colors.bg
-    document.body.style.color = colors.text
-    
-    // 保存到localStorage
+    root.setAttribute('data-theme', themeName)
     localStorage.setItem('agent-hub-theme', themeName)
   }, [themeName, theme])
 
@@ -117,11 +165,11 @@ export function ThemeProvider({ children }) {
   }
 
   return (
-    <ThemeContext.Provider value={{ 
-      theme, 
-      themeName, 
-      themes, 
-      changeTheme 
+    <ThemeContext.Provider value={{
+      theme,
+      themeName,
+      themes,
+      changeTheme
     }}>
       {children}
     </ThemeContext.Provider>
@@ -135,5 +183,3 @@ export function useTheme() {
   }
   return context
 }
-
-export default ThemeProvider

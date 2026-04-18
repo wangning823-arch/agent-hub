@@ -1,15 +1,12 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useRef } from 'react'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
 
-// 配置marked
 marked.setOptions({
   highlight: function(code, lang) {
     if (lang && hljs.getLanguage(lang)) {
-      try {
-        return hljs.highlight(code, { language: lang }).value
-      } catch (err) {}
+      try { return hljs.highlight(code, { language: lang }).value } catch (err) {}
     }
     return hljs.highlightAuto(code).value
   },
@@ -18,46 +15,31 @@ marked.setOptions({
   sanitize: true
 })
 
+// SVG icons
+const IconCopy = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+const IconQuote = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+const IconTrash = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+
 export default function Message({ message, index, onDelete, onCopy, onQuote }) {
   const { type, content, metadata, attachments } = message
   const contentRef = useRef(null)
 
-  // 复制消息内容
   const handleCopy = () => {
     if (content) {
       navigator.clipboard.writeText(content)
-        .then(() => {
-          if (onCopy) onCopy()
-        })
+        .then(() => { if (onCopy) onCopy() })
         .catch(err => console.error('复制失败:', err))
     }
   }
 
-  // 删除消息
-  const handleDelete = () => {
-    if (onDelete && index !== undefined) {
-      onDelete(index)
-    }
-  }
-
-  // 引用回复
+  const handleDelete = () => { if (onDelete && index !== undefined) onDelete(index) }
   const handleQuote = () => {
-    if (onQuote) {
-      onQuote({
-        role: type,
-        content,
-        timestamp: message.timestamp || Date.now()
-      })
-    }
+    if (onQuote) onQuote({ role: type, content, timestamp: message.timestamp || Date.now() })
   }
 
-  // 渲染Markdown内容
   const renderMarkdown = (text) => {
     if (!text) return null
-    if (typeof text !== 'string') {
-      text = JSON.stringify(text, null, 2)
-    }
-    
+    if (typeof text !== 'string') text = JSON.stringify(text, null, 2)
     try {
       const html = marked.parse(text)
       return <div dangerouslySetInnerHTML={{ __html: html }} />
@@ -67,95 +49,77 @@ export default function Message({ message, index, onDelete, onCopy, onQuote }) {
     }
   }
 
-  // token统计和conversation_id消息 - 不渲染或极简渲染
-  if (type === 'token_usage' || type === 'conversation_id') {
-    return null
-  }
+  const ActionButton = ({ onClick, title, hoverColor, children }) => (
+    <button
+      onClick={onClick}
+      className="btn-icon w-7 h-7 rounded-lg"
+      style={{ color: 'var(--text-muted)' }}
+      title={title}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = hoverColor || 'var(--text-primary)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+    >
+      {children}
+    </button>
+  )
 
-  // 用户消息
+  const formatTime = (ts) => new Date(ts || Date.now()).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+
+  // Skip internal messages
+  if (type === 'token_usage' || type === 'conversation_id') return null
+
+  // User message
   if (type === 'user') {
     return (
       <div className="flex justify-end group message">
         <div className="max-w-[80%] md:max-w-[70%]">
-          {/* 操作按钮 */}
-          <div className="flex justify-end gap-1 mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={handleCopy}
-              className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-700/80 rounded-lg backdrop-blur-sm"
-              title="复制"
-            >
-              📋
-            </button>
-            <button
-              onClick={handleQuote}
-              className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-gray-700/80 rounded-lg backdrop-blur-sm"
-              title="引用回复"
-            >
-              💬
-            </button>
-            <button
-              onClick={handleDelete}
-              className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-700/80 rounded-lg backdrop-blur-sm"
-              title="删除"
-            >
-              🗑️
-            </button>
+          <div className="flex justify-end gap-0.5 mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <ActionButton onClick={handleCopy} title="复制"><IconCopy /></ActionButton>
+            <ActionButton onClick={handleQuote} title="引用回复" hoverColor="var(--accent-primary)"><IconQuote /></ActionButton>
+            <ActionButton onClick={handleDelete} title="删除" hoverColor="var(--error)"><IconTrash /></ActionButton>
           </div>
-          <div className="bubble-user text-white px-4 py-3 shadow-lg">
-            {/* 文本内容 */}
-            {content && (
-              <div className="whitespace-pre-wrap break-words">{content}</div>
-            )}
-
-            {/* 附件 */}
+          <div className="bubble-user">
+            {content && <div className="whitespace-pre-wrap break-words">{content}</div>}
             {attachments && attachments.length > 0 && (
               <div className="mt-2 space-y-2">
-                {attachments.map((att, idx) => (
-                  <AttachmentPreview key={idx} attachment={att} isUser={true} />
-                ))}
+                {attachments.map((att, idx) => <AttachmentPreview key={idx} attachment={att} isUser={true} />)}
               </div>
             )}
           </div>
-          <div className="text-xs text-gray-500 text-right mt-1.5">
-            {new Date(message.timestamp || Date.now()).toLocaleTimeString('zh-CN', {
-              hour: '2-digit',
-              minute: '2-digit'
-            })}
-          </div>
+          <div className="text-xs mt-1.5 text-right" style={{ color: 'var(--text-muted)' }}>{formatTime(message.timestamp)}</div>
         </div>
       </div>
     )
   }
 
-  // 错误消息
+  // Error message
   if (type === 'error') {
     return (
       <div className="flex justify-start message">
         <div className="max-w-[80%] md:max-w-[70%]">
-          <div className="bg-red-900/50 border border-red-700 text-red-300 rounded-2xl rounded-bl-sm px-4 py-3">
+          <div className="rounded-2xl rounded-bl-sm px-4 py-3" style={{ background: 'var(--error-soft)', border: '1px solid var(--error)' }}>
             <div className="flex items-center gap-2 mb-1">
               <span>❌</span>
-              <span className="text-sm font-medium">错误</span>
+              <span className="text-sm font-medium" style={{ color: 'var(--error)' }}>错误</span>
             </div>
-            <div className="text-sm">{content}</div>
+            <div className="text-sm" style={{ color: 'var(--error)' }}>{content}</div>
           </div>
         </div>
       </div>
     )
   }
 
-  // 状态消息
+  // Status message
   if (type === 'status') {
     return (
       <div className="flex justify-center message">
-        <div className="bg-gray-800 text-gray-400 rounded-full px-4 py-2 text-sm">
+        <div className="rounded-full px-4 py-2 text-sm" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
           {content}
         </div>
       </div>
     )
   }
 
-  // 工具调用 - 紧凑样式
+  // Tool use - compact
   if (type === 'tool_use') {
     const toolName = metadata?.tool || '工具'
     const toolIcons = {
@@ -164,33 +128,35 @@ export default function Message({ message, index, onDelete, onCopy, onQuote }) {
       'TodoWrite': '✅', 'NotebookEdit': '📓'
     }
     const icon = toolIcons[toolName] || '🔧'
-    // 提取简要信息
     let brief = ''
     if (typeof content === 'string') {
       if (toolName === 'Bash') {
-        const cmd = content.match(/command['":\s]*([^\n"'}]+)/)?.[1] || content.slice(0, 60)
-        brief = cmd.trim()
+        brief = content.match(/command['":\s]*([^\n"'}]+)/)?.[1] || content.slice(0, 60)
       } else if (toolName === 'Read' || toolName === 'Write' || toolName === 'Edit') {
-        const file = content.match(/file_path['":\s]*([^\n"'}]+)/)?.[1] || content.slice(0, 50)
-        brief = file.trim()
+        brief = content.match(/file_path['":\s]*([^\n"'}]+)/)?.[1] || content.slice(0, 50)
       } else {
         brief = content.slice(0, 60).replace(/\n/g, ' ')
       }
+      brief = brief.trim()
     }
     if (brief.length > 60) brief = brief.slice(0, 57) + '...'
 
     return (
       <div className="flex justify-start message my-0.5">
-        <div className="text-xs text-gray-500 flex items-center gap-1.5 px-2 py-1 rounded bg-gray-800/50 hover:bg-gray-800 transition-colors cursor-default max-w-full" title={content}>
+        <div className="text-xs flex items-center gap-1.5 px-2.5 py-1 rounded-lg cursor-default max-w-full transition-colors"
+          style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}
+          title={content}
+          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+          onMouseLeave={(e) => e.currentTarget.style.background = 'var(--bg-tertiary)'}>
           <span>{icon}</span>
-          <span className="text-gray-400 font-medium">{toolName}</span>
-          {brief && <span className="text-gray-500 truncate">{brief}</span>}
+          <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{toolName}</span>
+          {brief && <span className="truncate" style={{ color: 'var(--text-muted)' }}>{brief}</span>}
         </div>
       </div>
     )
   }
 
-  // 工具结果 - 紧凑样式
+  // Tool result - compact
   if (type === 'tool_result') {
     const isError = metadata?.isError
     if (!content) return null
@@ -198,55 +164,33 @@ export default function Message({ message, index, onDelete, onCopy, onQuote }) {
     if (!preview.trim()) return null
     return (
       <div className="flex justify-start message my-0.5">
-        <div className={`text-xs px-2 py-1 rounded truncate max-w-full ${isError ? 'text-red-400 bg-red-900/20' : 'text-gray-500 bg-gray-800/30'}`} title={typeof content === 'string' ? content : JSON.stringify(content, null, 2)}>
+        <div className="text-xs px-2.5 py-1 rounded-lg truncate max-w-full"
+          style={{
+            background: isError ? 'var(--error-soft)' : 'var(--bg-primary)',
+            color: isError ? 'var(--error)' : 'var(--text-muted)'
+          }}
+          title={typeof content === 'string' ? content : JSON.stringify(content, null, 2)}>
           {preview}{preview.length >= 100 ? '...' : ''}
         </div>
       </div>
     )
   }
 
-  // Agent文本消息（支持Markdown渲染）
+  // Assistant message (with Markdown)
   return (
     <div className="flex justify-start group message">
       <div className="max-w-[80%] md:max-w-[70%]">
-        <div className="bubble-assistant text-gray-200 px-4 py-3 shadow-lg">
-          <div 
-            ref={contentRef}
-            className="markdown-content"
-          >
+        <div className="bubble-assistant">
+          <div ref={contentRef} className="markdown-content">
             {renderMarkdown(content)}
           </div>
         </div>
         <div className="flex items-center justify-between mt-1.5">
-          <div className="text-xs text-gray-500">
-            {new Date(message.timestamp || Date.now()).toLocaleTimeString('zh-CN', {
-              hour: '2-digit',
-              minute: '2-digit'
-            })}
-          </div>
-          {/* 操作按钮 */}
-          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={handleCopy}
-              className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-700/80 rounded-lg backdrop-blur-sm"
-              title="复制"
-            >
-              📋
-            </button>
-            <button
-              onClick={handleQuote}
-              className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-gray-700/80 rounded-lg backdrop-blur-sm"
-              title="引用回复"
-            >
-              💬
-            </button>
-            <button
-              onClick={handleDelete}
-              className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-700/80 rounded-lg backdrop-blur-sm"
-              title="删除"
-            >
-              🗑️
-            </button>
+          <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatTime(message.timestamp)}</div>
+          <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <ActionButton onClick={handleCopy} title="复制"><IconCopy /></ActionButton>
+            <ActionButton onClick={handleQuote} title="引用回复" hoverColor="var(--accent-primary)"><IconQuote /></ActionButton>
+            <ActionButton onClick={handleDelete} title="删除" hoverColor="var(--error)"><IconTrash /></ActionButton>
           </div>
         </div>
       </div>
@@ -254,33 +198,22 @@ export default function Message({ message, index, onDelete, onCopy, onQuote }) {
   )
 }
 
-// 附件预览组件
 function AttachmentPreview({ attachment, isUser }) {
   const { type, name, url, size } = attachment
-
   if (type === 'image') {
     return (
       <div className="rounded-lg overflow-hidden">
-        <img
-          src={url}
-          alt={name}
-          className="max-w-[200px] max-h-[150px] object-cover cursor-pointer hover:opacity-90"
-          onClick={() => window.open(url, '_blank')}
-        />
+        <img src={url} alt={name} className="max-w-[200px] max-h-[150px] object-cover cursor-pointer hover:opacity-90"
+          onClick={() => window.open(url, '_blank')} />
       </div>
     )
   }
-
-  // 文件附件
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`flex items-center gap-2 p-2 rounded-lg ${
-        isUser ? 'bg-blue-700/50 hover:bg-blue-700' : 'bg-gray-700 hover:bg-gray-600'
-      } transition-colors`}
-    >
+    <a href={url} target="_blank" rel="noopener noreferrer"
+      className="flex items-center gap-2 p-2 rounded-lg transition-colors"
+      style={{ background: isUser ? 'rgba(255,255,255,0.15)' : 'var(--bg-hover)' }}
+      onMouseEnter={(e) => e.currentTarget.style.opacity = '0.85'}
+      onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}>
       <span className="text-2xl">{getFileIcon(name)}</span>
       <div className="flex-1 min-w-0">
         <p className="text-sm truncate">{name}</p>
@@ -291,25 +224,17 @@ function AttachmentPreview({ attachment, isUser }) {
   )
 }
 
-// 获取文件图标
 function getFileIcon(filename) {
   const ext = filename?.split('.').pop()?.toLowerCase()
   const icons = {
-    pdf: '📕',
-    doc: '📘', docx: '📘',
-    xls: '📗', xlsx: '📗',
-    txt: '📄',
-    json: '📋',
-    js: '📜', jsx: '⚛️', ts: '📘', tsx: '⚛️',
-    py: '🐍',
-    html: '🌐', css: '🎨',
-    zip: '📦', rar: '📦',
+    pdf: '📕', doc: '📘', docx: '📘', xls: '📗', xlsx: '📗',
+    txt: '📄', json: '📋', js: '📜', jsx: '⚛️', ts: '📘', tsx: '⚛️',
+    py: '🐍', html: '🌐', css: '🎨', zip: '📦', rar: '📦',
     jpg: '🖼️', jpeg: '🖼️', png: '🖼️', gif: '🖼️', webp: '🖼️'
   }
   return icons[ext] || '📄'
 }
 
-// 格式化文件大小
 function formatSize(bytes) {
   if (!bytes) return ''
   if (bytes < 1024) return bytes + ' B'

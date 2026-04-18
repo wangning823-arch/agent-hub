@@ -551,49 +551,53 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
 
   return (
     <div
-      className={`h-full flex flex-col bg-gray-950 relative ${dragOver ? 'ring-2 ring-blue-500 ring-inset' : ''}`}
+      className={`h-full flex flex-col relative ${dragOver ? 'ring-2 ring-inset' : ''}`}
+      style={{
+        background: 'var(--bg-primary)',
+        '--tw-ring-color': 'var(--accent-primary)'
+      }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* 拖拽提示 */}
+      {/* Drag overlay */}
       {dragOver && (
-        <div className="absolute inset-0 bg-blue-500/10 flex items-center justify-center z-10 pointer-events-none">
-          <div className="bg-gray-900 px-6 py-4 rounded-lg border-2 border-dashed border-blue-500">
-            <p className="text-blue-400 text-lg">📎 松开鼠标上传文件</p>
+        <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center"
+          style={{ background: 'var(--accent-primary-soft)' }}>
+          <div className="px-6 py-4 rounded-xl border-2 border-dashed"
+            style={{ borderColor: 'var(--accent-primary)', background: 'var(--bg-secondary)' }}>
+            <p className="text-lg" style={{ color: 'var(--accent-primary)' }}>📎 松开鼠标上传文件</p>
           </div>
         </div>
       )}
 
-      {/* 消息列表 */}
+      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
-          <div className="text-center text-gray-500 mt-20">
-            <p className="text-lg">开始对话吧 💬</p>
-            <p className="text-sm mt-2">输入消息与Agent交互</p>
-            <div className="mt-4 text-xs text-gray-600 space-y-1">
+          <div className="text-center mt-20" style={{ color: 'var(--text-muted)', animation: 'slideUp 0.5s ease' }}>
+            <p className="text-4xl mb-3">💬</p>
+            <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>开始对话吧</p>
+            <p className="text-sm mt-2">输入消息与 Agent 交互</p>
+            <div className="mt-4 text-xs space-y-1" style={{ color: 'var(--text-muted)' }}>
               <p>📎 支持拖拽文件上传</p>
-              <p>📋 支持Ctrl+V粘贴图片</p>
+              <p>📋 支持 Ctrl+V 粘贴图片</p>
             </div>
           </div>
         )}
 
-        {/* 加载更多按钮 */}
         {hasMore && (
           <div className="flex justify-center py-4">
             <button
               onClick={loadMoreMessages}
               disabled={loadingMore}
-              className="px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50"
+              className="btn-pill"
             >
               {loadingMore ? (
                 <span className="flex items-center gap-2">
                   <span className="animate-spin">⏳</span>
                   加载中...
                 </span>
-              ) : (
-                '加载更早的消息'
-              )}
+              ) : '加载更早的消息'}
             </button>
           </div>
         )}
@@ -611,138 +615,106 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 底部输入区域 */}
-      <div className="border-t border-gray-800 bg-gray-900">
-        {/* 附件预览 */}
+      {/* Bottom input area */}
+      <div style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+        {/* Attachments preview */}
         {attachments.length > 0 && (
-          <div className="px-4 py-2 border-b border-gray-800 bg-gray-900/50">
+          <div className="px-4 py-2 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
             <div className="flex flex-wrap gap-2">
               {attachments.map((att, idx) => (
                 <div
                   key={idx}
-                  className="relative group bg-gray-800 rounded-lg p-2 flex items-center gap-2 max-w-[200px]"
+                  className="relative group card p-2 flex items-center gap-2 max-w-[200px]"
                 >
                   {att.type === 'image' ? (
-                    <img
-                      src={att.url}
-                      alt={att.name}
-                      className="w-10 h-10 object-cover rounded"
-                    />
+                    <img src={att.url} alt={att.name} className="w-10 h-10 object-cover rounded-lg" />
                   ) : (
-                    <div className="w-10 h-10 bg-gray-700 rounded flex items-center justify-center">
-                      📄
-                    </div>
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center"
+                      style={{ background: 'var(--bg-hover)' }}>📄</div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-300 truncate">{att.name}</p>
-                    <p className="text-xs text-gray-500">{formatSize(att.size)}</p>
+                    <p className="text-xs truncate" style={{ color: 'var(--text-primary)' }}>{att.name}</p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatSize(att.size)}</p>
                   </div>
                   <button
                     onClick={() => removeAttachment(idx)}
-                    className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    ✕
-                  </button>
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                    style={{ background: 'var(--error)', color: '#fff' }}
+                  >✕</button>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* 模型和模式选择 */}
-        <div className="px-4 py-2 border-b border-gray-800 flex flex-wrap items-center gap-2">
-          {/* 模式选择 */}
+        {/* Mode / Model / Effort bar */}
+        <div className="px-4 py-2 border-b flex flex-wrap items-center gap-2"
+          style={{ borderColor: 'var(--border-subtle)' }}>
+          {/* Mode */}
           <div className="flex items-center gap-1">
-            <span className="text-xs text-gray-500 mr-1">🛡️</span>
-            <div className="flex bg-gray-800 rounded-lg p-0.5">
+            <span className="text-xs mr-1" style={{ color: 'var(--text-muted)' }}>🛡️</span>
+            <div className="flex rounded-lg p-0.5" style={{ background: 'var(--bg-primary)' }}>
               {modes.slice(0, 4).map(mode => (
                 <button
                   key={mode.id}
                   onClick={() => updateOption('mode', mode.id)}
-                  className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                    currentMode === mode.id
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-400 hover:text-white'
-                  }`}
+                  className={`btn-segment ${currentMode === mode.id ? 'active' : ''}`}
                   title={mode.description}
-                >
-                  {mode.name}
-                </button>
+                >{mode.name}</button>
               ))}
             </div>
           </div>
-
-          {/* 分隔符 */}
-          <div className="w-px h-6 bg-gray-700" />
-
-          {/* 模型选择 */}
+          <div className="w-px h-5" style={{ background: 'var(--border-primary)' }} />
+          {/* Model */}
           <div className="flex items-center gap-1">
-            <span className="text-xs text-gray-500 mr-1">🧠</span>
+            <span className="text-xs mr-1" style={{ color: 'var(--text-muted)' }}>🧠</span>
             <select
               value={currentModel}
               onChange={(e) => updateOption('model', e.target.value)}
-              className="bg-gray-800 border-0 text-xs text-gray-300 rounded-lg px-2 py-1 focus:ring-1 focus:ring-blue-500"
+              className="select-field text-xs py-1"
             >
               <option value="">默认模型</option>
               {models.map(model => (
-                <option key={model.id} value={model.id}>
-                  {model.name}
-                </option>
+                <option key={model.id} value={model.id}>{model.name}</option>
               ))}
             </select>
           </div>
-
-          {/* 分隔符 */}
-          <div className="w-px h-6 bg-gray-700" />
-
-          {/* 努力程度 */}
+          <div className="w-px h-5" style={{ background: 'var(--border-primary)' }} />
+          {/* Effort */}
           <div className="flex items-center gap-1">
-            <span className="text-xs text-gray-500 mr-1">💪</span>
-            <div className="flex bg-gray-800 rounded-lg p-0.5">
+            <span className="text-xs mr-1" style={{ color: 'var(--text-muted)' }}>💪</span>
+            <div className="flex rounded-lg p-0.5" style={{ background: 'var(--bg-primary)' }}>
               {efforts.map(effort => (
                 <button
                   key={effort.id}
                   onClick={() => updateOption('effort', effort.id)}
-                  className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                    currentEffort === effort.id
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-400 hover:text-white'
-                  }`}
+                  className={`btn-segment ${currentEffort === effort.id ? 'active' : ''}`}
                   title={effort.description}
-                >
-                  {effort.name}
-                </button>
+                >{effort.name}</button>
               ))}
             </div>
           </div>
         </div>
 
-        {/* 重新生成按钮 */}
+        {/* Regenerate */}
         {messages.length >= 2 && messages[messages.length - 1]?.type !== 'user' && (
-          <div className="px-4 py-2 border-b border-gray-800">
-            <button
-              onClick={handleRegenerate}
-              className="px-3 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors flex items-center gap-2"
-            >
+          <div className="px-4 py-2 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+            <button onClick={handleRegenerate} className="btn-pill">
               🔄 重新生成回复
             </button>
           </div>
         )}
 
-        {/* 引用预览 */}
+        {/* Quote preview */}
         {quoteReply && (
           <div className="px-4 pt-2">
-            <QuoteReply 
-              quote={quoteReply}
-              onRemove={() => setQuoteReply(null)}
-            />
+            <QuoteReply quote={quoteReply} onRemove={() => setQuoteReply(null)} />
           </div>
         )}
 
-        {/* 输入框 */}
+        {/* Input area */}
         <div className="p-4">
-          <div className="flex gap-2">
-            {/* 上传按钮 */}
+          <div className="flex gap-2 items-end">
             <input
               ref={fileInputRef}
               type="file"
@@ -754,11 +726,10 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="px-3 py-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg disabled:opacity-50 transition-colors"
+              className="btn-icon"
+              style={{ width: 42, height: 42 }}
               title="上传文件"
-            >
-              {uploading ? '⏳' : '📎'}
-            </button>
+            >{uploading ? '⏳' : '📎'}</button>
 
             <textarea
               ref={textareaRef}
@@ -766,30 +737,30 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
-              placeholder="输入消息... (Enter发送, Shift+Enter换行, Ctrl+V粘贴图片)"
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 resize-none focus:outline-none focus:border-blue-500 text-white placeholder-gray-400"
+              placeholder="输入消息... (Enter 发送, Shift+Enter 换行, Ctrl+V 粘贴图片)"
+              className="input-textarea flex-1"
               rows={2}
             />
             <button
               onClick={sendMessage}
               disabled={!connected || (input.trim() === '' && attachments.length === 0)}
-              className="px-6 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              发送
-            </button>
+              className="btn-primary px-5 py-2.5 text-sm font-medium"
+              style={{ minWidth: 64, height: 42 }}
+            >发送</button>
           </div>
 
-          {/* 状态栏 */}
-          <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
-            <div className="flex items-center gap-4">
-              {connected ? '🟢 已连接' : '🔴 未连接'}
+          {/* Status bar */}
+          <div className="mt-2 flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5">
+                <span className={`status-dot ${connected ? 'connected' : 'disconnected'}`} />
+                {connected ? '已连接' : '未连接'}
+              </span>
               {attachments.length > 0 && (
-                <span className="text-blue-400">📎 {attachments.length} 个附件</span>
+                <span style={{ color: 'var(--accent-primary)' }}>📎 {attachments.length} 个附件</span>
               )}
             </div>
-            <div className="text-gray-600">
-              按 Enter 发送 · Shift+Enter 换行 · Ctrl+V 粘贴
-            </div>
+            <span>Enter 发送 · Shift+Enter 换行 · Ctrl+V 粘贴</span>
           </div>
         </div>
       </div>

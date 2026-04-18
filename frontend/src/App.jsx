@@ -9,8 +9,29 @@ import ContextManager from './components/ContextManager'
 import FileViewer from './components/FileViewer'
 import SearchPanel from './components/SearchPanel'
 import { useToast } from './components/Toast'
+import { useTheme } from './components/ThemeContext'
 
 const API_BASE = '/api'
+
+// SVG icons
+const IconMenu = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+)
+const IconX = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+)
+const IconSearch = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+)
+const IconSettings = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+)
+const IconChart = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+)
+const IconPanel = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+)
 
 export default function App() {
   const [sessions, setSessions] = useState([])
@@ -20,39 +41,31 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [showProjectManager, setShowProjectManager] = useState(false)
   const toast = useToast()
+  const { themeName } = useTheme()
   const [showContextManager, setShowContextManager] = useState(false)
   const [agents, setAgents] = useState([])
   
-  // 文件查看状态
-  const [viewingFile, setViewingFile] = useState(null) // { path, content }
-  
-  // 搜索状态
+  const [viewingFile, setViewingFile] = useState(null)
   const [showSearch, setShowSearch] = useState(false)
   
-  // 侧边栏状态
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
 
-  // 监听窗口大小
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 768
       setIsMobile(mobile)
-      // 桌面端默认打开侧边栏
       if (!mobile) {
         setLeftSidebarOpen(true)
         setRightSidebarOpen(true)
       }
-      // 移动端不自动关闭侧边栏（避免键盘弹出时关闭）
     }
-
     window.addEventListener('resize', handleResize)
-    handleResize() // 初始化
+    handleResize()
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // 获取可用的Agent类型
   useEffect(() => {
     fetch(`${API_BASE}/agents`)
       .then(res => res.json())
@@ -60,7 +73,6 @@ export default function App() {
       .catch(console.error)
   }, [])
 
-  // 获取现有会话
   useEffect(() => {
     fetch(`${API_BASE}/sessions`)
       .then(res => res.json())
@@ -79,25 +91,20 @@ export default function App() {
       .catch(console.error)
   }, [])
 
-  // 键盘快捷键
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Ctrl+K 或 Cmd+K 打开搜索
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault()
         setShowSearch(true)
       }
-      // ESC 关闭搜索
       if (e.key === 'Escape' && showSearch) {
         setShowSearch(false)
       }
     }
-    
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [showSearch])
 
-  // 创建新会话
   const createSession = async (workdir, agentType = 'claude-code', options = {}) => {
     try {
       const res = await fetch(`${API_BASE}/sessions`, {
@@ -108,19 +115,14 @@ export default function App() {
       const session = await res.json()
       setSessions(prev => [...prev, session])
       setActiveSession(session.id)
-      setSessionOptions(prev => ({
-        ...prev,
-        [session.id]: options
-      }))
+      setSessionOptions(prev => ({ ...prev, [session.id]: options }))
       setShowNewModal(false)
-      // 手机端自动关闭侧边栏
       if (isMobile) setLeftSidebarOpen(false)
     } catch (error) {
       toast.error('创建会话失败: ' + error.message)
     }
   }
 
-  // 删除会话
   const removeSession = async (sessionId) => {
     if (!confirm('确定要删除这个会话吗？')) return
     try {
@@ -140,12 +142,9 @@ export default function App() {
     }
   }
 
-  // 继续已保存的会话
   const resumeSession = async (sessionId) => {
     try {
-      const res = await fetch(`${API_BASE}/sessions/${sessionId}/resume`, {
-        method: 'POST'
-      })
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/resume`, { method: 'POST' })
       const result = await res.json()
       if (result.session) {
         setSessions(prev => {
@@ -165,32 +164,22 @@ export default function App() {
     }
   }
 
-  // 选择项目
   const handleSelectProject = (result) => {
     const { session, project } = result
     setSessions(prev => [...prev, session])
     setActiveSession(session.id)
     setSessionOptions(prev => ({
       ...prev,
-      [session.id]: {
-        mode: project.mode,
-        model: project.model,
-        effort: project.effort
-      }
+      [session.id]: { mode: project.mode, model: project.model, effort: project.effort }
     }))
     setShowProjectManager(false)
     if (isMobile) setLeftSidebarOpen(false)
   }
 
-  // 更新会话选项
   const handleUpdateOptions = (sessionId, options) => {
-    setSessionOptions(prev => ({
-      ...prev,
-      [sessionId]: options
-    }))
+    setSessionOptions(prev => ({ ...prev, [sessionId]: options }))
   }
 
-  // 查看文件
   const handleViewFile = async (filePath) => {
     try {
       const data = await fetch(`${API_BASE}/files/content?path=${encodeURIComponent(filePath)}`).then(r => r.json())
@@ -200,7 +189,6 @@ export default function App() {
     }
   }
 
-  // 重命名会话
   const renameSession = async (sessionId, title) => {
     try {
       const res = await fetch(`${API_BASE}/sessions/${sessionId}/rename`, {
@@ -217,12 +205,9 @@ export default function App() {
     }
   }
 
-  // 置顶/取消置顶会话
   const pinSession = async (sessionId) => {
     try {
-      const res = await fetch(`${API_BASE}/sessions/${sessionId}/pin`, {
-        method: 'POST'
-      })
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/pin`, { method: 'POST' })
       const result = await res.json()
       if (result.session) {
         setSessions(prev => prev.map(s => s.id === sessionId ? result.session : s))
@@ -232,12 +217,9 @@ export default function App() {
     }
   }
 
-  // 归档/取消归档会话
   const archiveSession = async (sessionId) => {
     try {
-      const res = await fetch(`${API_BASE}/sessions/${sessionId}/archive`, {
-        method: 'POST'
-      })
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/archive`, { method: 'POST' })
       const result = await res.json()
       if (result.session) {
         setSessions(prev => prev.map(s => s.id === sessionId ? result.session : s))
@@ -251,32 +233,27 @@ export default function App() {
   const currentSession = sessions.find(s => s.id === activeSession)
 
   return (
-    <div className="h-screen flex bg-gray-950 relative">
-      {/* 遮罩层（手机端点击关闭侧边栏） */}
+    <div className="h-screen flex overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+      {/* Mobile overlay */}
       {isMobile && (leftSidebarOpen || rightSidebarOpen) && (
         <div
-          className="absolute inset-0 bg-black/50 z-40"
-          onClick={() => {
-            setLeftSidebarOpen(false)
-            setRightSidebarOpen(false)
-          }}
+          className="absolute inset-0 z-40"
+          style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+          onClick={() => { setLeftSidebarOpen(false); setRightSidebarOpen(false) }}
         />
       )}
 
-      {/* 左侧边栏 */}
+      {/* Left sidebar */}
       <div className={`
         ${isMobile ? 'absolute left-0 top-0 h-full z-50' : 'relative'}
-        transition-transform duration-300 ease-in-out
+        transition-transform duration-300 ease-out
         ${leftSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <Sidebar
           sessions={sessions}
           activeSession={activeSession}
           sessionOptions={sessionOptions}
-          onSelectSession={(id) => {
-            setActiveSession(id)
-            if (isMobile) setLeftSidebarOpen(false)
-          }}
+          onSelectSession={(id) => { setActiveSession(id); if (isMobile) setLeftSidebarOpen(false) }}
           onCloseSession={removeSession}
           onResumeSession={resumeSession}
           onNewSession={() => setShowNewModal(true)}
@@ -288,81 +265,56 @@ export default function App() {
         />
       </div>
 
-      {/* 主内容区 */}
+      {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        {/* 顶部工具栏 */}
-        <div className="flex items-center justify-between px-2 md:px-4 py-2 bg-gray-900 border-b border-gray-800">
-          <div className="flex items-center gap-1 md:gap-4">
-            {/* 左侧边栏开关 */}
+        {/* Header */}
+        <header className="flex items-center justify-between px-3 md:px-5 py-2.5 border-b" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-subtle)' }}>
+          <div className="flex items-center gap-3">
             <button
               onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
-              className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg"
+              className="btn-icon"
               title={leftSidebarOpen ? '关闭菜单' : '打开菜单'}
             >
-              {leftSidebarOpen ? '✕' : '☰'}
+              {leftSidebarOpen ? <IconX /> : <IconMenu />}
             </button>
 
             {activeSession && (
-              <div className="text-sm text-gray-400 truncate max-w-[150px] md:max-w-none">
-                📁 {currentSession?.workdir?.split('/').pop() || '未知'}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                  {currentSession?.workdir?.split('/').pop() || '未知'}
+                </span>
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-1 md:gap-2">
-            {/* 上下文管理 */}
-            <button
-              onClick={() => setShowContextManager(true)}
-              disabled={!activeSession}
-              className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg disabled:opacity-50"
-              title="上下文与Token"
-            >
-              📊
+          <div className="flex items-center gap-1">
+            <button onClick={() => setShowContextManager(true)} disabled={!activeSession} className="btn-icon" title="上下文与Token">
+              <IconChart />
             </button>
-
-            {/* 设置 */}
-            <button
-              onClick={() => setShowSettings(true)}
-              className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg"
-              title="设置"
-            >
-              ⚙️
+            <button onClick={() => setShowSettings(true)} className="btn-icon" title="设置">
+              <IconSettings />
             </button>
-
-            {/* 搜索 */}
-            <button
-              onClick={() => setShowSearch(true)}
-              className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg"
-              title="搜索 (Ctrl+K)"
-            >
-              🔍
+            <button onClick={() => setShowSearch(true)} className="btn-icon" title="搜索 (Ctrl+K)">
+              <IconSearch />
             </button>
-
-            {/* 右侧边栏开关 */}
             <button
               onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
-              className={`p-2 rounded-lg ${
-                rightSidebarOpen
-                  ? 'text-white bg-gray-800'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
-              }`}
+              className={`btn-icon ${rightSidebarOpen ? 'active' : ''}`}
               title={rightSidebarOpen ? '关闭文件面板' : '打开文件面板'}
             >
-              📂
+              <IconPanel />
             </button>
           </div>
-        </div>
+        </header>
 
-        {/* 聊天区域 */}
-        <div className="flex-1 overflow-hidden">
+        {/* Chat area */}
+        <div className="flex-1 overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
           {viewingFile ? (
             <FileViewer
               file={viewingFile.path}
               content={viewingFile.content}
               onClose={() => setViewingFile(null)}
-              onSave={(newContent) => {
-                setViewingFile(prev => ({ ...prev, content: newContent }))
-              }}
+              onSave={(newContent) => setViewingFile(prev => ({ ...prev, content: newContent }))}
             />
           ) : activeSession ? (
             <ChatPanel
@@ -371,22 +323,16 @@ export default function App() {
               onOptionsChange={(opts) => handleUpdateOptions(activeSession, opts)}
             />
           ) : (
-            <div className="h-full flex items-center justify-center text-gray-500 p-4">
-              <div className="text-center max-w-md">
-                <p className="text-4xl mb-4">🤖</p>
-                <p className="text-xl font-medium text-gray-300 mb-2">Agent Hub</p>
-                <p className="text-gray-500 mb-6">开始使用</p>
-                <div className="flex flex-col gap-3">
-                  <button
-                    onClick={() => setShowProjectManager(true)}
-                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
-                  >
+            <div className="h-full flex items-center justify-center p-4">
+              <div className="text-center max-w-md" style={{ animation: 'slideUp 0.5s ease' }}>
+                <div className="text-6xl mb-6" style={{ filter: 'drop-shadow(0 0 20px rgba(99,102,241,0.3))' }}>🤖</div>
+                <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>Agent Hub</h2>
+                <p className="mb-8" style={{ color: 'var(--text-muted)' }}>多 Agent 协作开发平台</p>
+                <div className="flex flex-col gap-3 max-w-xs mx-auto">
+                  <button onClick={() => setShowProjectManager(true)} className="btn-primary py-3 text-base">
                     📁 打开项目
                   </button>
-                  <button
-                    onClick={() => setShowNewModal(true)}
-                    className="px-6 py-3 bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2"
-                  >
+                  <button onClick={() => setShowNewModal(true)} className="btn-secondary py-3 text-base">
                     ➕ 新建会话
                   </button>
                 </div>
@@ -396,10 +342,10 @@ export default function App() {
         </div>
       </div>
 
-      {/* 右侧边栏 */}
+      {/* Right sidebar */}
       <div className={`
         ${isMobile ? 'absolute right-0 top-0 h-full z-50' : 'relative'}
-        transition-transform duration-300 ease-in-out
+        transition-transform duration-300 ease-out
         ${rightSidebarOpen ? 'translate-x-0' : 'translate-x-full'}
       `}>
         <RightSidebar
@@ -409,7 +355,7 @@ export default function App() {
         />
       </div>
 
-      {/* 弹窗 */}
+      {/* Modals */}
       {showNewModal && (
         <NewSessionModal
           agents={agents}
@@ -418,32 +364,22 @@ export default function App() {
           currentWorkdir={currentSession?.workdir}
         />
       )}
-
-      {showSettings && (
-        <SettingsPanel onClose={() => setShowSettings(false)} />
-      )}
-
+      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
       {showProjectManager && (
         <ProjectManager
           onSelectProject={handleSelectProject}
           onClose={() => setShowProjectManager(false)}
         />
       )}
-
       {showContextManager && activeSession && (
         <ContextManager
           sessionId={activeSession}
           onClose={() => setShowContextManager(false)}
         />
       )}
-
-      {/* 搜索面板 */}
       {showSearch && (
         <SearchPanel
-          onSelectSession={(id) => {
-            setActiveSession(id)
-            if (isMobile) setLeftSidebarOpen(false)
-          }}
+          onSelectSession={(id) => { setActiveSession(id); if (isMobile) setLeftSidebarOpen(false) }}
           onClose={() => setShowSearch(false)}
         />
       )}
