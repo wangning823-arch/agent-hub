@@ -8,6 +8,7 @@ import RightSidebar from './components/RightSidebar'
 import ContextManager from './components/ContextManager'
 import FileViewer from './components/FileViewer'
 import SearchPanel from './components/SearchPanel'
+import { useToast } from './components/Toast'
 
 const API_BASE = '/api'
 
@@ -18,6 +19,7 @@ export default function App() {
   const [showNewModal, setShowNewModal] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showProjectManager, setShowProjectManager] = useState(false)
+  const toast = useToast()
   const [showContextManager, setShowContextManager] = useState(false)
   const [agents, setAgents] = useState([])
   
@@ -114,7 +116,7 @@ export default function App() {
       // 手机端自动关闭侧边栏
       if (isMobile) setLeftSidebarOpen(false)
     } catch (error) {
-      alert('创建会话失败: ' + error.message)
+      toast.error('创建会话失败: ' + error.message)
     }
   }
 
@@ -133,7 +135,7 @@ export default function App() {
         setActiveSession(remaining.length > 0 ? remaining[0].id : null)
       }
     } catch (error) {
-      alert('删除会话失败: ' + error.message)
+      toast.error('删除会话失败: ' + error.message)
     }
   }
 
@@ -158,7 +160,7 @@ export default function App() {
         if (isMobile) setLeftSidebarOpen(false)
       }
     } catch (error) {
-      alert('恢复会话失败: ' + error.message)
+      toast.error('恢复会话失败: ' + error.message)
     }
   }
 
@@ -193,7 +195,7 @@ export default function App() {
       const data = await fetch(`${API_BASE}/files/content?path=${encodeURIComponent(filePath)}`).then(r => r.json())
       setViewingFile({ path: filePath, content: data.content || '' })
     } catch (error) {
-      alert('加载文件失败: ' + error.message)
+      toast.error('加载文件失败: ' + error.message)
     }
   }
 
@@ -210,7 +212,7 @@ export default function App() {
         setSessions(prev => prev.map(s => s.id === sessionId ? result.session : s))
       }
     } catch (error) {
-      alert('重命名失败: ' + error.message)
+      toast.error('重命名失败: ' + error.message)
     }
   }
 
@@ -225,7 +227,7 @@ export default function App() {
         setSessions(prev => prev.map(s => s.id === sessionId ? result.session : s))
       }
     } catch (error) {
-      alert('置顶操作失败: ' + error.message)
+      toast.error('置顶操作失败: ' + error.message)
     }
   }
 
@@ -240,7 +242,7 @@ export default function App() {
         setSessions(prev => prev.map(s => s.id === sessionId ? result.session : s))
       }
     } catch (error) {
-      alert('归档操作失败: ' + error.message)
+      toast.error('归档操作失败: ' + error.message)
     }
   }
 
