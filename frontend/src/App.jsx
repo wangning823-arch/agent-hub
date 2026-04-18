@@ -107,6 +107,7 @@ export default function App() {
     fetch(`${API_BASE}/sessions`)
       .then(res => res.json())
       .then(data => {
+        if (!Array.isArray(data)) { setSessions([]); return }
         setSessions(data)
         if (data.length > 0 && !activeSession) {
           setActiveSession(data[0].id)
