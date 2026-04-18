@@ -24,26 +24,26 @@ export default function Message({ message, index, onDelete, onCopy }) {
   // 用户消息
   if (type === 'user') {
     return (
-      <div className="flex justify-end group">
+      <div className="flex justify-end group message">
         <div className="max-w-[80%] md:max-w-[70%]">
           {/* 操作按钮 */}
           <div className="flex justify-end gap-1 mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
               onClick={handleCopy}
-              className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-700 rounded"
+              className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-700/80 rounded-lg backdrop-blur-sm"
               title="复制"
             >
               📋
             </button>
             <button
               onClick={handleDelete}
-              className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-700 rounded"
+              className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-700/80 rounded-lg backdrop-blur-sm"
               title="删除"
             >
               🗑️
             </button>
           </div>
-          <div className="bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-3">
+          <div className="bubble-user text-white px-4 py-3 shadow-lg">
             {/* 文本内容 */}
             {content && (
               <div className="whitespace-pre-wrap break-words">{renderContent(content)}</div>
@@ -58,7 +58,7 @@ export default function Message({ message, index, onDelete, onCopy }) {
               </div>
             )}
           </div>
-          <div className="text-xs text-gray-500 text-right mt-1">
+          <div className="text-xs text-gray-500 text-right mt-1.5">
             {new Date(message.timestamp || Date.now()).toLocaleTimeString('zh-CN', {
               hour: '2-digit',
               minute: '2-digit'
@@ -118,12 +118,12 @@ export default function Message({ message, index, onDelete, onCopy }) {
 
   // Agent文本消息
   return (
-    <div className="flex justify-start group">
+    <div className="flex justify-start group message">
       <div className="max-w-[80%] md:max-w-[70%]">
-        <div className="bg-gray-800 text-gray-200 rounded-2xl rounded-bl-sm px-4 py-3">
+        <div className="bubble-assistant text-gray-200 px-4 py-3 shadow-lg">
           <div className="whitespace-pre-wrap break-words">{renderContent(content)}</div>
         </div>
-        <div className="flex items-center justify-between mt-1">
+        <div className="flex items-center justify-between mt-1.5">
           <div className="text-xs text-gray-500">
             {new Date(message.timestamp || Date.now()).toLocaleTimeString('zh-CN', {
               hour: '2-digit',
@@ -134,14 +134,14 @@ export default function Message({ message, index, onDelete, onCopy }) {
           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
               onClick={handleCopy}
-              className="p-1 text-gray-500 hover:text-white hover:bg-gray-700 rounded"
+              className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-700/80 rounded-lg backdrop-blur-sm"
               title="复制"
             >
               📋
             </button>
             <button
               onClick={handleDelete}
-              className="p-1 text-gray-500 hover:text-red-400 hover:bg-gray-700 rounded"
+              className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-700/80 rounded-lg backdrop-blur-sm"
               title="删除"
             >
               🗑️

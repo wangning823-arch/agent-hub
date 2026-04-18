@@ -1,15 +1,23 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import Message from './Message'
+import { useToast } from './Toast'
 
 const API_BASE = '/api'
 
 export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) {
+  const toast = useToast()
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [connected, setConnected] = useState(false)
   const [attachments, setAttachments] = useState([])
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  
+  // 分页状态
+  const [hasMore, setHasMore] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [messageOffset, setMessageOffset] = useState(0)
+  const PAGE_SIZE = 50
   
   // 模型和模式选项
   const [modes, setModes] = useState([])
@@ -49,6 +57,39 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
     scrollToBottom()
   }, [messages])
 
+  // 加载更多历史消息
+  const loadMoreMessages = async () => {
+    if (loadingMore || !hasMore) return
+    
+    setLoadingMore(true)
+    try {
+      const response = await fetch(`${API_BASE}/sessions/${sessionId}/messages?limit=${PAGE_SIZE}&offset=${messageOffset}`)
+      const data = await response.json()
+      
+      if (data.messages && data.messages.length > 0) {
+        const formattedMessages = data.messages.map(msg => ({
+          type: msg.role === 'user' ? 'user' : 'assistant',
+          content: typeof msg.content === 'object' ? JSON.stringify(msg.content) : msg.content,
+          timestamp: msg.time
+        }))
+        
+        // 将新加载的消息添加到列表前面
+        setMessages(prev => [...formattedMessages, ...prev])
+        setMessageOffset(prev => Math.max(0, prev - PAGE_SIZE))
+        
+        if (data.messages.length < PAGE_SIZE || messageOffset <= 0) {
+          setHasMore(false)
+        }
+      } else {
+        setHasMore(false)
+      }
+    } catch (error) {
+      console.error('加载更多消息失败:', error)
+      toast.error('加载更多消息失败')
+    }
+    setLoadingMore(false)
+  }
+
   // WebSocket连接
   useEffect(() => {
     // 加载历史消息
@@ -56,14 +97,25 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
       try {
         const session = await fetch(`${API_BASE}/sessions/${sessionId}`).then(r => r.json())
         if (session.messages && session.messages.length > 0) {
-          setMessages(session.messages.map(msg => ({
+          const formattedMessages = session.messages.map(msg => ({
             type: msg.role === 'user' ? 'user' : 'assistant',
             content: typeof msg.content === 'object' ? JSON.stringify(msg.content) : msg.content,
             timestamp: msg.time
-          })))
+          }))
+          
+          // 只加载最新的PAGE_SIZE条消息
+          if (formattedMessages.length > PAGE_SIZE) {
+            setMessages(formattedMessages.slice(-PAGE_SIZE))
+            setMessageOffset(formattedMessages.length - PAGE_SIZE)
+            setHasMore(true)
+          } else {
+            setMessages(formattedMessages)
+            setHasMore(false)
+          }
         }
       } catch (error) {
         console.error('加载历史消息失败:', error)
+        toast.error('加载历史消息失败')
       }
     }
 
@@ -224,7 +276,7 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
       }
     } catch (error) {
       console.error('删除消息失败:', error)
-      alert('删除失败: ' + error.message)
+      toast.error('删除失败: ' + error.message)
     }
   }
 
@@ -259,7 +311,7 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
       }
     } catch (error) {
       console.error('重新生成失败:', error)
-      alert('重新生成失败: ' + error.message)
+      toast.error('重新生成失败: ' + error.message)
     }
   }
 
@@ -325,7 +377,7 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
       }
     } catch (error) {
       console.error('上传失败:', error)
-      alert('文件上传失败: ' + error.message)
+      toast.error('文件上传失败: ' + error.message)
     } finally {
       setUploading(false)
     }
@@ -359,7 +411,7 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
       }
     } catch (error) {
       console.error('上传失败:', error)
-      alert('文件上传失败: ' + error.message)
+      toast.error('文件上传失败: ' + error.message)
     } finally {
       setUploading(false)
       if (fileInputRef.current) {
@@ -408,7 +460,7 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
       }
     } catch (error) {
       console.error('上传失败:', error)
-      alert('文件上传失败: ' + error.message)
+      toast.error('文件上传失败: ' + error.message)
     } finally {
       setUploading(false)
     }
@@ -493,6 +545,26 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
               <p>📎 支持拖拽文件上传</p>
               <p>📋 支持Ctrl+V粘贴图片</p>
             </div>
+          </div>
+        )}
+
+        {/* 加载更多按钮 */}
+        {hasMore && (
+          <div className="flex justify-center py-4">
+            <button
+              onClick={loadMoreMessages}
+              disabled={loadingMore}
+              className="px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {loadingMore ? (
+                <span className="flex items-center gap-2">
+                  <span className="animate-spin">⏳</span>
+                  加载中...
+                </span>
+              ) : (
+                '加载更早的消息'
+              )}
+            </button>
           </div>
         )}
 
