@@ -631,3 +631,19 @@ code {
   background: var(--error-soft);
   color: var(--error);
 }
+
+/* 紧凑模式 - 小字体消息 */
+.bubble-user,
+.bubble-assistant {
+  font-size: 0.75rem;
+  padding: 8px 14px;
+  line-height: 1.5;
+}
+.markdown-content h1 { font-size: 1rem; margin-bottom: 0.5rem; }
+.markdown-content h2 { font-size: 0.9rem; margin-top: 0.75rem; margin-bottom: 0.4rem; }
+.markdown-content h3 { font-size: 0.85rem; margin-top: 0.6rem; margin-bottom: 0.3rem; }
+.markdown-content p { margin-bottom: 0.4rem; }
+.markdown-content pre code { font-size: 0.72rem; }
+.markdown-content code { font-size: 0.72em; }
+.markdown-content li { margin-bottom: 0.15rem; }
+.markdown-content ul, .markdown-content ol { margin-bottom: 0.4rem; }
