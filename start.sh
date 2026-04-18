@@ -4,28 +4,31 @@
 
 echo "🚀 启动 Agent Hub..."
 
+# 记录项目根目录
+PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+
 # 检查依赖是否安装
-if [ ! -d "backend/node_modules" ]; then
+if [ ! -d "$PROJECT_ROOT/backend/node_modules" ]; then
   echo "📦 安装后端依赖..."
-  cd backend && npm install && cd ..
+  (cd "$PROJECT_ROOT/backend" && npm install)
 fi
 
-if [ ! -d "frontend/node_modules" ]; then
+if [ ! -d "$PROJECT_ROOT/frontend/node_modules" ]; then
   echo "📦 安装前端依赖..."
-  cd frontend && npm install && cd ..
+  (cd "$PROJECT_ROOT/frontend" && npm install)
 fi
 
-# 启动后端
+# 启动后端（子shell，不影响父目录）
 echo "🔧 启动后端服务..."
-cd backend && node server.js &
+(cd "$PROJECT_ROOT/backend" && node server.js) &
 BACKEND_PID=$!
 
 # 等待后端启动
 sleep 2
 
-# 启动前端
+# 启动前端（子shell，不影响父目录）
 echo "🎨 启动前端服务..."
-cd frontend && npm run dev &
+(cd "$PROJECT_ROOT/frontend" && npm run dev) &
 FRONTEND_PID=$!
 
 # 等待前端启动
