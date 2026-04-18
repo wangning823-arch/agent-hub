@@ -53,6 +53,9 @@ export default function Message({ message, index, onDelete, onCopy, onQuote }) {
   // 渲染Markdown内容
   const renderMarkdown = (text) => {
     if (!text) return null
+    if (typeof text !== 'string') {
+      text = JSON.stringify(text, null, 2)
+    }
     
     try {
       const html = marked.parse(text)
@@ -61,6 +64,11 @@ export default function Message({ message, index, onDelete, onCopy, onQuote }) {
       console.error('Markdown渲染失败:', err)
       return <div>{text}</div>
     }
+  }
+
+  // token统计和conversation_id消息 - 不渲染或极简渲染
+  if (type === 'token_usage' || type === 'conversation_id') {
+    return null
   }
 
   // 用户消息

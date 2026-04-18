@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 
-export default function NewSessionModal({ agents, onCreate, onClose }) {
-  const [workdir, setWorkdir] = useState('')
+export default function NewSessionModal({ agents, onCreate, onClose, currentWorkdir }) {
+  const [workdir, setWorkdir] = useState(currentWorkdir || '~')
   const [agentType, setAgentType] = useState('claude-code')
 
   const handleSubmit = (e) => {

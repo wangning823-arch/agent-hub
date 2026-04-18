@@ -130,8 +130,16 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
     let reconnectAttempts = 0
     const maxReconnectAttempts = 5
     let reconnectTimeout = null
+    let isCleanedUp = false
 
     const connectWebSocket = () => {
+      if (isCleanedUp) return // 已清理，不再创建新连接
+      
+      // 先关闭已有连接
+      if (wsRef.current) {
+        wsRef.current.close()
+      }
+      
       const wsUrl = `ws://${window.location.hostname}:3001?session=${sessionId}`
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
@@ -224,6 +232,7 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
     connectWebSocket()
 
     return () => {
+      isCleanedUp = true
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout)
       }
