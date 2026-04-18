@@ -221,11 +221,55 @@ class SessionManager {
       throw new Error(`会话不存在: ${sessionId}`);
     }
 
+    // 如果会话没有agent（从文件加载的旧会话），自动恢复
+    if (!session.agent) {
+      await this._resumeAgent(session);
+    }
+
     // 记录消息
     session.messages.push({ role: 'user', content: message, time: new Date() });
 
     // 发送给Agent
     await session.agent.send(message);
+  }
+
+  /**
+   * 内部方法：为加载的旧会话重新启动agent
+   */
+  async _resumeAgent(session) {
+    const agentType = session.agentType || 'claude-code';
+    const options = { ...session.options, conversationId: session.conversationId };
+
+    let agent;
+    switch (agentType) {
+      case 'claude-code':
+        agent = new ClaudeCodeAgent(session.workdir, options);
+        break;
+      case 'opencode':
+        agent = new OpenCodeAgent(session.workdir, options);
+        break;
+      case 'codex':
+        agent = new CodexAgent(session.workdir, options);
+        break;
+      default:
+        throw new Error(`未知的Agent类型: ${agentType}`);
+    }
+
+    // 监听Agent消息
+    agent.on('message', (msg) => {
+      this.broadcast(session.id, msg);
+    });
+    agent.on('error', (err) => {
+      this.broadcast(session.id, { type: 'error', content: err.toString() });
+    });
+    agent.on('stopped', () => {
+      this.broadcast(session.id, { type: 'status', content: 'Agent已停止' });
+    });
+
+    await agent.start();
+    session.agent = agent;
+    session.isActive = true;
+    console.log(`会话 ${session.id} agent已恢复`);
   }
 
   /**

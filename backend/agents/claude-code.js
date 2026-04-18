@@ -38,25 +38,22 @@ class ClaudeCodeAgent extends Agent {
     this.emit('message', { type: 'status', content: '🤔 思考中...' });
 
     return new Promise((resolve, reject) => {
-      const claudeScript = process.env.CLAUDE_PATH || '/data/data/com.termux/files/home/claude';
+      // 直接调用 Claude Code CLI（不使用 wrapper 脚本）
+      const claudePath = process.env.CLAUDE_CLI_PATH || '/data/data/com.termux/files/usr/bin/claude';
       
       // 构建命令参数
       const args = [
-        claudeScript,
+        claudePath,
         '--print',
         '--verbose',
         '--dangerously-skip-permissions',
-        '--output-format', 'stream-json'
+        '--output-format', 'stream-json',
+        '--model', this.options.model || 'mimo-v2-pro'
       ];
       
       // 添加模式参数
       if (this.options.mode) {
         args.push('--permission-mode', this.options.mode);
-      }
-      
-      // 添加模型参数
-      if (this.options.model) {
-        args.push('--model', this.options.model);
       }
       
       // 添加努力程度参数
@@ -74,13 +71,16 @@ class ClaudeCodeAgent extends Agent {
       // 添加用户消息
       args.push('-p', message);
 
-      const proc = spawn('bash', args, {
+      const proc = spawn('node', args, {
         cwd: this.workdir,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
           ...process.env,
           PATH: '/data/data/com.termux/files/usr/bin:' + (process.env.PATH || '/usr/local/bin:/usr/bin:/bin'),
-          HOME: process.env.HOME || '/data/data/com.termux/files/home'
+          HOME: process.env.HOME || '/data/data/com.termux/files/home',
+          // MiMo API 配置（从 wrapper 脚本提取）
+          ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || 'tp-c55lkpn7dilt03avbcjynmbu4aupyhum322cnqdusldc9b60',
+          ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL || 'https://token-plan-cn.xiaomimimo.com/anthropic'
         }
       });
 
