@@ -10,6 +10,7 @@ import FileViewer from './components/FileViewer'
 import SearchPanel from './components/SearchPanel'
 import { useToast } from './components/Toast'
 import { useTheme } from './components/ThemeContext'
+import Login from './components/Login'
 
 const API_BASE = '/api'
 
@@ -34,6 +35,8 @@ const IconPanel = () => (
 )
 
 export default function App() {
+  const [accessToken, setAccessToken] = useState(() => localStorage.getItem('access_token') || '')
+  const [authChecked, setAuthChecked] = useState(false)
   const [sessions, setSessions] = useState([])
   const [activeSession, setActiveSession] = useState(null)
   const [sessionOptions, setSessionOptions] = useState({})
@@ -51,6 +54,33 @@ export default function App() {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+
+  // 全局 fetch 拦截，自动加 token
+  useEffect(() => {
+    const origFetch = window.fetch
+    window.fetch = (url, opts = {}) => {
+      const headers = { ...opts.headers }
+      const token = localStorage.getItem('access_token')
+      if (token) headers['x-access-token'] = token
+      return origFetch(url, { ...opts, headers })
+    }
+    return () => { window.fetch = origFetch }
+  }, [])
+
+  // 检查 token 有效性
+  useEffect(() => {
+    const token = localStorage.getItem('access_token')
+    if (!token) { setAuthChecked(true); return }
+    fetch('/api/auth/check', { headers: { 'x-access-token': token } })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.valid) { localStorage.removeItem('access_token'); setAccessToken('') }
+        setAuthChecked(true)
+      })
+      .catch(() => setAuthChecked(true))
+  }, [])
+
+  const handleLogin = (token) => { setAccessToken(token) }
 
   useEffect(() => {
     const handleResize = () => {
@@ -237,6 +267,10 @@ export default function App() {
   const currentOptions = activeSession ? sessionOptions[activeSession] || {} : {}
   const currentSession = sessions.find(s => s.id === activeSession)
 
+  if (!authChecked) return null
+  const currentToken = localStorage.getItem('access_token') || accessToken
+  if (!currentToken) return <Login onLogin={handleLogin} />
+
   return (
     <div className="h-screen flex overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
       {/* Mobile overlay */}
@@ -391,3 +425,4 @@ export default function App() {
     </div>
   )
 }
+

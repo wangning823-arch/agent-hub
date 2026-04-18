@@ -46,6 +46,22 @@ app.use(express.static(DIST_PATH));
 // 静态文件服务（上传的文件）
 app.use('/uploads', express.static(UPLOAD_DIR));
 
+// Token 验证
+const TOKEN_FILE = path.join(__dirname, '..', '.token');
+let ACCESS_TOKEN = '';
+try { ACCESS_TOKEN = fs.readFileSync(TOKEN_FILE, 'utf-8').trim(); } catch(e) {}
+
+function tokenAuth(req, res, next) {
+  // 允许静态资源、健康检查、token验证接口
+  if (req.path === '/' || req.path.startsWith('/assets') || req.path === '/api/health' || req.path === '/api/auth/check') {
+    return next();
+  }
+  const token = req.headers['x-access-token'] || req.query.token;
+  if (!ACCESS_TOKEN || token === ACCESS_TOKEN) return next();
+  res.status(401).json({ error: 'unauthorized' });
+}
+app.use(tokenAuth);
+
 // CORS
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -1249,6 +1265,15 @@ async function handleCommand(sessionId, command, params = {}) {
 }
 
 wss.on('connection', (ws, req) => {
+  // WebSocket token 验证
+  if (ACCESS_TOKEN) {
+    const url = new URL(req.url, 'http://localhost');
+    const token = url.searchParams.get('token');
+    if (token !== ACCESS_TOKEN) {
+      ws.close(4001, 'unauthorized');
+      return;
+    }
+  }
   const url = new URL(req.url, `http://${req.headers.host}`);
   const sessionId = url.searchParams.get('session');
 
@@ -1287,6 +1312,12 @@ wss.on('connection', (ws, req) => {
     console.log(`WebSocket断开: session=${sessionId}`);
     sessionManager.removeClient(sessionId, ws);
   });
+});
+
+// Token 验证接口
+app.get('/api/auth/check', (req, res) => {
+  const token = req.headers['x-access-token'] || req.query.token;
+  res.json({ valid: !ACCESS_TOKEN || token === ACCESS_TOKEN });
 });
 
 // SPA fallback
