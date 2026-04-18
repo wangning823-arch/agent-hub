@@ -11,13 +11,30 @@
         "model": null,
         "effort": "medium",
         "createdAt": "2026-04-18T05:56:50.632Z",
-        "updatedAt": "2026-04-18T06:59:12.536Z",
-        "lastSessionId": "6e9d5008-1d74-461e-b7d5-c8760e687a7c",
-        "lastUsedAt": "2026-04-18T06:59:12.536Z"
+        "updatedAt": "2026-04-18T08:43:49.100Z",
+        "lastSessionId": "9a2493ff-48b8-4ea9-9cae-da854e7a7f39",
+        "lastUsedAt": "2026-04-18T08:43:49.100Z"
+      }
+    ],
+    [
+      "project_1776502460135_59xhvbriu",
+      {
+        "id": "project_1776502460135_59xhvbriu",
+        "name": "Hello-World",
+        "workdir": "/data/data/com.termux/files/home/projects/Hello-World",
+        "agentType": "claude-code",
+        "mode": "auto",
+        "model": null,
+        "effort": "medium",
+        "createdAt": "2026-04-18T08:54:20.136Z",
+        "updatedAt": "2026-04-18T08:57:40.204Z",
+        "lastSessionId": "996bce15-b19e-464c-873d-326cfdffb5e2",
+        "lastUsedAt": "2026-04-18T08:57:40.203Z"
       }
     ]
   ],
   "recentProjects": [
+    "project_1776502460135_59xhvbriu",
     "project_1776491810632_kvzysc2sg"
   ]
 }

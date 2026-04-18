@@ -597,7 +597,7 @@ app.post('/api/projects/import-git', async (req, res) => {
       });
     }
 
-    // Clone 仓库
+    // Clone 仓库（异步，避免阻塞服务器）
     console.log(`正在 clone ${cloneUrl} 到 ${workdir}...`);
 
     // 确保 cloneUrl 格式正确（如果没有协议，加 https://）
@@ -610,9 +610,18 @@ app.post('/api/projects/import-git', async (req, res) => {
     }
 
     try {
-      execSync(`git clone "${cloneUrl}" "${workdir}"`, {
-        timeout: 120000, // 2分钟超时
-        stdio: 'pipe'
+      const { exec } = require('child_process');
+      await new Promise((resolve, reject) => {
+        exec(`git clone --depth 1 "${cloneUrl}" "${workdir}"`, {
+          timeout: 300000, // 5分钟超时
+          maxBuffer: 1024 * 1024
+        }, (error, stdout, stderr) => {
+          if (error) {
+            reject(new Error(stderr || error.message));
+          } else {
+            resolve(stdout);
+          }
+        });
       });
     } catch (cloneError) {
       // 清理失败的 clone 目录
