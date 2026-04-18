@@ -17,7 +17,7 @@ class CodexAgent extends Agent {
       this.process = spawn('codex', ['--acp', '--stdio'], {
         cwd: this.workdir,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, PATH: process.env.PATH || '/data/data/com.termux/files/usr/bin:/usr/local/bin:/usr/bin:/bin' }
+        env: { ...process.env }
       });
 
       this.process.stdout.on('data', (data) => {
