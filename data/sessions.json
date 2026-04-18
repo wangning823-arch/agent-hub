@@ -9,50 +9,6 @@
         "role": "assistant",
         "content": {
           "type": "tool_use",
-          "content": "{\n  \"command\": \"ls -la /data/data/com.termux/files/home/scix-oncopilot/components/ 2>/dev/null || echo \\\"No components/ directory\\\"\",\n  \"description\": \"List components directory\"\n}",
-          "metadata": {
-            "tool": "Bash"
-          }
-        },
-        "time": "2026-04-18T05:57:47.688Z"
-      },
-      {
-        "role": "assistant",
-        "content": {
-          "type": "tool_use",
-          "content": "{\n  \"file_path\": \"/data/data/com.termux/files/home/scix-oncopilot/package.json\"\n}",
-          "metadata": {
-            "tool": "Read"
-          }
-        },
-        "time": "2026-04-18T05:57:47.862Z"
-      },
-      {
-        "role": "assistant",
-        "content": {
-          "type": "tool_use",
-          "content": "{\n  \"file_path\": \"/data/data/com.termux/files/home/scix-oncopilot/next.config.js\"\n}",
-          "metadata": {
-            "tool": "Read"
-          }
-        },
-        "time": "2026-04-18T05:57:48.120Z"
-      },
-      {
-        "role": "assistant",
-        "content": {
-          "type": "tool_use",
-          "content": "{\n  \"pattern\": \"*.config.*\",\n  \"path\": \"/data/data/com.termux/files/home/scix-oncopilot\"\n}",
-          "metadata": {
-            "tool": "Glob"
-          }
-        },
-        "time": "2026-04-18T05:57:48.355Z"
-      },
-      {
-        "role": "assistant",
-        "content": {
-          "type": "tool_use",
           "content": "{\n  \"pattern\": \"*.ts\",\n  \"path\": \"/data/data/com.termux/files/home/scix-oncopilot\"\n}",
           "metadata": {
             "tool": "Glob"
@@ -541,6 +497,42 @@
           "content": "Agent已停止"
         },
         "time": "2026-04-18T10:55:09.234Z"
+      },
+      {
+        "role": "user",
+        "content": "/compact",
+        "time": "2026-04-18T11:09:38.545Z"
+      },
+      {
+        "role": "assistant",
+        "content": {
+          "type": "status",
+          "content": "🤔 思考中..."
+        },
+        "time": "2026-04-18T11:09:38.545Z"
+      },
+      {
+        "role": "assistant",
+        "content": {
+          "type": "token_usage",
+          "content": {
+            "inputTokens": 0,
+            "outputTokens": 0,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "cost": 0.17496399999999998,
+            "model": "mimo-v2-pro"
+          }
+        },
+        "time": "2026-04-18T11:10:05.583Z"
+      },
+      {
+        "role": "assistant",
+        "content": {
+          "type": "status",
+          "content": "Agent已停止"
+        },
+        "time": "2026-04-18T11:17:41.130Z"
       }
     ],
     "createdAt": "2026-04-18T05:57:06.813Z",
@@ -2658,50 +2650,6 @@
         "role": "assistant",
         "content": {
           "type": "tool_use",
-          "content": "{\n  \"command\": \"ls -la /data/data/com.termux/files/home/scix-oncopilot/components/ 2>/dev/null || echo \\\"No components/ directory\\\"\",\n  \"description\": \"List components directory\"\n}",
-          "metadata": {
-            "tool": "Bash"
-          }
-        },
-        "time": "2026-04-18T05:57:47.688Z"
-      },
-      {
-        "role": "assistant",
-        "content": {
-          "type": "tool_use",
-          "content": "{\n  \"file_path\": \"/data/data/com.termux/files/home/scix-oncopilot/package.json\"\n}",
-          "metadata": {
-            "tool": "Read"
-          }
-        },
-        "time": "2026-04-18T05:57:47.862Z"
-      },
-      {
-        "role": "assistant",
-        "content": {
-          "type": "tool_use",
-          "content": "{\n  \"file_path\": \"/data/data/com.termux/files/home/scix-oncopilot/next.config.js\"\n}",
-          "metadata": {
-            "tool": "Read"
-          }
-        },
-        "time": "2026-04-18T05:57:48.120Z"
-      },
-      {
-        "role": "assistant",
-        "content": {
-          "type": "tool_use",
-          "content": "{\n  \"pattern\": \"*.config.*\",\n  \"path\": \"/data/data/com.termux/files/home/scix-oncopilot\"\n}",
-          "metadata": {
-            "tool": "Glob"
-          }
-        },
-        "time": "2026-04-18T05:57:48.355Z"
-      },
-      {
-        "role": "assistant",
-        "content": {
-          "type": "tool_use",
           "content": "{\n  \"pattern\": \"*.ts\",\n  \"path\": \"/data/data/com.termux/files/home/scix-oncopilot\"\n}",
           "metadata": {
             "tool": "Glob"
@@ -3190,6 +3138,42 @@
           "content": "Agent已停止"
         },
         "time": "2026-04-18T10:55:09.234Z"
+      },
+      {
+        "role": "user",
+        "content": "/compact",
+        "time": "2026-04-18T11:09:38.545Z"
+      },
+      {
+        "role": "assistant",
+        "content": {
+          "type": "status",
+          "content": "🤔 思考中..."
+        },
+        "time": "2026-04-18T11:09:38.545Z"
+      },
+      {
+        "role": "assistant",
+        "content": {
+          "type": "token_usage",
+          "content": {
+            "inputTokens": 0,
+            "outputTokens": 0,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "cost": 0.17496399999999998,
+            "model": "mimo-v2-pro"
+          }
+        },
+        "time": "2026-04-18T11:10:05.583Z"
+      },
+      {
+        "role": "assistant",
+        "content": {
+          "type": "status",
+          "content": "Agent已停止"
+        },
+        "time": "2026-04-18T11:17:41.130Z"
       }
     ],
     "createdAt": "2026-04-18T10:46:31.638Z",
@@ -4762,25 +4746,6 @@
       }
     ],
     "createdAt": "2026-04-18T11:08:14.609Z",
-    "options": {
-      "mode": "auto",
-      "model": null,
-      "effort": "medium",
-      "conversationId": null
-    },
-    "isActive": true,
-    "conversationId": null,
-    "title": null,
-    "isPinned": false,
-    "isArchived": false
-  },
-  {
-    "id": "db838ec2-1c46-4dcd-83f3-c02c50d98563",
-    "workdir": "/data/data/com.termux/files/home/scix-oncopilot",
-    "agentType": "claude-code",
-    "agentName": "claude-code",
-    "messages": [],
-    "createdAt": "2026-04-18T11:08:22.185Z",
     "options": {
       "mode": "auto",
       "model": null,

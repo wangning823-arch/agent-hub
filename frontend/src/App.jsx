@@ -124,9 +124,13 @@ export default function App() {
   }
 
   const removeSession = async (sessionId) => {
-    if (!confirm('确定要删除这个会话吗？')) return
     try {
-      await fetch(`${API_BASE}/sessions/${sessionId}`, { method: 'DELETE' })
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}`, { method: 'DELETE' })
+      const result = await res.json()
+      if (!result.success) {
+        toast.error('删除失败')
+        return
+      }
       setSessions(prev => prev.filter(s => s.id !== sessionId))
       setSessionOptions(prev => {
         const next = { ...prev }
@@ -137,6 +141,7 @@ export default function App() {
         const remaining = sessions.filter(s => s.id !== sessionId)
         setActiveSession(remaining.length > 0 ? remaining[0].id : null)
       }
+      toast.success('会话已删除')
     } catch (error) {
       toast.error('删除会话失败: ' + error.message)
     }

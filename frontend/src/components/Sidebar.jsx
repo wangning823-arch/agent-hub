@@ -241,10 +241,10 @@ export default function Sidebar({
                     </div>
                     
                     {/* Action buttons */}
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                    <div className="flex items-center gap-0.5 flex-shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={(e) => { e.stopPropagation(); onPinSession(session.id) }}
-                        className="btn-icon w-7 h-7"
+                        className="btn-icon w-6 h-6"
                         style={{ color: session.isPinned ? 'var(--warning)' : 'var(--text-muted)' }}
                         title={session.isPinned ? '取消置顶' : '置顶'}
                       >
@@ -252,29 +252,21 @@ export default function Sidebar({
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); setEditingSession(session.id); setEditTitle(session.title || getDisplayName(session.workdir)) }}
-                        className="btn-icon w-7 h-7"
+                        className="btn-icon w-6 h-6"
                         title="重命名"
                       >
                         <IconEdit />
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); onArchiveSession(session.id) }}
-                        className="btn-icon w-7 h-7"
+                        className="btn-icon w-6 h-6"
                         title={session.isArchived ? '取消归档' : '归档'}
                       >
                         <IconArchive />
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); setEditingTags(editingTags === session.id ? null : session.id) }}
-                        className="btn-icon w-7 h-7"
-                        style={{ color: session.tags?.length > 0 ? 'var(--accent-primary)' : 'var(--text-muted)' }}
-                        title="标签"
-                      >
-                        <IconTag />
-                      </button>
-                      <button
                         onClick={(e) => { e.stopPropagation(); onCloseSession(session.id) }}
-                        className="btn-icon w-7 h-7"
+                        className="btn-icon w-6 h-6"
                         style={{ color: 'var(--text-muted)' }}
                         title="删除"
                         onMouseEnter={(e) => e.currentTarget.style.color = 'var(--error)'}
