@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const path = require('path');
 const ClaudeCodeAgent = require('./agents/claude-code');
+const ClaudeApiAgent = require('./agents/claude-api');
 const OpenCodeAgent = require('./agents/opencode');
 const CodexAgent = require('./agents/codex');
 
@@ -44,10 +45,11 @@ class Session {
 }
 
 class SessionManager {
-  constructor() {
+  constructor(tokenTracker = null) {
     this.sessions = new Map();
     this.wsClients = new Map(); // sessionId -> Set<WebSocket>
     this.sessionsFile = path.join(__dirname, '..', 'data', 'sessions.json');
+    this.tokenTracker = tokenTracker;
     this.loadData();
   }
 
@@ -126,9 +128,13 @@ class SessionManager {
         agentName: s.agent?.name || s.agentName,
         messages: s.messages.slice(-50), // 只保留最近50条消息
         createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
+        updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
         options: s.options || {},
         isActive: s.isActive || false,
-        conversationId: s.conversationId || s.agent?.conversationId || null
+        conversationId: s.conversationId || s.agent?.conversationId || null,
+        title: s.title || null,
+        isPinned: s.isPinned || false,
+        isArchived: s.isArchived || false
       }));
 
       fs.writeFileSync(this.sessionsFile, JSON.stringify(sessionsData, null, 2));
@@ -163,6 +169,9 @@ class SessionManager {
       case 'claude-code':
         agent = new ClaudeCodeAgent(absoluteWorkdir, options);
         break;
+      case 'claude-api':
+        agent = new ClaudeApiAgent(absoluteWorkdir, options);
+        break;
       case 'opencode':
         agent = new OpenCodeAgent(absoluteWorkdir, options);
         break;
@@ -172,6 +181,10 @@ class SessionManager {
       default:
         throw new Error(`未知的Agent类型: ${agentType}`);
     }
+
+    // 保存 agentType 以便持久化
+    const session = new Session(id, agent, absoluteWorkdir, options);
+    session.agentType = agentType;
 
     // 监听Agent消息
     agent.on('message', (msg) => {
@@ -189,7 +202,6 @@ class SessionManager {
     // 启动Agent
     await agent.start();
 
-    const session = new Session(id, agent, absoluteWorkdir, options);
     this.sessions.set(id, session);
 
     // 保存会话数据
@@ -244,6 +256,18 @@ class SessionManager {
     switch (agentType) {
       case 'claude-code':
         agent = new ClaudeCodeAgent(session.workdir, options);
+        break;
+      case 'claude-api':
+        agent = new ClaudeApiAgent(session.workdir, options);
+        // 恢复消息历史
+        if (session.messages && session.messages.length > 0) {
+          agent.messages = session.messages
+            .filter(m => m.role === 'user' || m.role === 'assistant')
+            .map(m => ({
+              role: m.role,
+              content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+            }));
+        }
         break;
       case 'opencode':
         agent = new OpenCodeAgent(session.workdir, options);
@@ -305,10 +329,39 @@ class SessionManager {
         session.conversationId = message.conversationId;
       }
       
-      // 如果是token使用统计，记录它
-      if (message.type === 'token_usage' && message.content) {
-        // 这里可以调用tokenTracker.recordUsage
-        // 但需要传入tokenTracker实例，暂时通过前端记录
+      // 如果是token使用统计，自动记录到后端
+      if (message.type === 'token_usage' && message.content && this.tokenTracker) {
+        const usage = message.content;
+        this.tokenTracker.recordUsage(sessionId, {
+          input_tokens: usage.inputTokens || 0,
+          output_tokens: usage.outputTokens || 0,
+          cache_read_input_tokens: usage.cacheReadTokens || 0,
+          cache_creation_input_tokens: usage.cacheWriteTokens || 0,
+          cost_usd: usage.cost || 0
+        });
+      }
+
+      // 自动生成会话标题（首次 assistant 回复后）
+      const assistantMessages = session.messages.filter(m => m.role === 'assistant' && m.content && m.content.type !== 'status' && m.content.type !== 'token_usage' && m.content.type !== 'conversation_id');
+      if (assistantMessages.length === 1 && !session.title && message.type === 'text') {
+        const userMsg = session.messages.find(m => m.role === 'user');
+        if (userMsg) {
+          const { generateTitle } = require('./claude-service');
+          const userContent = typeof userMsg.content === 'string' ? userMsg.content : JSON.stringify(userMsg.content);
+          const asstContent = typeof message.content === 'string' ? message.content : '';
+          generateTitle(userContent, asstContent)
+            .then(result => {
+              // 只在标题仍为空时设置（防止竞态）
+              if (!session.title) {
+                session.title = result.title;
+                session.updatedAt = new Date();
+                this.saveData();
+                // 通知前端标题变更
+                this.broadcast(sessionId, { type: 'title_update', content: result.title });
+              }
+            })
+            .catch(err => console.error('[AutoTitle] 生成失败:', err.message));
+        }
       }
       
       // 定期保存（每10条消息保存一次）

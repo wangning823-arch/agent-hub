@@ -18,10 +18,10 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3001;
-const sessionManager = new SessionManager();
+const tokenTracker = new TokenTracker();
+const sessionManager = new SessionManager(tokenTracker);
 const permissionManager = new PermissionManager();
 const projectManager = new ProjectManager();
-const tokenTracker = new TokenTracker();
 
 // 中间件
 app.use(express.json({ limit: '50mb' })); // 增加limit以支持base64图片
@@ -49,6 +49,7 @@ app.get('/api/agents', (req, res) => {
   res.json({
     agents: [
       { id: 'claude-code', name: 'Claude Code', available: true },
+      { id: 'claude-api', name: 'Claude API', available: true },
       { id: 'opencode', name: 'OpenCode', available: true },
       { id: 'codex', name: 'Codex', available: true }
     ]
@@ -798,6 +799,73 @@ app.get('/api/sessions/:id/context', (req, res) => {
     isActive: session.isActive,
     createdAt: session.createdAt
   });
+});
+
+// ============ Claude 服务 API ============
+
+// 总结会话
+app.post('/api/sessions/:id/summarize', async (req, res) => {
+  try {
+    const session = sessionManager.getSession(req.params.id);
+    if (!session) {
+      return res.status(404).json({ error: '会话不存在' });
+    }
+
+    const { summarizeSession } = require('./claude-service');
+    const result = await summarizeSession(session.messages);
+
+    // 如果请求 compact，用摘要替换旧消息
+    if (req.body.compact) {
+      const keepLast = Math.min(10, session.messages.length);
+      const recentMessages = session.messages.slice(-keepLast);
+      session.messages = [
+        { role: 'user', content: `[之前对话的摘要]\n${result.summary}`, time: new Date() },
+        { role: 'assistant', content: '已了解之前的对话内容，可以继续交流。', time: new Date() },
+        ...recentMessages
+      ];
+      session.updatedAt = new Date();
+      sessionManager.saveData();
+      result.compacted = true;
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('总结会话失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 代码审查
+app.post('/api/sessions/:id/review', async (req, res) => {
+  try {
+    const session = sessionManager.getSession(req.params.id);
+    if (!session) {
+      return res.status(404).json({ error: '会话不存在' });
+    }
+
+    const { execSync } = require('child_process');
+    let diff;
+    try {
+      diff = execSync('git diff', {
+        cwd: session.workdir,
+        encoding: 'utf8',
+        maxBuffer: 5 * 1024 * 1024
+      });
+    } catch (e) {
+      return res.json({ review: '无法获取 git diff，可能不在 git 仓库中或没有未提交的更改。' });
+    }
+
+    if (!diff || !diff.trim()) {
+      return res.json({ review: '没有检测到代码变更，无需审查。' });
+    }
+
+    const { reviewCode } = require('./claude-service');
+    const result = await reviewCode(diff, session.workdir);
+    res.json(result);
+  } catch (error) {
+    console.error('代码审查失败:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // ============ 文件上传 API ============
