@@ -41,10 +41,8 @@ export default function App() {
       if (!mobile) {
         setLeftSidebarOpen(true)
         setRightSidebarOpen(true)
-      } else {
-        setLeftSidebarOpen(false)
-        setRightSidebarOpen(false)
       }
+      // 移动端不自动关闭侧边栏（避免键盘弹出时关闭）
     }
 
     window.addEventListener('resize', handleResize)
@@ -414,6 +412,7 @@ export default function App() {
           agents={agents}
           onCreate={createSession}
           onClose={() => setShowNewModal(false)}
+          currentWorkdir={currentSession?.workdir}
         />
       )}
 

@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react'
 
 export function useNotification() {
-  const permissionRef = useRef(Notification.permission)
+  const hasNotification = typeof Notification !== 'undefined' && 'Notification' in window
+  const permissionRef = useRef(hasNotification ? Notification.permission : 'denied')
 
   // 请求通知权限
   const requestPermission = async () => {
-    if (!('Notification' in window)) {
+    if (!hasNotification) {
       console.log('此浏览器不支持通知')
       return false
     }
@@ -25,7 +26,7 @@ export function useNotification() {
 
   // 发送通知
   const sendNotification = (title, options = {}) => {
-    if (!('Notification' in window)) return
+    if (!hasNotification) return
     if (Notification.permission !== 'granted') return
 
     const notification = new Notification(title, {
