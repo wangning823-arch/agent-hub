@@ -337,40 +337,6 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
     }
   }
 
-  // 重新生成回复
-  const handleRegenerate = async () => {
-    if (messages.length < 2) return
-    
-    try {
-      // 删除最后两条消息（用户消息+助手回复）
-      const response = await fetch(`${API_BASE}/sessions/${sessionId}/delete-last`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count: 2 })
-      })
-      const data = await response.json()
-      if (data.success) {
-        // 从本地移除最后两条
-        setMessages(prev => prev.slice(0, -2))
-        // 获取倒数第二条消息（用户消息）并重新发送
-        const lastUserMessage = messages[messages.length - 2]
-        if (lastUserMessage && lastUserMessage.type === 'user') {
-          setTimeout(() => {
-            if (wsRef.current && wsRef.current.readyState === 1) {
-              setMessages(prev => [...prev, { type: 'user', content: lastUserMessage.content }])
-              wsRef.current.send(JSON.stringify({
-                type: 'user_input',
-                content: lastUserMessage.content
-              }))
-            }
-          }, 100)
-        }
-      }
-    } catch (error) {
-      console.error('重新生成失败:', error)
-      toast.error('重新生成失败: ' + error.message)
-    }
-  }
 
   // 处理剪切板粘贴
   const handlePaste = useCallback(async (e) => {
@@ -725,15 +691,6 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
             </div>
           </div>
         </div>
-
-        {/* Regenerate */}
-        {messages.length >= 2 && messages[messages.length - 1]?.type !== 'user' && (
-          <div className="px-4 py-2 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-            <button onClick={handleRegenerate} className="btn-pill">
-              🔄 重新生成回复
-            </button>
-          </div>
-        )}
 
         {/* Quote preview */}
         {quoteReply && (
