@@ -101,6 +101,7 @@ export default function Sidebar({
   // 排序会话：置顶优先，然后按更新时间
   const sortedSessions = [...sessions]
     .filter(s => {
+      if (!s) return false
       // 归档筛选
       if (showArchived ? !s.isArchived : s.isArchived) return false
       // 标签筛选
