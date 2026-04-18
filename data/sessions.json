@@ -1,0 +1,161 @@
+[
+  {
+    "id": "a690c63e-a07b-4fe9-8c20-9eae22e5881a",
+    "workdir": "/data/data/com.termux/files/home/agent-hub",
+    "agentType": "claude-code",
+    "agentName": "claude-code",
+    "messages": [],
+    "createdAt": "2026-04-18T00:37:08.669Z",
+    "options": {
+      "mode": "auto",
+      "model": null,
+      "effort": "medium"
+    },
+    "isActive": false,
+    "conversationId": null
+  },
+  {
+    "id": "c9dd0c96-0515-448b-9710-68ab09a739ec",
+    "workdir": "/data/data/com.termux/files/home/agent-hub",
+    "agentType": "claude-code",
+    "agentName": "claude-code",
+    "messages": [],
+    "createdAt": "2026-04-18T00:37:15.235Z",
+    "options": {
+      "mode": "auto",
+      "model": null,
+      "effort": "medium"
+    },
+    "isActive": false,
+    "conversationId": null
+  },
+  {
+    "id": "9c0b14bc-93cf-46fe-87ea-c4f674a92057",
+    "workdir": "/data/data/com.termux/files/home/agent-hub",
+    "agentType": "claude-code",
+    "agentName": "claude-code",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": {
+          "type": "status",
+          "content": "⚙️ 配置已更新: effort"
+        },
+        "time": "2026-04-18T00:44:43.889Z"
+      }
+    ],
+    "createdAt": "2026-04-18T00:44:35.776Z",
+    "options": {
+      "mode": "auto",
+      "model": null,
+      "effort": "high"
+    },
+    "isActive": false,
+    "conversationId": null
+  },
+  {
+    "id": "2a883415-1c80-496a-9f41-faa7f6d01653",
+    "workdir": "/data/data/com.termux/files/home/agent-hub",
+    "agentType": "claude-code",
+    "agentName": "claude-code",
+    "messages": [],
+    "createdAt": "2026-04-18T00:49:33.954Z",
+    "options": {
+      "mode": "auto",
+      "model": null,
+      "effort": "medium"
+    },
+    "isActive": false,
+    "conversationId": null
+  },
+  {
+    "id": "1b0792bc-3a92-4b33-b178-ffff04c63aef",
+    "workdir": "/data/data/com.termux/files/home/agent-hub",
+    "agentType": "claude-code",
+    "agentName": "claude-code",
+    "messages": [],
+    "createdAt": "2026-04-18T00:50:02.099Z",
+    "options": {
+      "mode": "auto",
+      "model": null,
+      "effort": "medium"
+    },
+    "isActive": false,
+    "conversationId": null
+  },
+  {
+    "id": "724e39bd-26ea-4abc-b926-4c92871f2b35",
+    "workdir": "/data/data/com.termux/files/home/agent-hub",
+    "agentType": "claude-code",
+    "agentName": "claude-code",
+    "messages": [],
+    "createdAt": "2026-04-18T00:57:53.474Z",
+    "options": {
+      "mode": "auto",
+      "model": null,
+      "effort": "medium"
+    },
+    "isActive": false,
+    "conversationId": null
+  },
+  {
+    "id": "d2d4c128-558d-4870-9b89-badbe83ddb50",
+    "workdir": "/data/data/com.termux/files/home/agent-hub",
+    "agentType": "claude-code",
+    "agentName": "claude-code",
+    "messages": [],
+    "createdAt": "2026-04-18T01:00:09.239Z",
+    "options": {
+      "mode": "auto",
+      "model": null,
+      "effort": "medium"
+    },
+    "isActive": false,
+    "conversationId": null
+  },
+  {
+    "id": "d9e88b4b-7827-4cc6-8be2-7059d8db131b",
+    "workdir": "/data/data/com.termux/files/home/agent-hub",
+    "agentType": "claude-code",
+    "agentName": "claude-code",
+    "messages": [],
+    "createdAt": "2026-04-18T01:03:33.131Z",
+    "options": {
+      "mode": "auto",
+      "model": null,
+      "effort": "medium"
+    },
+    "isActive": false,
+    "conversationId": null
+  },
+  {
+    "id": "419808a6-79be-41c6-a179-1c945074f094",
+    "workdir": "/data/data/com.termux/files/home/agent-hub",
+    "agentType": "claude-code",
+    "agentName": "claude-code",
+    "messages": [],
+    "createdAt": "2026-04-18T01:08:19.652Z",
+    "options": {
+      "mode": "auto",
+      "model": null,
+      "effort": "medium"
+    },
+    "isActive": false,
+    "conversationId": null
+  },
+  {
+    "id": "27f21ab9-7971-4710-88dc-0afcf7c917bd",
+    "workdir": "/data/data/com.termux/files/home/agent-hub",
+    "agentType": "claude-code",
+    "agentName": "claude-code",
+    "messages": [],
+    "createdAt": "2026-04-18T01:11:56.522Z",
+    "options": {
+      "mode": "auto",
+      "model": null,
+      "effort": "medium"
+    },
+    "isActive": true,
+    "conversationId": null
+  }
+]

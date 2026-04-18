@@ -1,0 +1,23 @@
+{
+  "projects": [
+    [
+      "project_1776472613947_orv7j02fx",
+      {
+        "id": "project_1776472613947_orv7j02fx",
+        "name": "测试项目",
+        "workdir": "~/agent-hub",
+        "agentType": "claude-code",
+        "mode": "auto",
+        "model": null,
+        "effort": "medium",
+        "createdAt": "2026-04-18T00:36:53.947Z",
+        "updatedAt": "2026-04-18T01:11:56.524Z",
+        "lastSessionId": "27f21ab9-7971-4710-88dc-0afcf7c917bd",
+        "lastUsedAt": "2026-04-18T01:11:56.523Z"
+      }
+    ]
+  ],
+  "recentProjects": [
+    "project_1776472613947_orv7j02fx"
+  ]
+}
