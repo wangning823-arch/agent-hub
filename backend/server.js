@@ -7,7 +7,7 @@ const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const fs = require('fs');
-const { execSync, exec } = require('child_process');
+const { execFileSync, exec } = require('child_process');
 const SessionManager = require('./sessions');
 const PermissionManager = require('./permissions');
 const ProjectManager = require('./projects');
@@ -594,7 +594,7 @@ app.post('/api/projects/import-git', async (req, res) => {
     // 在 ~/projects 目录下 clone
     const fs = require('fs');
     const path = require('path');
-    const { execSync } = require('child_process');
+    const { execFileSync } = require('child_process');
 
     const baseDir = path.join(os.homedir(), 'projects');
     if (!fs.existsSync(baseDir)) {
@@ -861,10 +861,10 @@ app.post('/api/sessions/:id/review', async (req, res) => {
       return res.status(404).json({ error: '会话不存在' });
     }
 
-    const { execSync } = require('child_process');
+    const { execFileSync } = require('child_process');
     let diff;
     try {
-      diff = execSync('git', ['diff'], {
+      diff = execFileSync('git', ['diff'], {
         cwd: session.workdir,
         encoding: 'utf8',
         maxBuffer: 5 * 1024 * 1024
@@ -937,12 +937,12 @@ app.get('/api/git/status', async (req, res) => {
   }
 
   try {
-    const { execSync } = require('child_process');
+    const { execFileSync } = require('child_process');
 
     // 获取当前分支
     let branch = 'main';
     try {
-      branch = execSync('git', ['branch', '--show-current'], { cwd: workdir, encoding: 'utf8' }).trim();
+      branch = execFileSync('git', ['branch', '--show-current'], { cwd: workdir, encoding: 'utf8' }).trim();
     } catch (e) {}
 
     // 获取修改的文件
@@ -951,7 +951,7 @@ app.get('/api/git/status', async (req, res) => {
     let untracked = [];
 
     try {
-      const status = execSync('git', ['status', '--porcelain'], { cwd: workdir, encoding: 'utf8' });
+      const status = execFileSync('git', ['status', '--porcelain'], { cwd: workdir, encoding: 'utf8' });
       status.split('\n').filter(Boolean).forEach(line => {
         const statusChar = line.slice(0, 2);
         const file = line.slice(3);
@@ -995,14 +995,14 @@ app.post('/api/git/command', async (req, res) => {
   }
 
   try {
-    const output = execSync('git', [subCmd, ...parts.slice(1)], {
+    const output = execFileSync('git', [subCmd, ...parts.slice(1)], {
       cwd: workdir,
       encoding: 'utf8',
       maxBuffer: 1024 * 1024
     });
     res.json({ output: output.trim() });
   } catch (error) {
-    res.status(500).json({ error: error.message, output: error.stderr || error.message });
+    res.status(500).json({ error: error.message, output: (error.stderr ? error.stderr.toString() : error.message) });
   }
 });
 
@@ -1016,13 +1016,13 @@ app.post('/api/git/commit', async (req, res) => {
   try {
     // 暂存文件 - 使用execFile避免shell注入
     if (files && files.length > 0) {
-      execSync('git', ['add', ...files], { cwd: workdir });
+      execFileSync('git', ['add', ...files], { cwd: workdir });
     } else {
-      execSync('git', ['add', '-A'], { cwd: workdir });
+      execFileSync('git', ['add', '-A'], { cwd: workdir });
     }
 
     // 提交 - 使用execFile避免shell注入
-    const output = execSync('git', ['commit', '-m', message], {
+    const output = execFileSync('git', ['commit', '-m', message], {
       cwd: workdir,
       encoding: 'utf8'
     });
