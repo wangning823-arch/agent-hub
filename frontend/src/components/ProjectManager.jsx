@@ -11,6 +11,9 @@ export default function ProjectManager({ onSelectProject, onClose }) {
   const [searchResults, setSearchResults] = useState([])
   const [showCreateForm, setShowCreateForm] = useState(false)
   const toast = useToast()
+  const [importing, setImporting] = useState(false)
+  const [createMode, setCreateMode] = useState('manual') // 'manual' | 'git'
+  const [gitUrl, setGitUrl] = useState('')
   const [newProject, setNewProject] = useState({
     name: '',
     workdir: '',
@@ -90,6 +93,55 @@ export default function ProjectManager({ onSelectProject, onClose }) {
     } catch (error) {
       toast.error('创建项目失败: ' + error.message)
     }
+  }
+
+  // 从 Git URL 导入项目
+  const importFromGit = async () => {
+    if (!gitUrl.trim()) {
+      toast.warning('请输入 Git 仓库地址')
+      return
+    }
+    setImporting(true)
+    try {
+      const result = await fetch(`${API_BASE}/projects/import-git`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gitUrl: gitUrl.trim(),
+          agentType: newProject.agentType,
+          mode: newProject.mode,
+          model: newProject.model,
+          effort: newProject.effort
+        })
+      }).then(r => r.json())
+
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+
+      // 根据状态显示不同提示
+      if (result.status === 'existing') {
+        toast.info(`✅ ${result.message}`)
+      } else if (result.status === 'imported') {
+        toast.success(`📂 ${result.message}`)
+      } else {
+        toast.success(`📥 ${result.message}`)
+      }
+
+      // 刷新项目列表
+      loadProjects()
+      setShowCreateForm(false)
+      setGitUrl('')
+
+      // 如果是 clone 或导入的，直接启动项目
+      if (result.project) {
+        onSelectProject(result.project)
+      }
+    } catch (error) {
+      toast.error('导入失败: ' + error.message)
+    }
+    setImporting(false)
   }
 
   const toggleFavorite = async (projectId) => {
@@ -226,104 +278,178 @@ export default function ProjectManager({ onSelectProject, onClose }) {
           <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
             <div className="bg-gray-900 rounded-lg p-6 w-full max-w-md">
               <h3 className="text-lg font-semibold text-white mb-4">新建项目</h3>
-              
+
+              {/* Tab 切换 */}
+              <div className="flex gap-1 mb-4 bg-gray-800 rounded p-1">
+                <button
+                  onClick={() => setCreateMode('git')}
+                  className={`flex-1 py-2 px-3 rounded text-sm font-medium transition-colors ${
+                    createMode === 'git'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  📥 从 Git 克隆
+                </button>
+                <button
+                  onClick={() => setCreateMode('manual')}
+                  className={`flex-1 py-2 px-3 rounded text-sm font-medium transition-colors ${
+                    createMode === 'manual'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  📁 手动创建
+                </button>
+              </div>
+
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">项目名称 *</label>
-                  <input
-                    type="text"
-                    value={newProject.name}
-                    onChange={(e) => setNewProject(prev => ({ ...prev, name: e.target.value }))}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
-                    placeholder="我的项目"
-                  />
-                </div>
+                {createMode === 'git' ? (
+                  /* Git URL 导入模式 */
+                  <>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Git 仓库地址 *</label>
+                      <input
+                        type="text"
+                        value={gitUrl}
+                        onChange={(e) => setGitUrl(e.target.value)}
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
+                        placeholder="https://github.com/user/repo 或 user/repo"
+                        onKeyDown={(e) => e.key === 'Enter' && importFromGit()}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        支持 GitHub/GitLab/Bitbucket，本地已有则直接进入
+                      </p>
+                    </div>
 
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">工作目录 *</label>
-                  <input
-                    type="text"
-                    value={newProject.workdir}
-                    onChange={(e) => setNewProject(prev => ({ ...prev, workdir: e.target.value }))}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
-                    placeholder="/path/to/project 或 ~/project"
-                  />
-                </div>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Agent 类型</label>
+                      <select
+                        value={newProject.agentType}
+                        onChange={(e) => setNewProject(prev => ({ ...prev, agentType: e.target.value }))}
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
+                      >
+                        <option value="claude-code">Claude Code</option>
+                        <option value="opencode">OpenCode</option>
+                        <option value="codex">Codex</option>
+                      </select>
+                    </div>
+                  </>
+                ) : (
+                  /* 手动创建模式 */
+                  <>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">项目名称 *</label>
+                      <input
+                        type="text"
+                        value={newProject.name}
+                        onChange={(e) => setNewProject(prev => ({ ...prev, name: e.target.value }))}
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
+                        placeholder="我的项目"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Agent 类型</label>
-                  <select
-                    value={newProject.agentType}
-                    onChange={(e) => setNewProject(prev => ({ ...prev, agentType: e.target.value }))}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
-                  >
-                    <option value="claude-code">Claude Code</option>
-                    <option value="opencode">OpenCode</option>
-                    <option value="codex">Codex</option>
-                  </select>
-                </div>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">工作目录 *</label>
+                      <input
+                        type="text"
+                        value={newProject.workdir}
+                        onChange={(e) => setNewProject(prev => ({ ...prev, workdir: e.target.value }))}
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
+                        placeholder="/path/to/project 或 ~/project"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">权限模式</label>
-                  <select
-                    value={newProject.mode}
-                    onChange={(e) => setNewProject(prev => ({ ...prev, mode: e.target.value }))}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
-                  >
-                    {options.modes.map(mode => (
-                      <option key={mode.id} value={mode.id}>
-                        {mode.name} - {mode.description}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Agent 类型</label>
+                      <select
+                        value={newProject.agentType}
+                        onChange={(e) => setNewProject(prev => ({ ...prev, agentType: e.target.value }))}
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
+                      >
+                        <option value="claude-code">Claude Code</option>
+                        <option value="opencode">OpenCode</option>
+                        <option value="codex">Codex</option>
+                      </select>
+                    </div>
 
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">模型</label>
-                  <select
-                    value={newProject.model}
-                    onChange={(e) => setNewProject(prev => ({ ...prev, model: e.target.value }))}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
-                  >
-                    <option value="">使用默认模型</option>
-                    {options.models.map(model => (
-                      <option key={model.id} value={model.id}>
-                        {model.name} - {model.description}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">权限模式</label>
+                      <select
+                        value={newProject.mode}
+                        onChange={(e) => setNewProject(prev => ({ ...prev, mode: e.target.value }))}
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
+                      >
+                        {options.modes.map(mode => (
+                          <option key={mode.id} value={mode.id}>
+                            {mode.name} - {mode.description}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">努力程度</label>
-                  <select
-                    value={newProject.effort}
-                    onChange={(e) => setNewProject(prev => ({ ...prev, effort: e.target.value }))}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
-                  >
-                    {options.efforts.map(effort => (
-                      <option key={effort.id} value={effort.id}>
-                        {effort.name} - {effort.description}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">模型</label>
+                      <select
+                        value={newProject.model}
+                        onChange={(e) => setNewProject(prev => ({ ...prev, model: e.target.value }))}
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
+                      >
+                        <option value="">使用默认模型</option>
+                        {options.models.map(model => (
+                          <option key={model.id} value={model.id}>
+                            {model.name} - {model.description}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">努力程度</label>
+                      <select
+                        value={newProject.effort}
+                        onChange={(e) => setNewProject(prev => ({ ...prev, effort: e.target.value }))}
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
+                      >
+                        {options.efforts.map(effort => (
+                          <option key={effort.id} value={effort.id}>
+                            {effort.name} - {effort.description}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 mt-6">
                 <button
-                  onClick={() => setShowCreateForm(false)}
+                  onClick={() => {
+                    setShowCreateForm(false)
+                    setGitUrl('')
+                    setCreateMode('git')
+                  }}
                   className="px-4 py-2 text-gray-400 hover:text-white"
                 >
                   取消
                 </button>
-                <button
-                  onClick={createProject}
-                  disabled={!newProject.name || !newProject.workdir}
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-                >
-                  创建
-                </button>
+                {createMode === 'git' ? (
+                  <button
+                    onClick={importFromGit}
+                    disabled={!gitUrl.trim() || importing}
+                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {importing ? '⏳ 导入中...' : '📥 克隆并导入'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={createProject}
+                    disabled={!newProject.name || !newProject.workdir}
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    创建
+                  </button>
+                )}
               </div>
             </div>
           </div>

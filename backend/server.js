@@ -520,6 +520,124 @@ app.post('/api/projects', (req, res) => {
   }
 });
 
+// 从 Git URL 导入项目
+app.post('/api/projects/import-git', async (req, res) => {
+  try {
+    const { gitUrl, agentType, mode, model, effort } = req.body;
+
+    if (!gitUrl) {
+      return res.status(400).json({ error: 'gitUrl 是必需的' });
+    }
+
+    // 解析 GitHub URL 获取 owner/repo
+    let repoName = '';
+    let cloneUrl = gitUrl.trim();
+
+    // 处理各种格式的 GitHub URL
+    const patterns = [
+      /github\.com[:/]([^/]+)\/([^/.]+)(?:\.git)?$/,
+      /gitlab\.com[:/]([^/]+)\/([^/.]+)(?:\.git)?$/,
+      /bitbucket\.org[:/]([^/]+)\/([^/.]+)(?:\.git)?$/,
+      /([^/:]+)\/([^/.]+)(?:\.git)?$/ // 通用格式 user/repo
+    ];
+
+    let owner = '';
+    for (const pattern of patterns) {
+      const match = cloneUrl.match(pattern);
+      if (match) {
+        owner = match[1];
+        repoName = match[2];
+        break;
+      }
+    }
+
+    if (!repoName) {
+      return res.status(400).json({ error: '无法解析 Git URL，请检查格式' });
+    }
+
+    // 检查项目是否已存在（在 projects.json 中）
+    const existingProject = projectManager.getAllProjects().find(p => {
+      const dirName = p.workdir.split('/').pop();
+      return dirName === repoName || p.workdir.includes(`/${repoName}`);
+    });
+
+    if (existingProject) {
+      // 项目已存在，直接返回
+      console.log(`项目 ${repoName} 已存在于 ${existingProject.workdir}`);
+      return res.json({
+        project: existingProject,
+        status: 'existing',
+        message: `项目 ${repoName} 已存在`
+      });
+    }
+
+    // 在 ~/projects 目录下 clone
+    const fs = require('fs');
+    const path = require('path');
+    const { execSync } = require('child_process');
+
+    const baseDir = path.join(os.homedir(), 'projects');
+    if (!fs.existsSync(baseDir)) {
+      fs.mkdirSync(baseDir, { recursive: true });
+    }
+
+    const workdir = path.join(baseDir, repoName);
+
+    if (fs.existsSync(workdir)) {
+      // 目录存在但不在 projects.json 中，直接导入
+      console.log(`目录 ${workdir} 已存在，导入项目`);
+      const project = projectManager.addProject(repoName, workdir, agentType || 'claude-code', {
+        mode, model, effort
+      });
+      return res.json({
+        project,
+        status: 'imported',
+        message: `目录已存在，已导入项目 ${repoName}`
+      });
+    }
+
+    // Clone 仓库
+    console.log(`正在 clone ${cloneUrl} 到 ${workdir}...`);
+
+    // 确保 cloneUrl 格式正确（如果没有协议，加 https://）
+    if (!cloneUrl.startsWith('http') && !cloneUrl.startsWith('git@')) {
+      cloneUrl = `https://github.com/${cloneUrl}`;
+    }
+    // 如果是 https://github.com/user/repo 格式，确保有 .git 后缀用于 clone
+    if (cloneUrl.startsWith('https://github.com/') && !cloneUrl.endsWith('.git')) {
+      cloneUrl = cloneUrl + '.git';
+    }
+
+    try {
+      execSync(`git clone "${cloneUrl}" "${workdir}"`, {
+        timeout: 120000, // 2分钟超时
+        stdio: 'pipe'
+      });
+    } catch (cloneError) {
+      // 清理失败的 clone 目录
+      try { fs.rmSync(workdir, { recursive: true, force: true }); } catch {}
+      return res.status(500).json({
+        error: `Git clone 失败: ${cloneError.stderr?.toString() || cloneError.message}`
+      });
+    }
+
+    // 创建项目
+    const project = projectManager.addProject(repoName, workdir, agentType || 'claude-code', {
+      mode, model, effort
+    });
+
+    res.json({
+      project,
+      status: 'cloned',
+      message: `成功 clone 并创建项目 ${repoName}`
+    });
+
+  } catch (error) {
+    console.error('导入 Git 项目失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 更新项目
 app.put('/api/projects/:id', (req, res) => {
   try {
