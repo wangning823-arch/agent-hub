@@ -155,20 +155,51 @@ export default function Message({ message, index, onDelete, onCopy, onQuote }) {
     )
   }
 
-  // 工具调用
+  // 工具调用 - 紧凑样式
   if (type === 'tool_use') {
+    const toolName = metadata?.tool || '工具'
+    const toolIcons = {
+      'Bash': '⚡', 'Read': '📖', 'Write': '✏️', 'Edit': '📝',
+      'Glob': '🔍', 'Grep': '🔎', 'LS': '📁', 'WebFetch': '🌐',
+      'TodoWrite': '✅', 'NotebookEdit': '📓'
+    }
+    const icon = toolIcons[toolName] || '🔧'
+    // 提取简要信息
+    let brief = ''
+    if (typeof content === 'string') {
+      if (toolName === 'Bash') {
+        const cmd = content.match(/command['":\s]*([^\n"'}]+)/)?.[1] || content.slice(0, 60)
+        brief = cmd.trim()
+      } else if (toolName === 'Read' || toolName === 'Write' || toolName === 'Edit') {
+        const file = content.match(/file_path['":\s]*([^\n"'}]+)/)?.[1] || content.slice(0, 50)
+        brief = file.trim()
+      } else {
+        brief = content.slice(0, 60).replace(/\n/g, ' ')
+      }
+    }
+    if (brief.length > 60) brief = brief.slice(0, 57) + '...'
+
     return (
-      <div className="flex justify-start message">
-        <div className="max-w-[80%] md:max-w-[70%]">
-          <div className="bg-gray-800 border border-gray-700 rounded-2xl rounded-bl-sm px-4 py-3">
-            <div className="flex items-center gap-2 mb-2 text-gray-400">
-              <span>🔧</span>
-              <span className="text-sm font-medium">{metadata?.tool || '工具调用'}</span>
-            </div>
-            <pre className="text-xs text-gray-300 bg-gray-900 rounded p-3 overflow-x-auto">
-              <code>{content}</code>
-            </pre>
-          </div>
+      <div className="flex justify-start message my-0.5">
+        <div className="text-xs text-gray-500 flex items-center gap-1.5 px-2 py-1 rounded bg-gray-800/50 hover:bg-gray-800 transition-colors cursor-default max-w-full" title={content}>
+          <span>{icon}</span>
+          <span className="text-gray-400 font-medium">{toolName}</span>
+          {brief && <span className="text-gray-500 truncate">{brief}</span>}
+        </div>
+      </div>
+    )
+  }
+
+  // 工具结果 - 紧凑样式
+  if (type === 'tool_result') {
+    const isError = metadata?.isError
+    if (!content) return null
+    const preview = typeof content === 'string' ? content.slice(0, 100) : JSON.stringify(content).slice(0, 100)
+    if (!preview.trim()) return null
+    return (
+      <div className="flex justify-start message my-0.5">
+        <div className={`text-xs px-2 py-1 rounded truncate max-w-full ${isError ? 'text-red-400 bg-red-900/20' : 'text-gray-500 bg-gray-800/30'}`} title={typeof content === 'string' ? content : JSON.stringify(content, null, 2)}>
+          {preview}{preview.length >= 100 ? '...' : ''}
         </div>
       </div>
     )
