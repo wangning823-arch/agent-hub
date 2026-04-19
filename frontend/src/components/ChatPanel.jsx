@@ -92,8 +92,11 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
           }
         })
         
-        // 将新加载的消息添加到列表前面
-        setMessages(prev => [...formattedMessages, ...prev])
+        // 将新加载的消息添加到列表前面（过滤掉工具调用）
+        const filtered = formattedMessages.filter(msg =>
+          msg.type !== 'tool_use' && msg.type !== 'tool_result'
+        )
+        setMessages(prev => [...filtered, ...prev])
         setMessageOffset(prev => Math.max(0, prev - PAGE_SIZE))
         
         if (data.messages.length < PAGE_SIZE || messageOffset <= 0) {
@@ -141,7 +144,11 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
               timestamp: msg.time
             }
           })
-          setMessages(formattedMessages)
+          // 过滤掉工具调用历史记录 - 只保留用户消息、助手回复、错误等
+          const filteredMessages = formattedMessages.filter(msg =>
+            msg.type !== 'tool_use' && msg.type !== 'tool_result'
+          )
+          setMessages(filteredMessages)
           setHasMore(data.messages.length >= PAGE_SIZE)
           setMessageOffset(formattedMessages.length)
         } else {
