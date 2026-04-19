@@ -5,7 +5,7 @@ import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
 import { API_BASE, getWebSocketUrl } from '../config'
 
-export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) {
+export default function ChatPanel({ sessionId, agentType = 'claude-code', options = {}, onOptionsChange }) {
   const toast = useToast()
   const notification = useNotification()
   const [messages, setMessages] = useState([])
@@ -40,11 +40,11 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
   // 加载选项
   useEffect(() => {
     loadOptions()
-  }, [])
+  }, [agentType])
 
   const loadOptions = async () => {
     try {
-      const data = await fetch(`${API_BASE}/options`).then(r => r.json())
+      const data = await fetch(`${API_BASE}/options?agentType=${agentType}`).then(r => r.json())
       setModes(data.modes || [])
       setModels(data.models || [])
       setEfforts(data.efforts || [])

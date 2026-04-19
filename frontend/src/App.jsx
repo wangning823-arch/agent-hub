@@ -368,6 +368,7 @@ export default function App() {
           ) : activeSession ? (
             <ChatPanel
               sessionId={activeSession}
+              agentType={currentSession?.agentType || 'claude-code'}
               options={currentOptions}
               onOptionsChange={(opts) => handleUpdateOptions(activeSession, opts)}
             />

@@ -148,17 +148,17 @@ const PERMISSION_MODES = [
   { id: 'dontAsk', name: '不询问', description: '不询问直接执行' }
 ];
 
-// 模型选项 - 从 Claude 配置文件动态读取
+// 模型选项 - 从各 Agent 配置文件动态读取
 const fs = require('fs');
 const path = require('path');
 
-function loadModelsFromClaudeConfig() {
+// Claude Code - 从 ~/.claude/settings.json 读取
+function loadClaudeModels() {
   const settingsPath = path.join(process.env.HOME || '/root', '.claude', 'settings.json');
   try {
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
     const env = settings.env || {};
     
-    // 从 Claude 配置中收集所有模型ID
     const modelIds = new Set();
     const defaultModel = env.ANTHROPIC_MODEL;
     if (defaultModel) modelIds.add(defaultModel);
@@ -166,7 +166,6 @@ function loadModelsFromClaudeConfig() {
     if (env.ANTHROPIC_DEFAULT_OPUS_MODEL) modelIds.add(env.ANTHROPIC_DEFAULT_OPUS_MODEL);
     if (env.ANTHROPIC_DEFAULT_HAIKU_MODEL) modelIds.add(env.ANTHROPIC_DEFAULT_HAIKU_MODEL);
     
-    // 构建模型列表，默认模型排第一
     const models = [];
     if (defaultModel) {
       models.push({ id: defaultModel, name: defaultModel, description: '当前默认模型' });
@@ -177,18 +176,99 @@ function loadModelsFromClaudeConfig() {
       }
     }
     
-    // 如果配置文件没有任何模型，fallback
     if (models.length === 0) {
       return [{ id: 'claude-sonnet-4-6', name: 'Sonnet 4', description: '默认模型' }];
     }
     return models;
   } catch (e) {
-    console.warn('读取 Claude 配置失败，使用默认模型列表:', e.message);
+    console.warn('读取 Claude 配置失败:', e.message);
     return [{ id: 'claude-sonnet-4-6', name: 'Sonnet 4', description: '默认模型' }];
   }
 }
 
-const MODELS = loadModelsFromClaudeConfig();
+// OpenCode - 从 ~/.config/opencode/opencode.json 读取
+function loadOpenCodeModels() {
+  const configPath = path.join(process.env.HOME || '/root', '.config', 'opencode', 'opencode.json');
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const providers = config.provider || {};
+    const defaultModel = config.model || '';
+    
+    const models = [];
+    const seen = new Set();
+    
+    // 先加默认模型
+    if (defaultModel) {
+      const [providerName, ...modelParts] = defaultModel.split('/');
+      const modelId = modelParts.join('/');
+      const provider = providers[providerName];
+      const modelInfo = provider?.models?.[modelId];
+      models.push({
+        id: defaultModel,
+        name: modelInfo?.name || modelId,
+        description: '当前默认模型'
+      });
+      seen.add(defaultModel);
+    }
+    
+    // 遍历所有 provider 和 model
+    for (const [providerName, provider] of Object.entries(providers)) {
+      const providerModels = provider.models || {};
+      for (const [modelId, modelInfo] of Object.entries(providerModels)) {
+        const fullId = `${providerName}/${modelId}`;
+        if (!seen.has(fullId)) {
+          models.push({
+            id: fullId,
+            name: modelInfo?.name || modelId,
+            description: provider.name || providerName
+          });
+          seen.add(fullId);
+        }
+      }
+    }
+    
+    return models;
+  } catch (e) {
+    console.warn('读取 OpenCode 配置失败:', e.message);
+    return [{ id: 'anthropic/claude-sonnet-4-20250514', name: 'Claude Sonnet 4', description: '默认模型' }];
+  }
+}
+
+// Codex - 从 ~/.codex/config.yaml 或环境变量读取
+function loadCodexModels() {
+  // Codex 通常使用 OPENAI_MODEL 环境变量
+  const envModel = process.env.OPENAI_MODEL;
+  const models = [];
+  if (envModel) {
+    models.push({ id: envModel, name: envModel, description: '环境变量默认模型' });
+  }
+  // Codex 支持的常见模型
+  const defaults = ['o4-mini', 'o3', 'o3-mini', 'gpt-4.1', 'gpt-4.1-mini'];
+  for (const m of defaults) {
+    if (m !== envModel) {
+      models.push({ id: m, name: m, description: '' });
+    }
+  }
+  return models;
+}
+
+// 按 agentType 获取模型列表
+function getModelsForAgent(agentType) {
+  switch (agentType) {
+    case 'claude-code':
+    case 'claude-api':
+      return loadClaudeModels();
+    case 'opencode':
+      return loadOpenCodeModels();
+    case 'codex':
+      return loadCodexModels();
+    default:
+      return loadClaudeModels();
+  }
+}
+
+// 向后兼容：默认加载 Claude 模型
+const MODELS = loadClaudeModels();
 
 // 努力程度选项
 const EFFORT_LEVELS = [
@@ -202,6 +282,7 @@ module.exports = {
   CLAUDE_COMMANDS,
   PERMISSION_MODES,
   MODELS,
-  EFFORT_LEVELS
+  EFFORT_LEVELS,
+  getModelsForAgent
 };
 

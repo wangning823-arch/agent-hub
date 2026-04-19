@@ -11,7 +11,7 @@ const { execFileSync, exec } = require('child_process');
 const SessionManager = require('./sessions');
 const PermissionManager = require('./permissions');
 const ProjectManager = require('./projects');
-const { CLAUDE_COMMANDS, PERMISSION_MODES, MODELS, EFFORT_LEVELS } = require('./commands');
+const { CLAUDE_COMMANDS, PERMISSION_MODES, MODELS, EFFORT_LEVELS, getModelsForAgent } = require('./commands');
 const { upload, handleUpload, handlePasteImage, UPLOAD_DIR } = require('./upload');
 const TokenTracker = require('./token-tracker');
 
@@ -1073,9 +1073,10 @@ app.get('/api/options/efforts', (req, res) => {
 
 // 获取所有选项
 app.get('/api/options', (req, res) => {
+  const agentType = req.query.agentType || 'claude-code';
   res.json({
     modes: PERMISSION_MODES,
-    models: MODELS,
+    models: getModelsForAgent(agentType),
     efforts: EFFORT_LEVELS
   });
 });
