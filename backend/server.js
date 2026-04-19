@@ -58,6 +58,18 @@ function validatePath(requestPath) {
 // 中间件
 app.use(express.json({ limit: '5mb' }));
 
+// Phase1: Compatibility wrappers early registration (to enable gradual replacement)
+const MIGRATE_PHASE1 = (process.env.PHASE1_MIGRATE === 'true')
+if (MIGRATE_PHASE1) {
+  try {
+    const compat = require('./routes/compat')
+    compat(app, { sessionManager })
+    console.log('[Phase1] Compatibility wrappers registered early (for gradual replacement)')
+  } catch (e) {
+    console.error('[Phase1] Failed to register compatibility wrappers early:', e)
+  }
+}
+
 // 前端静态文件服务
 const DIST_PATH = path.join(__dirname, '..', 'frontend', 'dist');
 app.use(express.static(DIST_PATH));
@@ -99,7 +111,42 @@ app.use((req, res, next) => {
   next();
 });
 
+// Phase 1: Central route loader (non-breaking, additive)
+try {
+  const routeLoader = require('./routes'); // resolves to backend/routes/index.js
+  if (typeof routeLoader === 'function') {
+    routeLoader(app, { sessionManager, permissionManager, projectManager, tokenTracker });
+    console.log('[Phase1] Central route loader executed');
+  }
+} catch (e) {
+  console.error('[Phase1] Failed to load central routes:', e);
+}
+
 // ============ REST API ============
+
+// Phase1: Central route loader (渐进拆分入口)
+try {
+  const centralRoutes = require('./routes/index')
+  if (typeof centralRoutes === 'function') {
+    centralRoutes(app, { sessionManager, permissionManager, projectManager, tokenTracker })
+    console.log('[Phase1] Central route loader registered')
+  }
+} catch (e) {
+  console.error('[Phase1] Central route loader load failed:', e)
+}
+
+// Phase1: Compatibility wrappers (渐进替换现有接口，受 PHASE1_MIGRATE 点控制)
+// Default to true to accelerate replacement
+const MIGRATE_PHASE1 = (process.env.PHASE1_MIGRATE === undefined || process.env.PHASE1_MIGRATE === 'true')
+if (MIGRATE_PHASE1) {
+  try {
+    const compat = require('./routes/compat')
+    compat(app, { sessionManager })
+    console.log('[Phase1] Compatibility wrappers registered under /api/*')
+  } catch (e) {
+    console.error('[Phase1] Compatibility wrappers load failed:', e)
+  }
+}
 
 // 错误处理中间件（全局）
 app.use((err, req, res, next) => {
