@@ -164,6 +164,7 @@ export default function App() {
   }
 
   const removeSession = async (sessionId) => {
+    if (!window.confirm('确定要删除这个会话吗？删除后无法恢复。')) return
     try {
       const res = await fetch(`${API_BASE}/sessions/${sessionId}`, { method: 'DELETE' })
       const result = await res.json()

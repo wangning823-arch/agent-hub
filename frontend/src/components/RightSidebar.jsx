@@ -121,6 +121,15 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }) {
     return icons[ext] || '📄'
   }
 
+  const formatFileSize = (bytes) => {
+    if (bytes === null || bytes === undefined) return ''
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+  }
+
   const truncatePath = (path, maxLen = 30) => {
     if (path.length <= maxLen) return path
     return '...' + path.slice(-(maxLen - 3))
@@ -176,6 +185,11 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }) {
                   >
                     <span className="text-sm">{getFileIcon(file.name, file.isDirectory)}</span>
                     <span className="text-sm truncate flex-1">{file.name}</span>
+                    {!file.isDirectory && file.size !== null && (
+                      <span className="text-xs ml-2" style={{ color: 'var(--text-muted)' }}>
+                        {formatFileSize(file.size)}
+                      </span>
+                    )}
                     {file.isDirectory && <span className="text-xs" style={{ color: 'var(--text-muted)' }}>›</span>}
                   </div>
                 ))

@@ -502,11 +502,24 @@ app.get('/api/files', (req, res) => {
 
   try {
     const items = fs.readdirSync(dirPath, { withFileTypes: true });
-    const files = items.map(item => ({
-      name: item.name,
-      path: `${dirPath}/${item.name}`.replace(/\/+/g, '/'),
-      isDirectory: item.isDirectory()
-    }));
+    const files = items.map(item => {
+      const fullPath = `${dirPath}/${item.name}`.replace(/\/+/g, '/');
+      let size = null;
+      if (!item.isDirectory()) {
+        try {
+          const stat = fs.statSync(fullPath);
+          size = stat.size;
+        } catch (err) {
+          // 如果获取大小失败，保持为null
+        }
+      }
+      return {
+        name: item.name,
+        path: fullPath,
+        isDirectory: item.isDirectory(),
+        size
+      };
+    });
 
     // 排序：目录在前，文件在后
     files.sort((a, b) => {
