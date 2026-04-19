@@ -66,6 +66,8 @@ class OpenCodeAgent extends Agent {
     this.options = options;
     // 当前正在运行的子进程引用，用于优雅地中断/退出
     this.activeProc = null;
+    // 最近的一条命令行输出（用于替换成单行状态提示）
+    this._lastStatusLine = null;
   }
 
   async start() {
@@ -225,8 +227,9 @@ class OpenCodeAgent extends Agent {
       const msg = JSON.parse(line);
       this.handleJsonMessage(msg);
     } catch (e) {
-      // 非JSON作为纯文本
-      this.emit('message', { type: 'text', content: line });
+      // 非JSON作为单行状态提示，待前端替换显示，避免多行占位
+      this._lastStatusLine = line;
+      this.emit('message', { type: 'status', content: line, replace: true });
     }
   }
 
@@ -251,6 +254,8 @@ class OpenCodeAgent extends Agent {
     try {
       // OpenCode 格式: { type: "text", part: { type: "text", text: "..." } }
       if (msg.type === 'text' && msg.part?.text) {
+      // 重置最近的状态行，因为现在有正式文本输出
+      this._lastStatusLine = null;
       console.log('[OpenCode] emit text:', msg.part.text.substring(0, 100));
       this.emit('message', { type: 'text', content: msg.part.text });
     } else if (msg.type === 'step_start') {
