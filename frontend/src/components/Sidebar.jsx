@@ -95,6 +95,16 @@ export default function Sidebar({
     return parts[parts.length - 1] || workdir
   }
 
+  const getAgentLabel = (agentType) => {
+    const labels = {
+      'claude-code': { text: 'CC', color: '#e8a838' },
+      'claude-api': { text: 'CC', color: '#e8a838' },
+      'opencode': { text: 'OC', color: '#4ade80' },
+      'codex': { text: 'CX', color: '#60a5fa' },
+    }
+    return labels[agentType] || { text: agentType?.toUpperCase()?.slice(0, 2) || '??', color: '#888' }
+  }
+
   const sortedSessions = [...sessions]
     .filter(s => {
       if (!s) return false
@@ -224,8 +234,14 @@ export default function Sidebar({
                           autoFocus
                         />
                       ) : (
-                        <span className="text-xs flex-1 min-w-0 truncate" style={{ lineHeight: '1.4' }}>
-                          {session.title || getDisplayName(session.workdir)}
+                        <span className="text-xs flex-1 min-w-0 truncate flex items-center gap-1" style={{ lineHeight: '1.4' }}>
+                          <span className="truncate">{session.title || getDisplayName(session.workdir)}</span>
+                          {session.agentType && (
+                            <span className="flex-shrink-0 text-[10px] font-bold px-1 rounded"
+                              style={{ color: getAgentLabel(session.agentType).color, background: getAgentLabel(session.agentType).color + '18', lineHeight: '1.4' }}>
+                              {getAgentLabel(session.agentType).text}
+                            </span>
+                          )}
                         </span>
                       )}
                     </div>

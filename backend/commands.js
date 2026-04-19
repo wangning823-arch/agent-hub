@@ -216,16 +216,31 @@ function loadClaudeModels() {
 // OpenCode - 从 ~/.config/opencode/opencode.json 读取
 function loadOpenCodeModels() {
   const configPath = path.join(process.env.HOME || '/root', '.config', 'opencode', 'opencode.json');
+
+  // OpenCode 内置免费模型（不需要配置，直接可用）
+  const builtInModels = [
+    { id: 'opencode/gpt-5-nano', name: 'GPT-5 Nano', description: '免费 · 400K ctx · 支持推理' },
+    { id: 'opencode/big-pickle', name: 'Big Pickle', description: '免费 · 200K ctx · 支持推理' },
+    { id: 'opencode/minimax-m2.5-free', name: 'MiniMax M2.5 Free', description: '免费 · 204K ctx' },
+    { id: 'opencode/nemotron-3-super-free', name: 'Nemotron 3 Super Free', description: '免费 · 204K ctx' },
+  ];
+
+  const models = [];
+  const seen = new Set();
+
+  // 先加入内置免费模型
+  for (const m of builtInModels) {
+    models.push(m);
+    seen.add(m.id);
+  }
+
   try {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     const providers = config.provider || {};
     const defaultModel = config.model || '';
-    
-    const models = [];
-    const seen = new Set();
-    
-    // 先加默认模型
-    if (defaultModel) {
+
+    // 再加默认模型（如果不在内置列表中）
+    if (defaultModel && !seen.has(defaultModel)) {
       const [providerName, ...modelParts] = defaultModel.split('/');
       const modelId = modelParts.join('/');
       const provider = providers[providerName];
@@ -237,7 +252,7 @@ function loadOpenCodeModels() {
       });
       seen.add(defaultModel);
     }
-    
+
     // 遍历所有 provider 和 model
     for (const [providerName, provider] of Object.entries(providers)) {
       const providerModels = provider.models || {};
@@ -253,11 +268,11 @@ function loadOpenCodeModels() {
         }
       }
     }
-    
+
     return models;
   } catch (e) {
-    console.warn('读取 OpenCode 配置失败:', e.message);
-    return [{ id: 'anthropic/claude-sonnet-4-20250514', name: 'Claude Sonnet 4', description: '默认模型' }];
+    console.warn('读取 OpenCode 配置失败，仅使用内置模型:', e.message);
+    return models;  // 至少返回内置免费模型
   }
 }
 
