@@ -91,3 +91,5 @@ class MyAgent {
 ## License
 
 MIT
+
+Note: Phase0 design and scaffolding committed under docs/phase0-design.md and scaffolding files under backend/ and frontend/phase0-*, enabling staged, risk-minimized refactors. Phase1 will implement actual modularization of backend routes, WS hub, and persistence layers.

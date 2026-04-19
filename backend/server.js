@@ -21,6 +21,13 @@ const { upload, handleUpload, handlePasteImage, UPLOAD_DIR } = require('./upload
 const TokenTracker = require('./token-tracker');
 
 const app = express();
+// Phase 1: attempt to load phase1 route module (non-breaking, namespace /api/phase1)
+let phase1Register = null;
+try {
+  phase1Register = require('./routes/sessions');
+} catch (e) {
+  phase1Register = null;
+}
 // 全局健壮性：捕获未处理的异常和未处理的 Promise
 process.on('uncaughtException', (err) => {
   console.error('[Global] 未捕获异常', err);
@@ -73,6 +80,16 @@ function tokenAuth(req, res, next) {
   res.status(401).json({ error: 'unauthorized' });
 }
 app.use(tokenAuth);
+
+// Phase1: register phase1 routes if available
+if (phase1Register && typeof phase1Register === 'function') {
+  try {
+    phase1Register(app, sessionManager);
+    console.log('[Phase1] Phase-1 routes mounted under /api/phase1');
+  } catch (e) {
+    console.error('[Phase1] Failed to mount phase1 routes:', e);
+  }
+}
 
 // CORS
 app.use((req, res, next) => {
@@ -204,7 +221,10 @@ app.put('/api/sessions/:id/conversation', async (req, res) => {
   }
 });
 
+// 阶段1阶段性：保留原有行为的同时，新增阶段1路由在 /api/phase1 下
 // 继续会话（重新启动agent）
+// 该路由在阶段1的阶段性实现时，保持原有行为的一致性，但走向阶段1命名空间，便于后续完全替换。
+// 现阶段仍在这里保留原行为的实现以确保稳定性，后续会逐步迁移到阶段1命名空间。
 app.post('/api/sessions/:id/resume', async (req, res) => {
   try {
     const session = sessionManager.getSession(req.params.id);
@@ -228,6 +248,8 @@ app.post('/api/sessions/:id/resume', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// 继续阶段1的路由暴露在 /api/phase1 以便后续替换；当前阶段同时保留原有路由以确保兼容性。
 
 // 重命名会话
 app.put('/api/sessions/:id/rename', (req, res) => {
