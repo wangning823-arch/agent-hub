@@ -1,62 +1,19 @@
-/**
- * 会话管理器 - 管理多个Agent会话
- */
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const path = require('path');
-const ClaudeCodeAgent = require('./agents/claude-code');
-const ClaudeApiAgent = require('./agents/claude-api');
-const OpenCodeAgent = require('./agents/opencode');
-const CodexAgent = require('./agents/codex');
-
-class Session {
-  constructor(id, agent, workdir, options = {}) {
-    this.id = id;
-    this.agent = agent;
-    this.workdir = workdir;
-    this.messages = [];
-    this.createdAt = new Date();
-    this.options = options;
-    this.isActive = true;
-    this.conversationId = null; // Claude Code的对话ID
-  }
-
-  toJSON() {
-    return {
-      id: this.id,
-      agentType: this.agentType || 'claude-code',
-      agentName: this.agent?.name || 'unknown',
-      workdir: this.workdir,
-      messageCount: this.messages.length,
-      createdAt: this.createdAt,
-      updatedAt: this.updatedAt || this.createdAt,
-      options: this.options,
-      isActive: this.isActive,
-      conversationId: this.conversationId,
-      lastMessageAt: this.messages.length > 0
-        ? this.messages[this.messages.length - 1].time
-        : this.createdAt,
-      // 新增字段
-      title: this.title || null,
-      isPinned: this.isPinned || false,
-      isArchived: this.isArchived || false,
-      tags: this.tags || []
-    };
-  }
-}
+const Session = require('./models/session');
+const { createAgent, resumeAgentMessages } = require('./agents/factory');
+const WSClients = require('./ws-clients');
 
 class SessionManager {
   constructor(tokenTracker = null) {
     this.sessions = new Map();
-    this.wsClients = new Map(); // sessionId -> Set<WebSocket>
+    this.wsClients = new WSClients();
     this.sessionsFile = path.join(__dirname, '..', 'data', 'sessions.json');
     this.tokenTracker = tokenTracker;
     this.loadData();
   }
 
-  /**
-   * 加载会话数据
-   */
   loadData() {
     try {
       const dataDir = path.dirname(this.sessionsFile);
@@ -66,7 +23,6 @@ class SessionManager {
 
       if (fs.existsSync(this.sessionsFile)) {
         const data = JSON.parse(fs.readFileSync(this.sessionsFile, 'utf8'));
-        // 只加载会话的元数据，不重新启动agent
         for (const sessionData of data) {
           const session = {
             id: sessionData.id,
@@ -77,12 +33,11 @@ class SessionManager {
             createdAt: new Date(sessionData.createdAt),
             updatedAt: sessionData.updatedAt ? new Date(sessionData.updatedAt) : new Date(sessionData.createdAt),
             options: sessionData.options || {},
-            isActive: false, // 需要重新启动
+            isActive: false,
             conversationId: sessionData.conversationId || null,
             title: sessionData.title || null,
             isPinned: sessionData.isPinned || false,
             isArchived: sessionData.isArchived || false,
-            // 添加toJSON方法
             toJSON: function() {
               return {
                 id: this.id,
@@ -113,9 +68,6 @@ class SessionManager {
     }
   }
 
-  /**
-   * 保存会话数据
-   */
   saveData() {
     try {
       const dataDir = path.dirname(this.sessionsFile);
@@ -128,7 +80,7 @@ class SessionManager {
         workdir: s.workdir,
         agentType: s.agentType || 'claude-code',
         agentName: s.agent?.name || s.agentName,
-        messages: s.messages.slice(-200), // 保留最近200条消息
+        messages: s.messages.slice(-200),
         createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
         updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
         options: s.options || {},
@@ -145,13 +97,9 @@ class SessionManager {
     }
   }
 
-  /**
-   * 创建新会话
-   */
   async createSession(workdir, agentType = 'claude-code', options = {}) {
     const id = uuidv4();
     
-    // 解析绝对路径（展开 ~）
     let absoluteWorkdir = workdir;
     if (workdir.startsWith('~/')) {
       absoluteWorkdir = path.join(process.env.HOME || '/root', workdir.slice(2));
@@ -159,49 +107,19 @@ class SessionManager {
       absoluteWorkdir = path.resolve(process.env.HOME || '/root', workdir);
     }
     
-    // 如果目录不存在，自动创建
     if (!fs.existsSync(absoluteWorkdir)) {
       fs.mkdirSync(absoluteWorkdir, { recursive: true });
       console.log(`创建目录: ${absoluteWorkdir}`);
     }
     
-    // 根据类型创建Agent
-    let agent;
-    switch (agentType) {
-      case 'claude-code':
-        agent = new ClaudeCodeAgent(absoluteWorkdir, options);
-        break;
-      case 'claude-api':
-        agent = new ClaudeApiAgent(absoluteWorkdir, options);
-        break;
-      case 'opencode':
-        agent = new OpenCodeAgent(absoluteWorkdir, options);
-        break;
-      case 'codex':
-        agent = new CodexAgent(absoluteWorkdir, options);
-        break;
-      default:
-        throw new Error(`未知的Agent类型: ${agentType}`);
-    }
-
-    // 保存 agentType 以便持久化
+    const agent = createAgent(absoluteWorkdir, agentType, options);
     const session = new Session(id, agent, absoluteWorkdir, options);
     session.agentType = agentType;
 
-    // 监听Agent消息
-    agent.on('message', (msg) => {
-      this.broadcast(id, msg);
-    });
+    agent.on('message', (msg) => this.broadcast(id, msg));
+    agent.on('error', (err) => this.broadcast(id, { type: 'error', content: err.toString() }));
+    agent.on('stopped', () => this.broadcast(id, { type: 'status', content: 'Agent已停止' }));
 
-    agent.on('error', (err) => {
-      this.broadcast(id, { type: 'error', content: err.toString() });
-    });
-
-    agent.on('stopped', () => {
-      this.broadcast(id, { type: 'status', content: 'Agent已停止' });
-    });
-
-    // 启动Agent
     try {
       await agent.start();
     } catch (err) {
@@ -211,51 +129,32 @@ class SessionManager {
     }
 
     this.sessions.set(id, session);
-
-    // 保存会话数据
     this.saveData();
-
     return session;
   }
 
-  /**
-   * 获取会话
-   */
   getSession(sessionId) {
     return this.sessions.get(sessionId);
   }
 
-  /**
-   * 获取所有会话
-   */
   listSessions() {
     return Array.from(this.sessions.values()).map(s => s.toJSON());
   }
 
-  /**
-   * 发送消息到会话
-   */
   async sendMessage(sessionId, message) {
     const session = this.sessions.get(sessionId);
     if (!session) {
       throw new Error(`会话不存在: ${sessionId}`);
     }
 
-    // 如果会话没有agent（从文件加载的旧会话），自动恢复
     if (!session.agent) {
       await this._resumeAgent(session);
     }
 
-    // 记录消息
     session.messages.push({ role: 'user', content: message, time: new Date() });
-
-    // 发送给Agent
     await session.agent.send(message);
   }
 
-  /**
-   * 恢复一个非活跃会话（重新启动agent，保留原会话ID和消息）
-   */
   async resumeSession(sessionId) {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -269,50 +168,19 @@ class SessionManager {
     return session;
   }
 
-  /**
-   * 内部方法：为加载的旧会话重新启动agent
-   */
   async _resumeAgent(session) {
     const agentType = session.agentType || 'claude-code';
     const options = { ...session.options, conversationId: session.conversationId };
 
-    let agent;
-    switch (agentType) {
-      case 'claude-code':
-        agent = new ClaudeCodeAgent(session.workdir, options);
-        break;
-      case 'claude-api':
-        agent = new ClaudeApiAgent(session.workdir, options);
-        // 恢复消息历史
-        if (session.messages && session.messages.length > 0) {
-          agent.messages = session.messages
-            .filter(m => m.role === 'user' || m.role === 'assistant')
-            .map(m => ({
-              role: m.role,
-              content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
-            }));
-        }
-        break;
-      case 'opencode':
-        agent = new OpenCodeAgent(session.workdir, options);
-        break;
-      case 'codex':
-        agent = new CodexAgent(session.workdir, options);
-        break;
-      default:
-        throw new Error(`未知的Agent类型: ${agentType}`);
+    const agent = createAgent(session.workdir, agentType, options);
+
+    if (agentType === 'claude-api') {
+      resumeAgentMessages(agent, session.messages);
     }
 
-    // 监听Agent消息
-    agent.on('message', (msg) => {
-      this.broadcast(session.id, msg);
-    });
-    agent.on('error', (err) => {
-      this.broadcast(session.id, { type: 'error', content: err.toString() });
-    });
-    agent.on('stopped', () => {
-      this.broadcast(session.id, { type: 'status', content: 'Agent已停止' });
-    });
+    agent.on('message', (msg) => this.broadcast(session.id, msg));
+    agent.on('error', (err) => this.broadcast(session.id, { type: 'error', content: err.toString() }));
+    agent.on('stopped', () => this.broadcast(session.id, { type: 'status', content: 'Agent已停止' }));
 
     try {
       await agent.start();
@@ -326,44 +194,26 @@ class SessionManager {
     console.log(`会话 ${session.id} agent已恢复`);
   }
 
-  /**
-   * 添加WebSocket客户端到会话
-   */
   addClient(sessionId, ws) {
-    if (!this.wsClients.has(sessionId)) {
-      this.wsClients.set(sessionId, new Set());
-    }
-    this.wsClients.get(sessionId).add(ws);
+    this.wsClients.add(sessionId, ws);
   }
 
-  /**
-   * 移除WebSocket客户端
-   */
   removeClient(sessionId, ws) {
-    const clients = this.wsClients.get(sessionId);
-    if (clients) {
-      clients.delete(ws);
-    }
+    this.wsClients.remove(sessionId, ws);
   }
 
-  /**
-   * 广播消息到会话的所有客户端
-   */
   broadcast(sessionId, message) {
     const session = this.sessions.get(sessionId);
     if (session) {
-      // 只将实际对话内容存入消息历史，过滤状态/token/标题更新等元消息
       const metaTypes = ['status', 'token_usage', 'conversation_id', 'title_update'];
       if (!metaTypes.includes(message.type)) {
         session.messages.push({ role: 'assistant', content: message, time: new Date() });
       }
       
-      // 如果消息包含对话ID，保存它
       if (message.conversationId) {
         session.conversationId = message.conversationId;
       }
       
-      // 如果是token使用统计，自动记录到后端
       if (message.type === 'token_usage' && message.content && this.tokenTracker) {
         const usage = message.content;
         this.tokenTracker.recordUsage(sessionId, {
@@ -375,7 +225,6 @@ class SessionManager {
         });
       }
 
-      // 自动生成会话标题（首次 assistant 回复后）
       const assistantMessages = session.messages.filter(m => m.role === 'assistant' && m.content && m.content.type !== 'status' && m.content.type !== 'token_usage' && m.content.type !== 'conversation_id');
       if (assistantMessages.length === 1 && !session.title && message.type === 'text') {
         const userMsg = session.messages.find(m => m.role === 'user');
@@ -385,12 +234,10 @@ class SessionManager {
           const asstContent = typeof message.content === 'string' ? message.content : '';
           generateTitle(userContent, asstContent)
             .then(result => {
-              // 只在标题仍为空时设置（防止竞态）
               if (!session.title) {
                 session.title = result.title;
                 session.updatedAt = new Date();
                 this.saveData();
-                // 通知前端标题变更
                 this.broadcast(sessionId, { type: 'title_update', content: result.title });
               }
             })
@@ -398,26 +245,14 @@ class SessionManager {
         }
       }
       
-      // 定期保存（每10条消息保存一次）
       if (session.messages.length % 10 === 0) {
         this.saveData();
       }
     }
 
-    const clients = this.wsClients.get(sessionId);
-    if (clients) {
-      const payload = JSON.stringify({ sessionId, ...message });
-      for (const client of clients) {
-        if (client.readyState === 1) { // WebSocket.OPEN
-          client.send(payload);
-        }
-      }
-    }
+    this.wsClients.broadcast(sessionId, message);
   }
 
-  /**
-   * 停止并删除会话
-   */
   async removeSession(sessionId) {
     const session = this.sessions.get(sessionId);
     if (session) {
@@ -430,9 +265,6 @@ class SessionManager {
     }
   }
 
-  /**
-   * 重命名会话
-   */
   renameSession(sessionId, title) {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -444,9 +276,6 @@ class SessionManager {
     return session.toJSON();
   }
 
-  /**
-   * 置顶/取消置顶会话
-   */
   togglePinSession(sessionId) {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -458,9 +287,6 @@ class SessionManager {
     return session.toJSON();
   }
 
-  /**
-   * 归档/取消归档会话
-   */
   toggleArchiveSession(sessionId) {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -472,9 +298,6 @@ class SessionManager {
     return session.toJSON();
   }
 
-  /**
-   * 获取会话消息列表
-   */
   getMessages(sessionId, limit = 100, offset = 0) {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -484,9 +307,6 @@ class SessionManager {
     return messages;
   }
 
-  /**
-   * 删除消息
-   */
   deleteMessage(sessionId, messageIndex) {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -501,9 +321,6 @@ class SessionManager {
     return { success: true, messageCount: session.messages.length };
   }
 
-  /**
-   * 删除最后N条消息（用于重新生成）
-   */
   deleteLastMessages(sessionId, count = 2) {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -515,9 +332,6 @@ class SessionManager {
     return { success: true, removed: removed.length, messageCount: session.messages.length };
   }
 
-  /**
-   * 更新会话时间戳
-   */
   touchSession(sessionId) {
     const session = this.sessions.get(sessionId);
     if (session) {
@@ -526,9 +340,6 @@ class SessionManager {
     }
   }
 
-  /**
-   * 设置会话标签
-   */
   setSessionTags(sessionId, tags) {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -540,9 +351,6 @@ class SessionManager {
     return session.toJSON();
   }
 
-  /**
-   * 添加会话标签
-   */
   addSessionTag(sessionId, tag) {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -559,9 +367,6 @@ class SessionManager {
     return session.toJSON();
   }
 
-  /**
-   * 移除会话标签
-   */
   removeSessionTag(sessionId, tag) {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -575,9 +380,6 @@ class SessionManager {
     return session.toJSON();
   }
 
-  /**
-   * 获取所有标签
-   */
   getAllTags() {
     const tags = new Set();
     for (const session of this.sessions.values()) {
@@ -588,9 +390,6 @@ class SessionManager {
     return Array.from(tags);
   }
 
-  /**
-   * 按标签筛选会话
-   */
   getSessionsByTag(tag) {
     const sessions = [];
     for (const session of this.sessions.values()) {
