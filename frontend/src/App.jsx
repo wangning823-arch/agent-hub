@@ -144,6 +144,15 @@ export default function App() {
         body: JSON.stringify({ workdir, agentType, ...options })
       })
       const session = await res.json()
+      // 如果传了 title，更新会话标题
+      if (options.title && session.id) {
+        await fetch(`${API_BASE}/sessions/${session.id}/rename`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: options.title })
+        })
+        session.title = options.title
+      }
       setSessions(prev => [...prev, session])
       setActiveSession(session.id)
       setSessionOptions(prev => ({ ...prev, [session.id]: options }))
