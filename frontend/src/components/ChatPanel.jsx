@@ -11,6 +11,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [connected, setConnected] = useState(false)
+  const [connecting, setConnecting] = useState(false)
   const [attachments, setAttachments] = useState([])
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -177,11 +178,13 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
       }
       
       const wsUrl = getWebSocketUrl(sessionId)
+      setConnecting(true)
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
       ws.onopen = () => {
         setConnected(true)
+        setConnecting(false)
         reconnectAttempts = 0 // 重置重连计数
         console.log('WebSocket已连接')
         
@@ -784,7 +787,13 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
           {/* Status bar */}
           <div className="mt-1.5 flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
             <div className="flex items-center gap-2">
-              <span className={`status-dot ${connected ? 'connected' : 'disconnected'}`} style={{ width: 6, height: 6 }} />
+              {connecting ? (
+                <span className="loading-dots" style={{ color: 'var(--warning)' }}>
+                  <span>●</span><span>●</span><span>●</span>
+                </span>
+              ) : (
+                <span className={`status-dot ${connected ? 'connected' : 'disconnected'}`} style={{ width: 6, height: 6 }} />
+              )}
               {attachments.length > 0 && (
                 <span style={{ color: 'var(--accent-primary)' }}>📎{attachments.length}</span>
               )}

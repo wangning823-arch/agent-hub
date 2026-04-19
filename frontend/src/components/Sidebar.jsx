@@ -423,53 +423,57 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Bottom actions */}
-      <div className="p-3 border-t space-y-2" style={{ borderColor: 'var(--border-subtle)' }}>
-        <div className="flex gap-2">
-          <button
-            onClick={() => { if (activeSession) window.open(`${API_BASE}/export/session/${activeSession}`, '_blank') }}
-            disabled={!activeSession}
-            className="btn-secondary flex-1 py-1.5 text-xs"
-          >
-            📄 导出
-          </button>
-          <button
-            onClick={() => window.open(`${API_BASE}/export/sessions`, '_blank')}
-            className="btn-secondary flex-1 py-1.5 text-xs"
-          >
-            💾 备份
-          </button>
-          <button
-            onClick={() => {
-              const input = document.createElement('input')
-              input.type = 'file'
-              input.accept = '.json'
-              input.onchange = async (e) => {
-                const file = e.target.files[0]
-                if (!file) return
-                try {
-                  const text = await file.text()
-                  const data = JSON.parse(text)
-                  if (!data.sessions) { toast.error('无效的备份文件'); return }
-                  const res = await fetch(`${API_BASE}/import/sessions`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: text
-                  })
-                  const result = await res.json()
-                  if (result.success) {
-                    toast.success(`导入成功: ${result.imported} 个会话`)
-                    window.location.reload()
-                  }
-                } catch (error) { toast.error('导入失败: ' + error.message) }
-              }
-              input.click()
-            }}
-            className="btn-secondary flex-1 py-1.5 text-xs"
-          >
-            📥 导入
-          </button>
-        </div>
+      {/* Bottom actions - icon only */}
+      <div className="p-2 border-t flex items-center justify-center gap-1" style={{ borderColor: 'var(--border-subtle)' }}>
+        <button
+          onClick={() => {
+            const token = localStorage.getItem('access_token') || ''
+            if (activeSession) window.open(`${API_BASE}/export/session/${activeSession}?token=${token}`, '_blank')
+          }}
+          disabled={!activeSession}
+          className="btn-icon text-sm"
+          style={{ width: 32, height: 32, opacity: activeSession ? 1 : 0.3 }}
+          title="导出当前会话"
+        >📋</button>
+        <button
+          onClick={() => {
+            const token = localStorage.getItem('access_token') || ''
+            window.open(`${API_BASE}/export/sessions?token=${token}`, '_blank')
+          }}
+          className="btn-icon text-sm"
+          style={{ width: 32, height: 32 }}
+          title="备份所有会话"
+        >💾</button>
+        <button
+          onClick={() => {
+            const input = document.createElement('input')
+            input.type = 'file'
+            input.accept = '.json'
+            input.onchange = async (e) => {
+              const file = e.target.files[0]
+              if (!file) return
+              try {
+                const text = await file.text()
+                const data = JSON.parse(text)
+                if (!data.sessions) { toast.error('无效的备份文件'); return }
+                const res = await fetch(`${API_BASE}/import/sessions`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: text
+                })
+                const result = await res.json()
+                if (result.success) {
+                  toast.success(`导入成功: ${result.imported} 个会话`)
+                  window.location.reload()
+                }
+              } catch (error) { toast.error('导入失败: ' + error.message) }
+            }
+            input.click()
+          }}
+          className="btn-icon text-sm"
+          style={{ width: 32, height: 32 }}
+          title="导入备份"
+        >📂</button>
       </div>
     </div>
   )
