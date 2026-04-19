@@ -178,6 +178,7 @@ function getModesForAgent(agentType) {
 // 模型选项 - 从各 Agent 配置文件动态读取
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 // Claude Code - 从 ~/.claude/settings.json 读取
 function loadClaudeModels() {
@@ -213,39 +214,101 @@ function loadClaudeModels() {
   }
 }
 
-// OpenCode - 从 ~/.config/opencode/opencode.json 读取
+// OpenCode - 动态获取免费模型 + 配置文件中的模型
 function loadOpenCodeModels() {
   const configPath = path.join(process.env.HOME || '/root', '.config', 'opencode', 'opencode.json');
-
-  // OpenCode 内置免费模型（不需要配置，直接可用）
-  const builtInModels = [
-    { id: 'opencode/gpt-5-nano', name: 'GPT-5 Nano', description: '免费 · 400K ctx · 支持推理' },
-    { id: 'opencode/big-pickle', name: 'Big Pickle', description: '免费 · 200K ctx · 支持推理' },
-    { id: 'opencode/minimax-m2.5-free', name: 'MiniMax M2.5 Free', description: '免费 · 204K ctx' },
-    { id: 'opencode/nemotron-3-super-free', name: 'Nemotron 3 Super Free', description: '免费 · 204K ctx' },
-  ];
-
   const models = [];
   const seen = new Set();
 
-  // 先加入内置免费模型
-  for (const m of builtInModels) {
-    models.push(m);
-    seen.add(m.id);
+  // 格式化上下文大小
+  const formatCtx = (tokens) => {
+    if (!tokens) return '';
+    if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(0)}M`;
+    if (tokens >= 1000) return `${Math.round(tokens / 1000)}K`;
+    return String(tokens);
+  };
+
+  // 1. 动态运行 opencode models --verbose 获取免费模型
+  try {
+    const opencodeBin = findOpencodeBin();
+    const output = execSync(`${opencodeBin} models --verbose < /dev/null 2>/dev/null`, {
+      encoding: 'utf-8',
+      timeout: 15000,
+      env: { ...process.env, PATH: getNpmBinPath() + ':' + (process.env.PATH || '') }
+    });
+
+    // 输出是多组 "名称\n{JSON}" 格式，用大括号计数解析
+    const lines = output.split('\n');
+    let jsonStart = -1;
+    let braceCount = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.trim().startsWith('{') && jsonStart === -1) {
+        jsonStart = i;
+        braceCount = 0;
+      }
+      if (jsonStart !== -1) {
+        for (const ch of line) {
+          if (ch === '{') braceCount++;
+          if (ch === '}') braceCount--;
+        }
+        if (braceCount === 0) {
+          const jsonStr = lines.slice(jsonStart, i + 1).join('\n');
+          try {
+            const model = JSON.parse(jsonStr);
+            // 筛选免费模型：input 和 output cost 都为 0
+            if (model.id && model.providerID && model.cost && model.cost.input === 0 && model.cost.output === 0) {
+              const fullId = `${model.providerID}/${model.id}`;
+              if (!seen.has(fullId)) {
+                const ctx = formatCtx(model.limit?.context);
+                const caps = [];
+                if (model.capabilities?.reasoning) caps.push('推理');
+                if (model.capabilities?.input?.image) caps.push('图像');
+                models.push({
+                  id: fullId,
+                  name: model.name || model.id,
+                  description: `免费${ctx ? ' · ' + ctx + ' ctx' : ''}${caps.length ? ' · ' + caps.join('/') : ''}`
+                });
+                seen.add(fullId);
+              }
+            }
+          } catch (e) { /* 忽略解析失败 */ }
+          jsonStart = -1;
+        }
+      }
+    }
+    console.log(`[OpenCode] 动态读取到 ${models.length} 个免费模型`);
+  } catch (e) {
+    console.warn('[OpenCode] 动态读取模型失败，使用硬编码列表:', e.message);
+    // 降级：硬编码的免费模型
+    const fallback = [
+      { id: 'opencode/gpt-5-nano', name: 'GPT-5 Nano', description: '免费 · 400K ctx · 推理' },
+      { id: 'opencode/big-pickle', name: 'Big Pickle', description: '免费 · 200K ctx · 推理' },
+      { id: 'opencode/minimax-m2.5-free', name: 'MiniMax M2.5 Free', description: '免费 · 204K ctx' },
+      { id: 'opencode/nemotron-3-super-free', name: 'Nemotron 3 Super Free', description: '免费 · 204K ctx' },
+    ];
+    for (const m of fallback) {
+      if (!seen.has(m.id)) {
+        models.push(m);
+        seen.add(m.id);
+      }
+    }
   }
 
+  // 2. 从配置文件读取用户自定义的模型（bailian、mimo 等）
   try {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     const providers = config.provider || {};
     const defaultModel = config.model || '';
 
-    // 再加默认模型（如果不在内置列表中）
+    // 默认模型优先显示
     if (defaultModel && !seen.has(defaultModel)) {
       const [providerName, ...modelParts] = defaultModel.split('/');
       const modelId = modelParts.join('/');
       const provider = providers[providerName];
       const modelInfo = provider?.models?.[modelId];
-      models.push({
+      models.unshift({
         id: defaultModel,
         name: modelInfo?.name || modelId,
         description: '当前默认模型'
@@ -253,7 +316,7 @@ function loadOpenCodeModels() {
       seen.add(defaultModel);
     }
 
-    // 遍历所有 provider 和 model
+    // 其他配置的模型
     for (const [providerName, provider] of Object.entries(providers)) {
       const providerModels = provider.models || {};
       for (const [modelId, modelInfo] of Object.entries(providerModels)) {
@@ -268,11 +331,36 @@ function loadOpenCodeModels() {
         }
       }
     }
-
-    return models;
   } catch (e) {
-    console.warn('读取 OpenCode 配置失败，仅使用内置模型:', e.message);
-    return models;  // 至少返回内置免费模型
+    console.warn('[OpenCode] 读取配置文件失败:', e.message);
+  }
+
+  return models;
+}
+
+// 查找 opencode 二进制路径
+function findOpencodeBin() {
+  const candidates = [
+    path.join(process.env.HOME || '/root', '.npm-global/lib/node_modules/opencode-ai/bin/.opencode'),
+    '/usr/local/lib/node_modules/opencode-ai/bin/.opencode',
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  try {
+    return execSync('which opencode 2>/dev/null', { encoding: 'utf-8' }).trim();
+  } catch (e) {
+    return 'opencode';
+  }
+}
+
+// 获取 npm 全局 bin 路径
+function getNpmBinPath() {
+  try {
+    const prefix = execSync('npm config get prefix', { encoding: 'utf-8' }).trim();
+    return prefix + '/bin';
+  } catch (e) {
+    return '';
   }
 }
 
