@@ -130,14 +130,18 @@ export default function Message({ message, index, onDelete, onCopy, onQuote }) {
       'TodoWrite': '✅', 'NotebookEdit': '📓'
     }
     const icon = toolIcons[toolName] || '🔧'
+    const toolCount = message.toolCount || 1
+    const result = message.result
+    const resultIsError = message.resultIsError
+
     let brief = ''
     if (typeof content === 'string') {
       if (toolName === 'Bash') {
-        brief = content.match(/command['":\s]*([^\n"'}]+)/)?.[1] || content.slice(0, 60)
+        brief = content.match(/command['":\s]*([^\\n"'}]+)/)?.[1] || content.slice(0, 60)
       } else if (toolName === 'Read' || toolName === 'Write' || toolName === 'Edit') {
-        brief = content.match(/file_path['":\s]*([^\n"'}]+)/)?.[1] || content.slice(0, 50)
+        brief = content.match(/file_path['":\s]*([^\\n"'}]+)/)?.[1] || content.slice(0, 50)
       } else {
-        brief = content.slice(0, 60).replace(/\n/g, ' ')
+        brief = content.slice(0, 60).replace(/\\n/g, ' ')
       }
       brief = brief.trim()
     }
@@ -145,7 +149,7 @@ export default function Message({ message, index, onDelete, onCopy, onQuote }) {
 
     return (
       <div className={`flex justify-start message my-0.5 ${replace ? 'message-replace' : ''}`}>
-        <div className="text-xs flex items-center gap-1.5 px-2.5 py-1 rounded-lg cursor-default max-w-full transition-colors"
+        <div className="text-xs flex items-center gap-1.5 px-2.5 py-1 rounded-lg cursor-default max-w-full transition-all"
           style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}
           title={content}
           onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
@@ -153,6 +157,12 @@ export default function Message({ message, index, onDelete, onCopy, onQuote }) {
           <span>{icon}</span>
           <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{toolName}</span>
           {brief && <span className="truncate" style={{ color: 'var(--text-muted)' }}>{brief}</span>}
+          {toolCount > 1 && (
+            <span className="flex-shrink-0 text-[10px] font-bold px-1 rounded"
+              style={{ color: 'var(--accent)', background: 'var(--accent-soft, rgba(99,102,241,0.15))' }}>
+              ×{toolCount}
+            </span>
+          )}
         </div>
       </div>
     )

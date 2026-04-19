@@ -194,19 +194,37 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
           // 处理工具调用消息的合并逻辑
           if (msg.type === 'tool_use') {
             setMessages(prev => {
-              const lastMessage = prev[prev.length - 1]
-              // 如果最后一条消息也是tool_use类型，则替换它
-              if (lastMessage && lastMessage.type === 'tool_use') {
-                const newMessages = [...prev]
-                newMessages[newMessages.length - 1] = {
-                  ...msg,
-                  // 添加一个标记，用于替换动画
-                  replace: true
+              // 往回查找最近的非工具消息位置，工具调用序列从那里开始
+              let toolSeqStart = prev.length
+              for (let i = prev.length - 1; i >= 0; i--) {
+                const t = prev[i].type
+                if (t === 'tool_use' || t === 'tool_result') {
+                  toolSeqStart = i
+                } else {
+                  break
                 }
-                return newMessages
               }
-              // 否则添加新消息
-              return [...prev, msg]
+              // 统计已有多少个 tool_use
+              let toolCount = 0
+              for (let i = toolSeqStart; i < prev.length; i++) {
+                if (prev[i].type === 'tool_use') toolCount++
+              }
+              // 保留工具序列之前的消息 + 新的 tool_use（带计数）
+              const before = prev.slice(0, toolSeqStart)
+              return [...before, { ...msg, toolCount: toolCount + 1, replace: toolCount > 0 }]
+            })
+          } else if (msg.type === 'tool_result') {
+            // tool_result 追加到最后一个 tool_use 后面（不单独占行，内联到 tool_use）
+            setMessages(prev => {
+              const newMessages = [...prev]
+              // 往回找到最近的 tool_use，把 result 合并进去
+              for (let i = newMessages.length - 1; i >= 0; i--) {
+                if (newMessages[i].type === 'tool_use') {
+                  newMessages[i] = { ...newMessages[i], result: msg.content, resultIsError: msg.metadata?.isError }
+                  break
+                }
+              }
+              return newMessages
             })
           } else {
             // 非工具调用消息正常添加
