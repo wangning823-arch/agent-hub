@@ -215,7 +215,9 @@ function loadClaudeModels() {
 }
 
 // OpenCode - 动态获取免费模型 + 配置文件中的模型
+let _opencodeModelsCache = null;
 function loadOpenCodeModels() {
+  if (_opencodeModelsCache) return _opencodeModelsCache;
   const configPath = path.join(process.env.HOME || '/root', '.config', 'opencode', 'opencode.json');
   const models = [];
   const seen = new Set();
@@ -335,6 +337,7 @@ function loadOpenCodeModels() {
     console.warn('[OpenCode] 读取配置文件失败:', e.message);
   }
 
+  _opencodeModelsCache = models;
   return models;
 }
 
