@@ -644,52 +644,41 @@ export default function ChatPanel({ sessionId, options = {}, onOptionsChange }) 
         )}
 
         {/* Mode / Model / Effort bar */}
-        <div className="px-4 py-2 border-b flex flex-wrap items-center gap-2"
+        <div className="px-4 py-2 border-b flex items-center gap-1.5 text-xs"
           style={{ borderColor: 'var(--border-subtle)' }}>
           {/* Mode */}
-          <div className="flex items-center gap-1">
-            <span className="text-xs mr-1" style={{ color: 'var(--text-muted)' }}>🛡️</span>
-            <div className="flex rounded-lg p-0.5" style={{ background: 'var(--bg-primary)' }}>
-              {modes.slice(0, 4).map(mode => (
-                <button
-                  key={mode.id}
-                  onClick={() => updateOption('mode', mode.id)}
-                  className={`btn-segment ${currentMode === mode.id ? 'active' : ''}`}
-                  title={mode.description}
-                >{mode.name}</button>
-              ))}
-            </div>
-          </div>
+          <select
+            value={currentMode}
+            onChange={(e) => updateOption('mode', e.target.value)}
+            className="select-field text-xs py-1"
+          >
+            {modes.filter(m => ['default','auto','plan','acceptEdits'].includes(m.id)).map(mode => (
+              <option key={mode.id} value={mode.id}>{mode.name}</option>
+            ))}
+          </select>
           <div className="w-px h-5" style={{ background: 'var(--border-primary)' }} />
           {/* Model */}
-          <div className="flex items-center gap-1">
-            <span className="text-xs mr-1" style={{ color: 'var(--text-muted)' }}>🧠</span>
-            <select
-              value={currentModel}
-              onChange={(e) => updateOption('model', e.target.value)}
-              className="select-field text-xs py-1"
-            >
-              <option value="">默认模型</option>
-              {models.map(model => (
-                <option key={model.id} value={model.id}>{model.name}</option>
-              ))}
-            </select>
-          </div>
+          <select
+            value={currentModel}
+            onChange={(e) => updateOption('model', e.target.value)}
+            className="select-field text-xs py-1"
+          >
+            <option value="">默认模型</option>
+            {models.map(model => (
+              <option key={model.id} value={model.id}>{model.name}</option>
+            ))}
+          </select>
           <div className="w-px h-5" style={{ background: 'var(--border-primary)' }} />
           {/* Effort */}
-          <div className="flex items-center gap-1">
-            <span className="text-xs mr-1" style={{ color: 'var(--text-muted)' }}>💪</span>
-            <div className="flex rounded-lg p-0.5" style={{ background: 'var(--bg-primary)' }}>
-              {efforts.map(effort => (
-                <button
-                  key={effort.id}
-                  onClick={() => updateOption('effort', effort.id)}
-                  className={`btn-segment ${currentEffort === effort.id ? 'active' : ''}`}
-                  title={effort.description}
-                >{effort.name}</button>
-              ))}
-            </div>
-          </div>
+          <select
+            value={currentEffort}
+            onChange={(e) => updateOption('effort', e.target.value)}
+            className="select-field text-xs py-1"
+          >
+            {efforts.map(effort => (
+              <option key={effort.id} value={effort.id}>{effort.name}</option>
+            ))}
+          </select>
         </div>
 
         {/* Quote preview */}
