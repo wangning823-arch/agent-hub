@@ -198,34 +198,45 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
         try {
           const msg = JSON.parse(event.data)
           
-          // 处理工具调用消息的合并逻辑 - 所有工具调用只保留最新一条
+          // 处理工具调用消息的合并逻辑
           if (msg.type === 'tool_use' || msg.type === 'tool_result') {
             setMessages(prev => {
-              // 统计当前有多少个 tool_use（用于计数器）
-              let toolCount = 0
+              // 统计总 tool_use 数量
+              let totalToolCalls = 0
               for (const m of prev) {
-                if (m.type === 'tool_use') toolCount++
+                if (m.type === 'tool_use') totalToolCalls++
               }
-              if (msg.type === 'tool_use') toolCount++
-
-              // 找到列表末尾连续的工具消息，删除它们
-              const newMessages = [...prev]
-              while (newMessages.length > 0) {
-                const last = newMessages[newMessages.length - 1]
-                if (last.type === 'tool_use' || last.type === 'tool_result') {
-                  newMessages.pop()
-                } else {
-                  break
-                }
-              }
+              if (msg.type === 'tool_use') totalToolCalls++
 
               if (msg.type === 'tool_use') {
-                newMessages.push({ ...msg, toolCount, replace: toolCount > 1 })
+                // 从后往前找最近的 tool_use（跳过助手文本和 status 消息）
+                let toolSlotIdx = -1
+                for (let i = prev.length - 1; i >= 0; i--) {
+                  const t = prev[i].type
+                  if (t === 'tool_use') {
+                    toolSlotIdx = i
+                    break
+                  }
+                  // 遇到用户消息或错误，说明是新响应，没有工具槽
+                  if (t === 'user' || t === 'error') {
+                    break
+                  }
+                  // tool_result、status、text 都不打断，继续往前找
+                }
+
+                if (toolSlotIdx >= 0) {
+                  // 替换已有的工具消息
+                  const newMessages = [...prev]
+                  newMessages[toolSlotIdx] = { ...msg, toolCount: totalToolCalls, replace: true }
+                  return newMessages
+                } else {
+                  // 新的工具调用，添加
+                  return [...prev, { ...msg, toolCount: totalToolCalls, replace: false }]
+                }
               } else {
-                // tool_result: 合并到最近的 tool_use 里（如果刚有 tool_use 被删了，这里就忽略）
-                // 实际上直接不显示 tool_result，等下一个 tool_use 来替换
+                // tool_result: 不单独显示，直接丢弃
+                return prev
               }
-              return newMessages
             })
           } else {
             // 非工具调用消息正常添加
