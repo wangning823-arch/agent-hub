@@ -93,6 +93,9 @@ class OpenCodeAgent extends Agent {
       // 构建命令参数
       const args = ['run'];
 
+      // 使用 --pure 避免 plugins 导致进程挂起
+      args.push('--pure');
+
       // 恢复会话
       if (this.sessionId) {
         args.push('--session', this.sessionId);
@@ -123,7 +126,7 @@ class OpenCodeAgent extends Agent {
       const env = getEnvWithPath();
 
       // 通过 shell 执行，解决二进制 stdout 缓冲问题
-      const shellCmd = `${OPENCODE_PATH} ${args.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')}`;
+      const shellCmd = `${OPENCODE_PATH} ${args.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')} < /dev/null`;
 
       console.log('[OpenCode] exec:', shellCmd.substring(0, 200));
 
