@@ -37,20 +37,21 @@ class ClaudeApiAgent extends Agent {
     // 添加用户消息到历史
     this.messages.push({ role: 'user', content: message });
 
+    // 全局超时保护与简单重试策略
     try {
-      await this._streamChat();
+      const timeoutMs = this.options.timeoutMs || 60000; // 60s
+      await Promise.race([
+        this._streamChat(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Claude API request timeout')), timeoutMs))
+      ]);
     } catch (error) {
-      // 重试逻辑：429 限流和 5xx 服务器错误
-      if (error.status === 429 || (error.status && error.status >= 500)) {
-        this.emit('message', { type: 'status', content: '⏳ API 限流，3秒后重试...' });
-        await new Promise(r => setTimeout(r, 3000));
-        try {
-          await this._streamChat();
-        } catch (retryError) {
-          this._handleError(retryError);
-        }
-      } else {
-        this._handleError(error);
+      // 超时或错误统一处理
+      this._handleError(error);
+      // 简单重试一次，避免偶发网络抖动
+      try {
+        await this._streamChat();
+      } catch (retryError) {
+        this._handleError(retryError);
       }
     }
   }
@@ -204,6 +205,16 @@ class ClaudeApiAgent extends Agent {
     this.isRunning = false;
     this.conversationId = null;
     this.emit('stopped', { code: 0 });
+  }
+
+  static healthCheck() {
+    try {
+      // 简单检查：验证客户端库能被加载
+      require('../claude-client');
+      return { ok: true, info: 'Claude API client available' };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
   }
 }
 

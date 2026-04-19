@@ -11,12 +11,26 @@ class ClaudeCodeAgent extends Agent {
     super('claude-code', workdir);
     this.conversationId = options.conversationId || null; // 支持恢复已有对话
     this.options = options;
+    // 跟踪正在运行的子进程，用于优雅地中止/清理
+    this.activeProc = null;
   }
 
   async start() {
     // Claude Code 不需要长期运行的进程
     // 每次发消息时启动一个新进程，用 --continue 保持历史
     this.isRunning = true;
+    // 可选的自检，确保 claude CLI 可用
+    try {
+      const claudeBin = process.env.CLAUDE_CLI_PATH || 'claude';
+      require('child_process').execSync(`"${claudeBin}" --version`, { stdio: 'ignore' });
+    } catch (e) {
+      this.isRunning = false;
+      this.emit('message', {
+        type: 'error',
+        content: 'Claude CLI 未发现或不可用，请确保 CLAUDE_CLI_PATH 指向正确的二进制，或在 PATH 中可访问。'
+      });
+      return;
+    }
     this.emit('started');
     
     // 发送欢迎消息
@@ -71,9 +85,16 @@ class ClaudeCodeAgent extends Agent {
         args.push('--continue');
       }
       
-      // 添加用户消息
-      args.push('-p', message);
+      // 添加用户消息（长度截断，防止超大输入导致崩溃）
+      let userMessage = message;
+      const MAX_INPUT_SIZE = 8000;
+      if (typeof userMessage === 'string' && userMessage.length > MAX_INPUT_SIZE) {
+        userMessage = userMessage.substring(0, MAX_INPUT_SIZE);
+        this.emit('message', { type: 'status', content: '⚠️ 输入过长，已截断以确保处理稳定' });
+      }
+      args.push('-p', userMessage);
 
+      // 启动 Claude Code CLI
       const proc = spawn(claudePath, args, {
         cwd: this.workdir,
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -81,6 +102,15 @@ class ClaudeCodeAgent extends Agent {
           ...process.env
         }
       });
+      // 超时保护：60s 超时未返回则强制中止
+      const timeoutId = setTimeout(() => {
+        try { proc.kill(); } catch (e) { /* ignore */ }
+        this.emit('message', { type: 'error', content: 'Claude Code 响应超时' });
+        reject(new Error('timeout'));
+      }, 60000);
+      // 清理超时定时器（在输出完成时清理）
+      // 记录活跃进程，便于后续中止
+      this.activeProc = proc;
 
       let buffer = '';
       let hasOutput = false;
@@ -119,6 +149,8 @@ class ClaudeCodeAgent extends Agent {
       });
 
       proc.on('close', (code) => {
+        // 取消超时定时器
+        try { clearTimeout(timeoutId); } catch {}
         // 处理剩余buffer
         if (buffer.trim()) {
           try {
@@ -136,14 +168,17 @@ class ClaudeCodeAgent extends Agent {
           });
         }
         
+        // 清理活跃进程引用
+        this.activeProc = null;
         resolve();
       });
 
       proc.on('error', (err) => {
         this.emit('message', { 
-          type: 'error', 
+          type: 'error',
           content: `启动失败: ${err.message}` 
         });
+        this.activeProc = null;
         reject(err);
       });
     });
@@ -228,9 +263,26 @@ class ClaudeCodeAgent extends Agent {
    * 停止Agent
    */
   async stop() {
+    // 取消正在进行的 Claude Code 调用
+    if (this.activeProc) {
+      try { this.activeProc.kill(); } catch (e) { /* ignore */ }
+      this.activeProc = null;
+    }
     this.isRunning = false;
     this.conversationId = null;
     this.emit('stopped', { code: 0 });
+  }
+
+  // 静态健康检查：不依赖工作目录即可快速判断可用性
+  static healthCheck() {
+    try {
+      const claudeBin = process.env.CLAUDE_CLI_PATH || 'claude';
+      const { execSync } = require('child_process');
+      execSync(`"${claudeBin}" --version`, { stdio: 'ignore' });
+      return { ok: true, info: 'Claude Code CLI available' };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
   }
 }
 

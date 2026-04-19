@@ -31,6 +31,8 @@ class CodexAgent extends Agent {
   constructor(workdir, options = {}) {
     super('codex', workdir);
     this.options = options;
+    // 跟踪活跃的子进程，便于停止/清理
+    this.activeProc = null;
   }
 
   /**
@@ -59,6 +61,19 @@ class CodexAgent extends Agent {
     }
 
     this.isRunning = true;
+    // 预检 Codex CLI 是否可用
+    try {
+      const codexBin = process.env.CODEX_CLI_PATH || 'codex';
+      require('child_process').execSync(`"${codexBin}" --version`, { stdio: 'ignore' });
+    } catch (e) {
+      this.isRunning = false;
+      this.emit('message', {
+        type: 'error',
+        content: 'Codex CLI 未发现或不可用，请确保 CODEX_CLI_PATH 指向正确的二进制，或在 PATH 中可访问。'
+      });
+      this.emit('stopped', { code: 1 });
+      return;
+    }
     this.emit('started');
 
     // 发送欢迎消息
@@ -95,14 +110,21 @@ class CodexAgent extends Agent {
         args.push('--model', this.options.model);
       }
 
-      // 添加用户消息
-      args.push(message);
+      // 添加用户消息（长度截断，防止超大输入导致崩溃）
+      let userMessage = message;
+      const MAX_INPUT_SIZE = 8000;
+      if (typeof userMessage === 'string' && userMessage.length > MAX_INPUT_SIZE) {
+        userMessage = userMessage.substring(0, MAX_INPUT_SIZE);
+        this.emit('message', { type: 'status', content: '⚠️ 输入过长，已截断以确保处理稳定' });
+      }
+      args.push(userMessage);
 
       const proc = spawn(codexPath, args, {
         cwd: this.workdir,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: getEnvWithPath()
       });
+      this.activeProc = proc;
 
       let stdoutBuffer = '';
       let stderrBuffer = '';
@@ -148,6 +170,7 @@ class CodexAgent extends Agent {
           });
         }
 
+        this.activeProc = null;
         resolve();
       });
 
@@ -163,6 +186,7 @@ class CodexAgent extends Agent {
             content: `启动失败: ${err.message}`
           });
         }
+        this.activeProc = null;
         reject(err);
       });
     });
@@ -249,12 +273,24 @@ class CodexAgent extends Agent {
    * 停止 Agent
    */
   async stop() {
-    if (this.process) {
-      this.process.kill();
-      this.process = null;
+    // 终止活跃的 Codex 进程
+    if (this.activeProc) {
+      try { this.activeProc.kill(); } catch (e) { /* ignore */ }
+      this.activeProc = null;
     }
     this.isRunning = false;
     this.emit('stopped', { code: 0 });
+  }
+
+  static healthCheck() {
+    try {
+      const { execSync } = require('child_process');
+      const codexBin = process.env.CODEX_CLI_PATH || 'codex';
+      execSync(`"${codexBin}" --version`, { stdio: 'ignore' });
+      return { ok: true, info: 'Codex available' };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
   }
 }
 

@@ -64,10 +64,22 @@ class OpenCodeAgent extends Agent {
     super('opencode', workdir);
     this.sessionId = options.sessionId || null;
     this.options = options;
+    // 当前正在运行的子进程引用，用于优雅地中断/退出
+    this.activeProc = null;
   }
 
   async start() {
     this.isRunning = true;
+    // 先进行可用性自检，确保 OpenCode 可用再正式就绪
+    const available = await this._checkOpencodeAvailability();
+    if (!available) {
+      this.isRunning = false;
+      this.emit('message', {
+        type: 'error',
+        content: 'OpenCode 可用性检查失败，请确认 OpenCode 已安装并在 PATH 中可访问。'
+      });
+      return;
+    }
     this.emit('started');
 
     // 发送欢迎消息
@@ -85,7 +97,22 @@ class OpenCodeAgent extends Agent {
       throw new Error('Agent未运行');
     }
 
-    console.log('[OpenCode] 发送消息:', message.substring(0, 100));
+    // 简单校验输入
+    if (typeof message !== 'string') message = String(message);
+    const trimmed = message.trim();
+    if (!trimmed) {
+      return Promise.resolve();
+    }
+
+    // 若已有正在运行的子进程，优雅地中止再启动新的会话
+    if (this.activeProc) {
+      try {
+        this.activeProc.kill('SIGTERM');
+      } catch (e) { /* ignore */ }
+      this.activeProc = null;
+    }
+
+    console.log('[OpenCode] 发送消息:', trimmed.substring(0, Math.min(100, trimmed.length)));
     // 通知前端正在处理
     this.emit('message', { type: 'status', content: '🤔 思考中...' });
 
@@ -120,7 +147,7 @@ class OpenCodeAgent extends Agent {
       args.push('--format', 'json');
 
       // 添加用户消息
-      args.push(message);
+      args.push(trimmed);
 
       // 确保 PATH 包含 npm 全局目录
       const env = getEnvWithPath();
@@ -134,6 +161,9 @@ class OpenCodeAgent extends Agent {
         env,
         stdio: ['pipe', 'pipe', 'pipe']
       });
+
+      // 记录当前活跃进程，方便后续中止/清理
+      this.activeProc = proc;
 
       let buffer = '';
       let hasOutput = false;
@@ -165,6 +195,9 @@ class OpenCodeAgent extends Agent {
           this.handleOutput(buffer.trim());
         }
 
+        // 清理活跃进程引用
+        this.activeProc = null;
+
         if (code !== 0 && !hasOutput) {
           const err = new Error(`OpenCode 退出码: ${code}`);
           console.error('[OpenCode] exit error:', err.message);
@@ -178,6 +211,7 @@ class OpenCodeAgent extends Agent {
       proc.on('error', (err) => {
         console.error('[OpenCode] spawn error:', err.message);
         this.emit('message', { type: 'error', content: `OpenCode 执行失败: ${err.message}` });
+        this.activeProc = null;
         reject(err);
       });
     });
@@ -193,6 +227,20 @@ class OpenCodeAgent extends Agent {
     } catch (e) {
       // 非JSON作为纯文本
       this.emit('message', { type: 'text', content: line });
+    }
+  }
+
+  // 简单可用性自检：尝试获取版本，避免直接在不可用时进入错误状态
+  async _checkOpencodeAvailability() {
+    try {
+      const env = getEnvWithPath();
+      const cmd = OPENCODE_PATH.includes(' ') ? `"${OPENCODE_PATH}" --version` : `${OPENCODE_PATH} --version`;
+      const { stdout } = await execAsync(cmd, { timeout: 2000, env, maxBuffer: 1024 * 1024 });
+      console.log('[OpenCode] 版本信息:', stdout.trim());
+      return true;
+    } catch (e) {
+      console.warn('[OpenCode] 可用性检查失败:', e.message);
+      return false;
     }
   }
 
@@ -282,13 +330,25 @@ class OpenCodeAgent extends Agent {
    * 停止 Agent
    */
   async stop() {
-    if (this.process) {
-      this.process.kill();
-      this.process = null;
+    // 先终止活跃的子进程，避免悬挂/僵尸进程
+    if (this.activeProc) {
+      try { this.activeProc.kill(); } catch (e) { /* ignore */ }
+      this.activeProc = null;
     }
     this.isRunning = false;
     this.sessionId = null;
     this.emit('stopped', { code: 0 });
+  }
+
+  static healthCheck() {
+    try {
+      const { execSync } = require('child_process');
+      const opPath = typeof OPENCODE_PATH !== 'undefined' ? OPENCODE_PATH : 'opencode';
+      execSync(`"${opPath}" --version`, { stdio: 'ignore' });
+      return { ok: true, info: 'OpenCode available' };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
   }
 }
 

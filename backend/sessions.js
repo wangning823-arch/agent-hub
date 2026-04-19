@@ -202,7 +202,13 @@ class SessionManager {
     });
 
     // 启动Agent
-    await agent.start();
+    try {
+      await agent.start();
+    } catch (err) {
+      console.error('Agent.start 失败:', err && err.message);
+      this.broadcast(id, { type: 'error', content: `Agent启动失败: ${err.message}` });
+      return null;
+    }
 
     this.sessions.set(id, session);
 
@@ -308,7 +314,13 @@ class SessionManager {
       this.broadcast(session.id, { type: 'status', content: 'Agent已停止' });
     });
 
-    await agent.start();
+    try {
+      await agent.start();
+    } catch (err) {
+      console.error('Agent.start 失败:', err && err.message);
+      this.broadcast(session.id, { type: 'error', content: `Agent启动失败: ${err.message}` });
+      throw err;
+    }
     session.agent = agent;
     session.isActive = true;
     console.log(`会话 ${session.id} agent已恢复`);

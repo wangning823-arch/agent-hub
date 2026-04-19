@@ -12,10 +12,22 @@ const SessionManager = require('./sessions');
 const PermissionManager = require('./permissions');
 const ProjectManager = require('./projects');
 const { CLAUDE_COMMANDS, PERMISSION_MODES, MODELS, EFFORT_LEVELS, getModelsForAgent, getModesForAgent, getEffortsForAgent, getCommandsForAgent } = require('./commands');
+// health helpers (静态健康检查)
+const ClaudeCodeAgent = require('./agents/claude-code');
+const ClaudeApiAgent = require('./agents/claude-api');
+const OpenCodeAgent = require('./agents/opencode');
+const CodexAgent = require('./agents/codex');
 const { upload, handleUpload, handlePasteImage, UPLOAD_DIR } = require('./upload');
 const TokenTracker = require('./token-tracker');
 
 const app = express();
+// 全局健壮性：捕获未处理的异常和未处理的 Promise
+process.on('uncaughtException', (err) => {
+  console.error('[Global] 未捕获异常', err);
+});
+process.on('unhandledRejection', (reason, p) => {
+  console.error('[Global] 未处理的 Promise 拒绝', p, '原因:', reason);
+});
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
@@ -72,9 +84,43 @@ app.use((req, res, next) => {
 
 // ============ REST API ============
 
+// 错误处理中间件（全局）
+app.use((err, req, res, next) => {
+  console.error('[Express] 未处理错误', err);
+  res.status(500).json({ error: err?.message || 'internal_error' });
+});
+
 // 健康检查
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/api/health', async (req, res) => {
+  // 统一健康检查：返回四类代理的就绪状态
+  const results = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    agents: {
+      'claude-code': { ok: true },
+      'claude-api': { ok: true },
+      'opencode': { ok: true },
+      'codex': { ok: true }
+    }
+  };
+  try {
+    const checks = await Promise.all([
+      // 尝试运行静态健康检查，若实现失败则标记为不可用
+      (async () => (ClaudeCodeAgent.healthCheck ? ClaudeCodeAgent.healthCheck() : { ok: true }))(),
+      (async () => (ClaudeApiAgent.healthCheck ? ClaudeApiAgent.healthCheck() : { ok: true }))(),
+      (async () => (OpenCodeAgent.healthCheck ? OpenCodeAgent.healthCheck() : { ok: true }))(),
+      (async () => (CodexAgent.healthCheck ? CodexAgent.healthCheck() : { ok: true }))()
+    ]);
+    results.agents['claude-code'].ok = checks[0]?.ok !== undefined ? checks[0].ok : true;
+    results.agents['claude-api'].ok = checks[1]?.ok !== undefined ? checks[1].ok : true;
+    results.agents['opencode'].ok = checks[2]?.ok !== undefined ? checks[2].ok : true;
+    results.agents['codex'].ok = checks[3]?.ok !== undefined ? checks[3].ok : true;
+  } catch (e) {
+    // 任意一个健康检查抛错，整体保持 ok，单独标记错误信息
+    results.status = 'degraded';
+    results.error = e?.message || 'unknown';
+  }
+  res.json(results);
 });
 
 // 获取支持的Agent类型
