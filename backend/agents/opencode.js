@@ -237,8 +237,8 @@ class OpenCodeAgent extends Agent {
   async _checkOpencodeAvailability() {
     try {
       const env = getEnvWithPath();
-      const cmd = OPENCODE_PATH.includes(' ') ? `"${OPENCODE_PATH}" --version` : `${OPENCODE_PATH} --version`;
-      const { stdout } = await execAsync(cmd, { timeout: 2000, env, maxBuffer: 1024 * 1024 });
+      const cmd = `${OPENCODE_PATH} --version < /dev/null`;
+      const { stdout } = await execAsync(cmd, { timeout: 5000, env, maxBuffer: 1024 * 1024 });
       console.log('[OpenCode] 版本信息:', stdout.trim());
       return true;
     } catch (e) {
