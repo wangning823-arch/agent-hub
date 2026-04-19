@@ -643,44 +643,6 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
           </div>
         )}
 
-        {/* Mode / Model / Effort bar */}
-        <div className="px-4 py-2 border-b flex items-center gap-1.5 text-xs"
-          style={{ borderColor: 'var(--border-subtle)' }}>
-          {/* Mode */}
-          <select
-            value={currentMode}
-            onChange={(e) => updateOption('mode', e.target.value)}
-            className="select-field text-xs py-1"
-          >
-            {modes.filter(m => ['default','auto','plan','acceptEdits'].includes(m.id)).map(mode => (
-              <option key={mode.id} value={mode.id}>{mode.name}</option>
-            ))}
-          </select>
-          <div className="w-px h-5" style={{ background: 'var(--border-primary)' }} />
-          {/* Model */}
-          <select
-            value={currentModel}
-            onChange={(e) => updateOption('model', e.target.value)}
-            className="select-field text-xs py-1"
-          >
-            <option value="">默认模型</option>
-            {models.map(model => (
-              <option key={model.id} value={model.id}>{model.name}</option>
-            ))}
-          </select>
-          <div className="w-px h-5" style={{ background: 'var(--border-primary)' }} />
-          {/* Effort */}
-          <select
-            value={currentEffort}
-            onChange={(e) => updateOption('effort', e.target.value)}
-            className="select-field text-xs py-1"
-          >
-            {efforts.map(effort => (
-              <option key={effort.id} value={effort.id}>{effort.name}</option>
-            ))}
-          </select>
-        </div>
-
         {/* Quote preview */}
         {quoteReply && (
           <div className="px-4 pt-2">
@@ -688,55 +650,95 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
           </div>
         )}
 
-        {/* Input area */}
-        <div className="p-4">
-          <div className="flex gap-2 items-end">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.json,.js,.ts,.jsx,.tsx,.py,.html,.css"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="btn-icon"
-              style={{ width: 42, height: 42 }}
-              title="上传文件"
-            >{uploading ? '⏳' : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>}</button>
-
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              placeholder="输入消息... (Enter 发送, Shift+Enter 换行, Ctrl+V 粘贴图片)"
-              className="input-textarea flex-1"
-              rows={2}
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!connected || (input.trim() === '' && attachments.length === 0)}
-              className="btn-primary px-5 py-2.5 text-sm font-medium"
-              style={{ minWidth: 64, height: 42 }}
-            >发送</button>
+        {/* Input area - 所有控件都在输入框里 */}
+        <div className="p-3">
+          <div className="rounded-2xl border overflow-hidden" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-primary)' }}>
+            {/* Textarea */}
+            <div className="px-3 pt-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.json,.js,.ts,.jsx,.tsx,.py,.html,.css"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                placeholder="输入消息..."
+                className="w-full bg-transparent text-sm resize-none focus:outline-none"
+                style={{ color: 'var(--text-primary)', minHeight: 40, maxHeight: 120 }}
+                rows={1}
+              />
+            </div>
+            {/* 底部工具栏 */}
+            <div className="flex items-center gap-1 px-2 pb-2">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="p-1.5 rounded-lg transition-colors text-xs"
+                style={{ color: 'var(--text-muted)' }}
+                title="上传文件"
+              >{uploading ? '⏳' : '📎'}</button>
+              <select
+                value={currentMode}
+                onChange={(e) => updateOption('mode', e.target.value)}
+                className="text-xs py-1 px-1.5 rounded-lg border-none focus:outline-none"
+                style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', maxWidth: 80 }}
+              >
+                {modes.map(mode => (
+                  <option key={mode.id} value={mode.id}>{mode.name}</option>
+                ))}
+              </select>
+              <select
+                value={currentModel}
+                onChange={(e) => updateOption('model', e.target.value)}
+                className="text-xs py-1 px-1.5 rounded-lg border-none focus:outline-none"
+                style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', maxWidth: 120 }}
+              >
+                <option value="">默认模型</option>
+                {models.map(model => (
+                  <option key={model.id} value={model.id}>{model.name}</option>
+                ))}
+              </select>
+              {efforts.length > 0 && (
+                <select
+                  value={currentEffort}
+                  onChange={(e) => updateOption('effort', e.target.value)}
+                  className="text-xs py-1 px-1.5 rounded-lg border-none focus:outline-none"
+                  style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', maxWidth: 60 }}
+                >
+                  {efforts.map(effort => (
+                    <option key={effort.id} value={effort.id}>{effort.name}</option>
+                  ))}
+                </select>
+              )}
+              <div className="flex-1" />
+              <button
+                onClick={sendMessage}
+                disabled={!connected || (input.trim() === '' && attachments.length === 0)}
+                className="p-1.5 rounded-lg transition-colors"
+                style={{ background: 'var(--accent-primary)', color: 'white', opacity: (!connected || (input.trim() === '' && attachments.length === 0)) ? 0.4 : 1 }}
+                title="发送"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </div>
           </div>
 
           {/* Status bar */}
-          <div className="mt-2 flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
-            <div className="flex items-center gap-3">
-              <span className="flex items-center gap-1.5">
-                <span className={`status-dot ${connected ? 'connected' : 'disconnected'}`} />
-                {connected ? '已连接' : '未连接'}
-              </span>
+          <div className="mt-1.5 flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
+            <div className="flex items-center gap-2">
+              <span className={`status-dot ${connected ? 'connected' : 'disconnected'}`} style={{ width: 6, height: 6 }} />
               {attachments.length > 0 && (
-                <span style={{ color: 'var(--accent-primary)' }}>📎 {attachments.length} 个附件</span>
+                <span style={{ color: 'var(--accent-primary)' }}>📎{attachments.length}</span>
               )}
             </div>
-            <span>Enter 发送 · Shift+Enter 换行 · Ctrl+V 粘贴</span>
+            <span>Enter 发送 · Shift+Enter 换行</span>
           </div>
         </div>
       </div>

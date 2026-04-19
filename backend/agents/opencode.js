@@ -3,7 +3,7 @@
  * 使用 opencode run 命令进行对话，支持会话恢复
  */
 const Agent = require('./base');
-const { spawn, execSync } = require('child_process');
+const { exec, execSync } = require('child_process');
 const fs = require('fs');
 
 // 尝试查找 opencode 可执行文件路径（优先找实际二进制，跳过 wrapper）
@@ -44,6 +44,19 @@ function getEnvWithPath() {
     }
   } catch (e) {}
   return env;
+}
+
+// 异步执行 shell 命令（不阻塞事件循环）
+function execAsync(cmd, options) {
+  return new Promise((resolve, reject) => {
+    exec(cmd, { ...options, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err && !stdout) {
+        reject(err);
+      } else {
+        resolve({ stdout: stdout || '', stderr: stderr || '' });
+      }
+    });
+  });
 }
 
 class OpenCodeAgent extends Agent {
@@ -114,17 +127,11 @@ class OpenCodeAgent extends Agent {
 
       console.log('[OpenCode] exec:', shellCmd.substring(0, 200));
 
-      try {
-        const { execSync } = require('child_process');
-        const stdout = execSync(shellCmd, {
-          cwd: this.workdir,
-          env,
-          encoding: 'utf-8',
-          timeout: 120000,
-          maxBuffer: 10 * 1024 * 1024,
-          stdio: ['pipe', 'pipe', 'pipe']
-        });
-
+      execAsync(shellCmd, {
+        cwd: this.workdir,
+        env,
+        timeout: 120000
+      }).then(({ stdout }) => {
         // 处理 stdout 输出
         if (stdout) {
           const lines = stdout.split('\n');
@@ -134,8 +141,9 @@ class OpenCodeAgent extends Agent {
             }
           }
         }
-      } catch (err) {
-        // execSync 超时时也会有 stdout 输出
+        resolve();
+      }).catch((err) => {
+        // exec 超时时也会有 stdout 输出
         if (err.stdout) {
           const lines = err.stdout.toString().split('\n');
           for (const line of lines) {
@@ -143,12 +151,13 @@ class OpenCodeAgent extends Agent {
               this.handleOutput(line.trim());
             }
           }
+          resolve();
         } else {
           console.error('[OpenCode] exec error:', err.message);
           this.emit('message', { type: 'error', content: `OpenCode 执行失败: ${err.message}` });
+          reject(err);
         }
-      }
-      resolve();
+      });
     });
   }
 
