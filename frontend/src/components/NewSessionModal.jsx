@@ -19,11 +19,13 @@ export default function NewSessionModal({ agents, onCreate, onClose, currentWork
     const loadProjects = async () => {
       try {
         const data = await fetch(`${API_BASE}/projects`).then(r => r.json())
-        setProjects(data.projects || [])
+        const list = Array.isArray(data) ? data : (data.projects || [])
+        setProjects(list)
         // 默认选中最近使用的项目
-        if (data.projects?.length > 0) {
-          setSelectedProject(data.projects[0])
-          generateTitle(data.projects[0].name)
+        if (list.length > 0) {
+          setSelectedProject(list[0])
+          generateTitle(list[0].name)
+          if (list[0].agentType) setAgentType(list[0].agentType)
         }
       } catch (err) {
         console.error('加载项目失败:', err)
