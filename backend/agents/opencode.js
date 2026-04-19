@@ -200,8 +200,9 @@ class OpenCodeAgent extends Agent {
    * 处理JSON消息 - OpenCode 实际输出格式
    */
   handleJsonMessage(msg) {
-    // OpenCode 格式: { type: "text", part: { type: "text", text: "..." } }
-    if (msg.type === 'text' && msg.part?.text) {
+    try {
+      // OpenCode 格式: { type: "text", part: { type: "text", text: "..." } }
+      if (msg.type === 'text' && msg.part?.text) {
       console.log('[OpenCode] emit text:', msg.part.text.substring(0, 100));
       this.emit('message', { type: 'text', content: msg.part.text });
     } else if (msg.type === 'step_start') {
@@ -259,6 +260,10 @@ class OpenCodeAgent extends Agent {
       if (text && typeof text === 'string' && text.trim()) {
         this.emit('message', { type: 'text', content: text });
       }
+    }
+    } catch (e) {
+      console.error('[OpenCode] 处理消息异常:', e.message);
+      this.emit('message', { type: 'error', content: `消息处理异常: ${e.message}` });
     }
   }
 
