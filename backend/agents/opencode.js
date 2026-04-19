@@ -4,23 +4,45 @@
  */
 const Agent = require('./base');
 const { spawn, execSync } = require('child_process');
+const fs = require('fs');
 
-// 获取 npm 全局 bin 目录
-function getNpmGlobalBin() {
-  try {
-    return execSync('npm config get prefix', { encoding: 'utf-8' }).trim() + '/bin';
-  } catch (e) {
-    return null;
+// 尝试查找 opencode 可执行文件路径（优先找实际二进制，跳过 wrapper）
+function findOpencodePath() {
+  // 常见的实际二进制路径
+  const candidates = [
+    '/home/root1/.npm-global/lib/node_modules/opencode-ai/bin/.opencode',
+    '/usr/local/lib/node_modules/opencode-ai/bin/.opencode',
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
   }
+  // 检查 npm 全局目录动态获取
+  try {
+    const prefix = execSync('npm config get prefix', { encoding: 'utf-8' }).trim();
+    const binPath = prefix + '/lib/node_modules/opencode-ai/bin/.opencode';
+    if (fs.existsSync(binPath)) return binPath;
+  } catch (e) {}
+  // fallback 到 wrapper
+  try {
+    const p = execSync('which opencode 2>/dev/null', { encoding: 'utf-8' }).trim();
+    if (p) return p;
+  } catch (e) {}
+  return 'opencode';
 }
+
+const OPENCODE_PATH = findOpencodePath();
+console.log('[OpenCode] 使用路径:', OPENCODE_PATH);
 
 // 确保 PATH 包含 npm 全局目录
 function getEnvWithPath() {
   const env = { ...process.env };
-  const npmBin = getNpmGlobalBin();
-  if (npmBin && env.PATH && !env.PATH.includes(npmBin)) {
-    env.PATH = npmBin + ':' + env.PATH;
-  }
+  try {
+    const prefix = execSync('npm config get prefix', { encoding: 'utf-8' }).trim();
+    const binDir = prefix + '/bin';
+    if (env.PATH && !env.PATH.includes(binDir)) {
+      env.PATH = binDir + ':' + env.PATH;
+    }
+  } catch (e) {}
   return env;
 }
 
@@ -50,14 +72,13 @@ class OpenCodeAgent extends Agent {
       throw new Error('Agent未运行');
     }
 
+    console.log('[OpenCode] 发送消息:', message.substring(0, 100));
     // 通知前端正在处理
     this.emit('message', { type: 'status', content: '🤔 思考中...' });
 
     return new Promise((resolve, reject) => {
-      const opencodePath = process.env.OPENCODE_CLI_PATH || 'opencode';
-
       // 构建命令参数
-      const args = ['run', message];
+      const args = ['run'];
 
       // 恢复会话
       if (this.sessionId) {
@@ -82,77 +103,52 @@ class OpenCodeAgent extends Agent {
       // JSON格式输出
       args.push('--format', 'json');
 
+      // 添加用户消息
+      args.push(message);
+
       // 确保 PATH 包含 npm 全局目录
       const env = getEnvWithPath();
 
-      const proc = spawn(opencodePath, args, {
-        cwd: this.workdir,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env
-      });
+      // 通过 shell 执行，解决二进制 stdout 缓冲问题
+      const shellCmd = `${OPENCODE_PATH} ${args.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')}`;
 
-      let stdoutBuffer = '';
-      let stderrBuffer = '';
-      let hasOutput = false;
+      console.log('[OpenCode] exec:', shellCmd.substring(0, 200));
 
-      proc.stdout.on('data', (data) => {
-        hasOutput = true;
-        stdoutBuffer += data.toString();
+      try {
+        const { execSync } = require('child_process');
+        const stdout = execSync(shellCmd, {
+          cwd: this.workdir,
+          env,
+          encoding: 'utf-8',
+          timeout: 120000,
+          maxBuffer: 10 * 1024 * 1024,
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
 
-        // 按行解析JSON
-        const lines = stdoutBuffer.split('\n');
-        stdoutBuffer = lines.pop();
-
-        for (const line of lines) {
-          if (line.trim()) {
-            this.handleOutput(line.trim());
+        // 处理 stdout 输出
+        if (stdout) {
+          const lines = stdout.split('\n');
+          for (const line of lines) {
+            if (line.trim()) {
+              this.handleOutput(line.trim());
+            }
           }
         }
-      });
-
-      proc.stderr.on('data', (data) => {
-        stderrBuffer += data.toString();
-        const msg = data.toString().trim();
-        if (msg && !msg.includes('node') && !msg.includes('ExperimentalWarning')) {
-          console.error('[OpenCode stderr]:', msg);
-        }
-      });
-
-      proc.on('close', (code) => {
-        // 处理剩余stdout
-        if (stdoutBuffer.trim()) {
-          this.handleOutput(stdoutBuffer.trim());
-        }
-
-        // 如果没有JSON输出，尝试纯文本解析
-        if (!hasOutput && stderrBuffer.trim()) {
-          this.emit('message', { type: 'text', content: stderrBuffer.trim() });
-        }
-
-        if (!hasOutput && !stderrBuffer.trim()) {
-          this.emit('message', {
-            type: 'error',
-            content: 'OpenCode 没有返回输出，请检查配置'
-          });
-        }
-
-        resolve();
-      });
-
-      proc.on('error', (err) => {
-        if (err.code === 'ENOENT') {
-          this.emit('message', {
-            type: 'error',
-            content: 'OpenCode 未安装，请先安装: npm install -g opencode-ai'
-          });
+      } catch (err) {
+        // execSync 超时时也会有 stdout 输出
+        if (err.stdout) {
+          const lines = err.stdout.toString().split('\n');
+          for (const line of lines) {
+            if (line.trim()) {
+              this.handleOutput(line.trim());
+            }
+          }
         } else {
-          this.emit('message', {
-            type: 'error',
-            content: `启动失败: ${err.message}`
-          });
+          console.error('[OpenCode] exec error:', err.message);
+          this.emit('message', { type: 'error', content: `OpenCode 执行失败: ${err.message}` });
         }
-        reject(err);
-      });
+      }
+      resolve();
     });
   }
 
@@ -175,6 +171,7 @@ class OpenCodeAgent extends Agent {
   handleJsonMessage(msg) {
     // OpenCode 格式: { type: "text", part: { type: "text", text: "..." } }
     if (msg.type === 'text' && msg.part?.text) {
+      console.log('[OpenCode] emit text:', msg.part.text.substring(0, 100));
       this.emit('message', { type: 'text', content: msg.part.text });
     } else if (msg.type === 'step_start') {
       // 步骤开始
