@@ -45,8 +45,18 @@ const sessionManager = new SessionManager(tokenTracker);
 const permissionManager = new PermissionManager();
 const projectManager = new ProjectManager();
 
-const ALLOWED_ROOT = process.env.ALLOWED_ROOT || process.env.HOME || '/root';
 const TOKEN_FILE = path.join(__dirname, '..', '.token');
+
+let wsConnectionHandler;
+
+async function initApp() {
+  const { initDb } = require('./db');
+  await initDb();
+  await sessionManager.init();
+  wsConnectionHandler = wsHandler(sessionManager, TOKEN_FILE);
+}
+
+const ALLOWED_ROOT = process.env.ALLOWED_ROOT || process.env.HOME || '/root';
 const DIST_PATH = path.join(__dirname, '..', 'frontend', 'dist');
 
 app.use(express.json({ limit: '5mb' }));
@@ -104,10 +114,12 @@ app.get("*", (req, res, next) => {
   res.sendFile(path.join(DIST_PATH, "index.html"));
 });
 
-const wsConnectionHandler = wsHandler(sessionManager, TOKEN_FILE);
-wsConnectionHandler(wss);
-
-server.listen(PORT, '0.0.0.0', () => {
+(async () => {
+  await initApp();
+  
+  wsConnectionHandler(wss);
+  
+  server.listen(PORT, '0.0.0.0', () => {
   console.log(`
 ┌─────────────────────────────────────────┐
 │         Agent Hub Server                │
@@ -138,3 +150,4 @@ process.on('SIGINT', async () => {
   }
   process.exit(0);
 });
+})();

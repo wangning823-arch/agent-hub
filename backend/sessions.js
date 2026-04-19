@@ -1,100 +1,127 @@
 const { v4: uuidv4 } = require('uuid');
-const fs = require('fs');
 const path = require('path');
 const Session = require('./models/session');
 const { createAgent, resumeAgentMessages } = require('./agents/factory');
 const WSClients = require('./ws-clients');
+const { getDb, saveToFile } = require('./db');
 
 class SessionManager {
   constructor(tokenTracker = null) {
     this.sessions = new Map();
     this.wsClients = new WSClients();
-    this.sessionsFile = path.join(__dirname, '..', 'data', 'sessions.json');
     this.tokenTracker = tokenTracker;
+    this.initialized = false;
+  }
+
+  async init() {
+    if (this.initialized) return;
     this.loadData();
+    this.initialized = true;
   }
 
   loadData() {
-    try {
-      const dataDir = path.dirname(this.sessionsFile);
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-      }
-
-      if (fs.existsSync(this.sessionsFile)) {
-        const data = JSON.parse(fs.readFileSync(this.sessionsFile, 'utf8'));
-        for (const sessionData of data) {
-          const session = {
-            id: sessionData.id,
-            workdir: sessionData.workdir,
-            agentType: sessionData.agentType,
-            agentName: sessionData.agentName,
-            messages: sessionData.messages || [],
-            createdAt: new Date(sessionData.createdAt),
-            updatedAt: sessionData.updatedAt ? new Date(sessionData.updatedAt) : new Date(sessionData.createdAt),
-            options: sessionData.options || {},
-            isActive: false,
-            conversationId: sessionData.conversationId || null,
-            title: sessionData.title || null,
-            isPinned: sessionData.isPinned || false,
-            isArchived: sessionData.isArchived || false,
-            toJSON: function() {
-              return {
-                id: this.id,
-                agentType: this.agentType || 'claude-code',
-                agentName: this.agentName || 'unknown',
-                workdir: this.workdir,
-                messageCount: this.messages.length,
-                createdAt: this.createdAt,
-                updatedAt: this.updatedAt,
-                options: this.options,
-                isActive: this.isActive,
-                conversationId: this.conversationId,
-                lastMessageAt: this.messages.length > 0
-                  ? this.messages[this.messages.length - 1].time
-                  : this.createdAt,
-                title: this.title,
-                isPinned: this.isPinned,
-                isArchived: this.isArchived
-              };
-            }
+    const db = getDb();
+    const rows = db.exec(`
+      SELECT id, workdir, agent_type, agent_name, conversation_id, title, options, 
+             is_pinned, is_archived, tags, created_at, updated_at
+      FROM sessions ORDER BY updated_at DESC
+    `);
+    
+    if (rows.length === 0) return;
+    
+    const columns = rows[0].columns;
+    const values = rows[0].values;
+    
+    for (const row of values) {
+      const sessionData = {};
+      columns.forEach((col, i) => {
+        sessionData[col] = row[i];
+      });
+      
+      const msgRows = db.exec(`
+        SELECT role, content, time FROM messages 
+        WHERE session_id = '${sessionData.id.replace(/'/g, "''")}' ORDER BY id
+      `);
+      
+      const messages = msgRows.length > 0 ? msgRows[0].values.map(m => ({
+        role: m[0],
+        content: m[1],
+        time: m[2]
+      })) : [];
+      
+      const session = {
+        id: sessionData.id,
+        workdir: sessionData.workdir,
+        agentType: sessionData.agent_type,
+        agentName: sessionData.agent_name,
+        conversationId: sessionData.conversation_id,
+        title: sessionData.title,
+        options: JSON.parse(sessionData.options || '{}'),
+        isPinned: sessionData.is_pinned === 1,
+        isArchived: sessionData.is_archived === 1,
+        tags: JSON.parse(sessionData.tags || '[]'),
+        createdAt: new Date(sessionData.created_at),
+        updatedAt: new Date(sessionData.updated_at),
+        isActive: false,
+        messages: messages,
+        toJSON: function() {
+          return {
+            id: this.id,
+            agentType: this.agentType || 'claude-code',
+            agentName: this.agentName || 'unknown',
+            workdir: this.workdir,
+            messageCount: this.messages.length,
+            createdAt: this.createdAt,
+            updatedAt: this.updatedAt,
+            options: this.options,
+            isActive: this.isActive,
+            conversationId: this.conversationId,
+            lastMessageAt: this.messages.length > 0
+              ? this.messages[this.messages.length - 1].time
+              : this.createdAt,
+            title: this.title,
+            isPinned: this.isPinned,
+            isArchived: this.isArchived,
+            tags: this.tags
           };
-          this.sessions.set(session.id, session);
         }
-        console.log(`已加载 ${this.sessions.size} 个会话`);
-      }
-    } catch (error) {
-      console.error('加载会话数据失败:', error);
+      };
+      this.sessions.set(session.id, session);
     }
+    console.log(`已加载 ${this.sessions.size} 个会话`);
   }
 
-  saveData() {
-    try {
-      const dataDir = path.dirname(this.sessionsFile);
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-      }
+  saveSession(session) {
+    const db = getDb();
+    
+    db.run(`
+      INSERT OR REPLACE INTO sessions (id, workdir, agent_type, agent_name, conversation_id, title, options, is_pinned, is_archived, tags, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      session.id,
+      session.workdir,
+      session.agentType || 'claude-code',
+      session.agentName || session.agent?.name || 'unknown',
+      session.conversationId || null,
+      session.title || null,
+      JSON.stringify(session.options || {}),
+      session.isPinned ? 1 : 0,
+      session.isArchived ? 1 : 0,
+      JSON.stringify(session.tags || []),
+      session.createdAt instanceof Date ? session.createdAt.toISOString() : session.createdAt,
+      session.updatedAt instanceof Date ? session.updatedAt.toISOString() : new Date().toISOString()
+    ]);
 
-      const sessionsData = Array.from(this.sessions.values()).map(s => ({
-        id: s.id,
-        workdir: s.workdir,
-        agentType: s.agentType || 'claude-code',
-        agentName: s.agent?.name || s.agentName,
-        messages: s.messages.slice(-200),
-        createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
-        updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
-        options: s.options || {},
-        isActive: s.isActive || false,
-        conversationId: s.conversationId || s.agent?.conversationId || null,
-        title: s.title || null,
-        isPinned: s.isPinned || false,
-        isArchived: s.isArchived || false
-      }));
-
-      fs.writeFileSync(this.sessionsFile, JSON.stringify(sessionsData, null, 2));
-    } catch (error) {
-      console.error('保存会话数据失败:', error);
+    db.run(`DELETE FROM messages WHERE session_id = ?`, [session.id]);
+    
+    const messagesToSave = session.messages.slice(-200);
+    for (const msg of messagesToSave) {
+      const content = typeof msg.content === 'object' ? JSON.stringify(msg.content) : msg.content;
+      db.run('INSERT INTO messages (session_id, role, content, time) VALUES (?, ?, ?, ?)', 
+        [session.id, msg.role, content, msg.time]);
     }
+    
+    saveToFile();
   }
 
   async createSession(workdir, agentType = 'claude-code', options = {}) {
@@ -107,6 +134,7 @@ class SessionManager {
       absoluteWorkdir = path.resolve(process.env.HOME || '/root', workdir);
     }
     
+    const fs = require('fs');
     if (!fs.existsSync(absoluteWorkdir)) {
       fs.mkdirSync(absoluteWorkdir, { recursive: true });
       console.log(`创建目录: ${absoluteWorkdir}`);
@@ -129,7 +157,7 @@ class SessionManager {
     }
 
     this.sessions.set(id, session);
-    this.saveData();
+    this.saveSession(session);
     return session;
   }
 
@@ -151,7 +179,7 @@ class SessionManager {
       await this._resumeAgent(session);
     }
 
-    session.messages.push({ role: 'user', content: message, time: new Date() });
+    session.messages.push({ role: 'user', content: message, time: new Date().toISOString() });
     await session.agent.send(message);
   }
 
@@ -164,7 +192,7 @@ class SessionManager {
       return session;
     }
     await this._resumeAgent(session);
-    this.saveData();
+    this.saveSession(session);
     return session;
   }
 
@@ -207,7 +235,7 @@ class SessionManager {
     if (session) {
       const metaTypes = ['status', 'token_usage', 'conversation_id', 'title_update'];
       if (!metaTypes.includes(message.type)) {
-        session.messages.push({ role: 'assistant', content: message, time: new Date() });
+        session.messages.push({ role: 'assistant', content: message, time: new Date().toISOString() });
       }
       
       if (message.conversationId) {
@@ -237,7 +265,7 @@ class SessionManager {
               if (!session.title) {
                 session.title = result.title;
                 session.updatedAt = new Date();
-                this.saveData();
+                this.saveSession(session);
                 this.broadcast(sessionId, { type: 'title_update', content: result.title });
               }
             })
@@ -246,7 +274,7 @@ class SessionManager {
       }
       
       if (session.messages.length % 10 === 0) {
-        this.saveData();
+        this.saveSession(session);
       }
     }
 
@@ -261,7 +289,11 @@ class SessionManager {
       }
       this.sessions.delete(sessionId);
       this.wsClients.delete(sessionId);
-      this.saveData();
+      
+      const db = getDb();
+      db.run('DELETE FROM messages WHERE session_id = ?', [sessionId]);
+      db.run('DELETE FROM sessions WHERE id = ?', [sessionId]);
+      saveToFile();
     }
   }
 
@@ -272,7 +304,7 @@ class SessionManager {
     }
     session.title = title;
     session.updatedAt = new Date();
-    this.saveData();
+    this.saveSession(session);
     return session.toJSON();
   }
 
@@ -283,7 +315,7 @@ class SessionManager {
     }
     session.isPinned = !session.isPinned;
     session.updatedAt = new Date();
-    this.saveData();
+    this.saveSession(session);
     return session.toJSON();
   }
 
@@ -294,7 +326,7 @@ class SessionManager {
     }
     session.isArchived = !session.isArchived;
     session.updatedAt = new Date();
-    this.saveData();
+    this.saveSession(session);
     return session.toJSON();
   }
 
@@ -317,7 +349,7 @@ class SessionManager {
     }
     session.messages.splice(messageIndex, 1);
     session.updatedAt = new Date();
-    this.saveData();
+    this.saveSession(session);
     return { success: true, messageCount: session.messages.length };
   }
 
@@ -328,7 +360,7 @@ class SessionManager {
     }
     const removed = session.messages.splice(-Math.min(count, session.messages.length));
     session.updatedAt = new Date();
-    this.saveData();
+    this.saveSession(session);
     return { success: true, removed: removed.length, messageCount: session.messages.length };
   }
 
@@ -336,7 +368,7 @@ class SessionManager {
     const session = this.sessions.get(sessionId);
     if (session) {
       session.updatedAt = new Date();
-      this.saveData();
+      this.saveSession(session);
     }
   }
 
@@ -347,7 +379,7 @@ class SessionManager {
     }
     session.tags = tags;
     session.updatedAt = new Date();
-    this.saveData();
+    this.saveSession(session);
     return session.toJSON();
   }
 
@@ -362,7 +394,7 @@ class SessionManager {
     if (!session.tags.includes(tag)) {
       session.tags.push(tag);
       session.updatedAt = new Date();
-      this.saveData();
+      this.saveSession(session);
     }
     return session.toJSON();
   }
@@ -375,7 +407,7 @@ class SessionManager {
     if (session.tags) {
       session.tags = session.tags.filter(t => t !== tag);
       session.updatedAt = new Date();
-      this.saveData();
+      this.saveSession(session);
     }
     return session.toJSON();
   }
