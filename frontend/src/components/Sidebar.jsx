@@ -17,6 +17,13 @@ const IconChevron = ({ open }) => (
   </svg>
 )
 const IconPause = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+const IconRunning = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="animate-spin" style={{ animationDuration: '1s' }}>
+    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeDasharray="31.4" strokeDashoffset="10" opacity="0.3" />
+    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+)
+const IconCheck = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
 
 export default function Sidebar({
   sessions,
@@ -218,7 +225,7 @@ export default function Sidebar({
                   >
                     <div className="flex items-center gap-2 min-w-0 w-full">
                       {session.isPinned && <span className="text-xs flex-shrink-0" style={{ color: 'var(--warning)' }}>📌</span>}
-                      {!session.isActive && <IconPause />}
+                      {session.isActive ? <IconRunning /> : <IconPause />}
                       {editingSession === session.id ? (
                         <input
                           type="text"
