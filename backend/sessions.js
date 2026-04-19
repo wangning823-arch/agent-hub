@@ -24,6 +24,7 @@ class Session {
   toJSON() {
     return {
       id: this.id,
+      agentType: this.agentType || 'claude-code',
       agentName: this.agent?.name || 'unknown',
       workdir: this.workdir,
       messageCount: this.messages.length,
@@ -85,6 +86,7 @@ class SessionManager {
             toJSON: function() {
               return {
                 id: this.id,
+                agentType: this.agentType || 'claude-code',
                 agentName: this.agentName || 'unknown',
                 workdir: this.workdir,
                 messageCount: this.messages.length,
