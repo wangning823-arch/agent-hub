@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useToast } from './Toast'
+import hljs from 'highlight.js'
 
 const API_BASE = '/api'
 
@@ -9,13 +10,42 @@ export default function FileViewer({ file, content, onClose, onSave }) {
   const [saving, setSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
   const toast = useToast()
+  const codeRef = useRef(null)
+
+  // 代码高亮
+  const highlightCode = () => {
+    if (codeRef.current) {
+      codeRef.current.querySelectorAll('pre code').forEach(block => {
+        hljs.highlightElement(block)
+      })
+    }
+  }
+
+  useEffect(() => {
+    if (!isEditing) {
+      highlightCode()
+    }
+  }, [content, isEditing])
 
   useEffect(() => {
     setEditedContent(content)
     setHasChanges(false)
   }, [content])
 
-  // 获取文件扩展名对应的语法高亮提示
+  // 获取文件扩展名对应的 hljs 语言标识
+  const getHljsLanguage = (filename) => {
+    const ext = filename.split('.').pop()?.toLowerCase()
+    const langMap = {
+      js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+      py: 'python', rb: 'ruby', go: 'go', rs: 'rust',
+      html: 'xml', css: 'css', scss: 'scss',
+      json: 'json', yaml: 'yaml', yml: 'yaml',
+      md: 'markdown', txt: '',
+      sh: 'bash', bash: 'bash',
+      sql: 'sql'
+    }
+    return langMap[ext] || ''
+  }
   const getLanguage = (filename) => {
     const ext = filename.split('.').pop()?.toLowerCase()
     const langMap = {
@@ -113,28 +143,37 @@ export default function FileViewer({ file, content, onClose, onSave }) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-950">
+    <div className="h-full flex flex-col file-viewer" style={{ background: 'var(--bg-secondary)' }}>
+      <style>{`
+        .file-viewer code.hljs {
+          background: transparent !important;
+          color: var(--text-primary) !important;
+        }
+      `}</style>
       {/* 标题栏 */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-800">
+      <div className="flex items-center justify-between px-4 py-3 border-b"
+        style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}>
         <div className="flex items-center gap-3">
           <span className="text-xl">{getFileIcon(filename)}</span>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-white font-medium">{filename}</span>
+              <span style={{ color: 'var(--text-primary)' }} className="font-medium">{filename}</span>
               {hasChanges && (
                 <span className="px-1.5 py-0.5 text-xs bg-yellow-600/30 text-yellow-400 rounded">
                   未保存
                 </span>
               )}
             </div>
-            <div className="text-xs text-gray-500">{file}</div>
+            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{file}</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="px-2 py-1 text-xs bg-gray-800 text-gray-400 rounded">
+          <span className="px-2 py-1 text-xs rounded"
+            style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>
             {getLanguage(filename)}
           </span>
-          <span className="px-2 py-1 text-xs bg-gray-800 text-gray-400 rounded">
+          <span className="px-2 py-1 text-xs rounded"
+            style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>
             {lines.length} 行
           </span>
           
@@ -150,7 +189,8 @@ export default function FileViewer({ file, content, onClose, onSave }) {
               </button>
               <button
                 onClick={handleCancel}
-                className="px-3 py-1.5 text-sm bg-gray-700 text-gray-300 rounded hover:bg-gray-600"
+                className="px-3 py-1.5 text-sm rounded"
+                style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}
               >
                 ✕ 取消
               </button>
@@ -166,7 +206,8 @@ export default function FileViewer({ file, content, onClose, onSave }) {
           
           <button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+            className="p-2 rounded-lg transition-colors"
+            style={{ color: 'var(--text-muted)' }}
             title="关闭"
           >
             ✕
@@ -177,26 +218,29 @@ export default function FileViewer({ file, content, onClose, onSave }) {
       {/* 文件内容 */}
       <div className="flex-1 overflow-hidden flex">
         {/* 行号 */}
-        <div className="flex-shrink-0 py-4 px-2 text-right select-none bg-gray-900/50 border-r border-gray-800 overflow-hidden">
+        <div className="flex-shrink-0 py-4 px-2 text-right select-none border-r overflow-hidden"
+          style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border-subtle)' }}>
           {lines.map((_, i) => (
-            <div key={i} className="text-xs text-gray-600 leading-6">
+            <div key={i} className="text-xs leading-6" style={{ color: 'var(--text-muted)' }}>
               {i + 1}
             </div>
           ))}
         </div>
 
         {/* 代码内容 */}
-        <div className="flex-1 overflow-auto" onScroll={handleCodeScroll}>
+        <div className="flex-1 overflow-auto" onScroll={handleCodeScroll} ref={codeRef}>
           {isEditing ? (
             <textarea
               value={editedContent}
               onChange={handleContentChange}
-              className="w-full h-full p-4 bg-transparent text-sm text-gray-300 font-mono leading-6 resize-none focus:outline-none"
+              className="w-full h-full p-4 text-sm font-mono leading-6 resize-none focus:outline-none"
+              style={{ background: 'transparent', color: 'var(--text-primary)' }}
               spellCheck={false}
             />
           ) : (
-            <pre className="p-4 overflow-x-auto">
-              <code className="text-sm text-gray-300 font-mono leading-6 whitespace-pre">
+            <pre className="p-4 overflow-x-auto" style={{ background: 'transparent' }}>
+              <code className={`text-sm font-mono leading-6 whitespace-pre language-${getHljsLanguage(filename)}`}
+                style={{ color: 'var(--text-primary)' }}>
                 {content}
               </code>
             </pre>
@@ -205,7 +249,8 @@ export default function FileViewer({ file, content, onClose, onSave }) {
       </div>
 
       {/* 底部状态栏 */}
-      <div className="px-4 py-2 bg-gray-900 border-t border-gray-800 flex items-center justify-between text-xs text-gray-500">
+      <div className="px-4 py-2 border-t flex items-center justify-between text-xs"
+        style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
         <div className="flex items-center gap-4">
           <span>UTF-8</span>
           <span>{content.length} 字符</span>
