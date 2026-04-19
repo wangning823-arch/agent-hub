@@ -301,6 +301,7 @@ export default function App() {
         <Sidebar
           sessions={sessions}
           activeSession={activeSession}
+          agentType={currentSession?.agentType || 'claude-code'}
           sessionOptions={sessionOptions}
           onSelectSession={(id) => { setActiveSession(id); if (isMobile) setLeftSidebarOpen(false) }}
           onCloseSession={removeSession}

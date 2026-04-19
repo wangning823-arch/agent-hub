@@ -21,6 +21,7 @@ const IconPause = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="no
 export default function Sidebar({
   sessions,
   activeSession,
+  agentType = 'claude-code',
   sessionOptions,
   onSelectSession,
   onCloseSession,
@@ -48,18 +49,18 @@ export default function Sidebar({
     loadOptions()
     loadCommands()
     loadTags()
-  }, [])
+  }, [agentType])
 
   const loadOptions = async () => {
     try {
-      const data = await fetch(`${API_BASE}/options`).then(r => r.json())
+      const data = await fetch(`${API_BASE}/options?agentType=${agentType}`).then(r => r.json())
       setOptions(data)
     } catch (error) { console.error('加载选项失败:', error) }
   }
 
   const loadCommands = async () => {
     try {
-      const data = await fetch(`${API_BASE}/commands`).then(r => r.json())
+      const data = await fetch(`${API_BASE}/commands?agentType=${agentType}`).then(r => r.json())
       setCommands(data.commands || [])
     } catch (error) { console.error('加载命令失败:', error) }
   }

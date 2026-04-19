@@ -138,7 +138,7 @@ const CLAUDE_COMMANDS = [
   }
 ];
 
-// 模式选项
+// 模式选项 - Claude Code
 const PERMISSION_MODES = [
   { id: 'default', name: '默认', description: '标准权限模式' },
   { id: 'auto', name: '自动', description: '自动批准安全操作' },
@@ -147,6 +147,33 @@ const PERMISSION_MODES = [
   { id: 'acceptEdits', name: '接受编辑', description: '自动接受文件编辑' },
   { id: 'dontAsk', name: '不询问', description: '不询问直接执行' }
 ];
+
+// 模式选项 - OpenCode（agent 类型）
+const OPENCODE_MODES = [
+  { id: 'build', name: 'Build', description: '执行代码修改和构建任务' },
+  { id: 'plan', name: 'Plan', description: '只生成计划，不执行修改' }
+];
+
+// 模式选项 - Codex
+const CODEX_MODES = [
+  { id: 'default', name: '默认', description: '标准模式' },
+  { id: 'fullAuto', name: 'Full Auto', description: '自动批准所有变更' }
+];
+
+// 按 agentType 获取模式列表
+function getModesForAgent(agentType) {
+  switch (agentType) {
+    case 'claude-code':
+    case 'claude-api':
+      return PERMISSION_MODES;
+    case 'opencode':
+      return OPENCODE_MODES;
+    case 'codex':
+      return CODEX_MODES;
+    default:
+      return PERMISSION_MODES;
+  }
+}
 
 // 模型选项 - 从各 Agent 配置文件动态读取
 const fs = require('fs');
@@ -270,7 +297,7 @@ function getModelsForAgent(agentType) {
 // 向后兼容：默认加载 Claude 模型
 const MODELS = loadClaudeModels();
 
-// 努力程度选项
+// 努力程度选项 - Claude Code
 const EFFORT_LEVELS = [
   { id: 'low', name: '低', description: '快速响应，节省token' },
   { id: 'medium', name: '中', description: '平衡速度和质量' },
@@ -278,11 +305,75 @@ const EFFORT_LEVELS = [
   { id: 'max', name: '最大', description: '最深入的分析' }
 ];
 
+// 推理强度选项 - OpenCode
+const OPENCODE_VARIANTS = [
+  { id: 'minimal', name: '极简', description: '最快响应' },
+  { id: 'high', name: '高', description: '深入推理' },
+  { id: 'max', name: '最大', description: '最深入分析' }
+];
+
+// 按 agentType 获取努力程度列表
+function getEffortsForAgent(agentType) {
+  switch (agentType) {
+    case 'claude-code':
+    case 'claude-api':
+      return EFFORT_LEVELS;
+    case 'opencode':
+      return OPENCODE_VARIANTS;
+    case 'codex':
+      return []; // Codex 没有努力程度选项
+    default:
+      return EFFORT_LEVELS;
+  }
+}
+
+// OpenCode 命令定义
+const OPENCODE_COMMANDS = [
+  { id: 'continue', name: '继续上次', description: '继续上次的对话', category: '会话', usage: 'Continue from our last conversation' },
+  { id: 'review', name: '代码审查', description: '审查当前代码变更', category: '审查', usage: 'Review the recent changes in this project' },
+  { id: 'explain', name: '解释代码', description: '解释项目代码逻辑', category: '分析', usage: 'Explain the code in this project' },
+  { id: 'refactor', name: '重构', description: '重构改善代码质量', category: '开发', usage: 'Refactor and improve code quality' },
+  { id: 'test', name: '写测试', description: '为项目编写测试', category: '开发', usage: 'Write tests for this project' },
+  { id: 'debug', name: '调试', description: '调试当前问题', category: '开发', usage: 'Debug the current issue' },
+  { id: 'fix', name: '修复Bug', description: '修复已知的Bug', category: '开发', usage: 'Fix the bugs in this project' },
+  { id: 'docs', name: '写文档', description: '为项目编写文档', category: '文档', usage: 'Write documentation for this project' }
+];
+
+// Codex 命令定义
+const CODEX_COMMANDS = [
+  { id: 'implement', name: '实现功能', description: '实现新功能', category: '开发', usage: 'Implement the requested feature' },
+  { id: 'review', name: '代码审查', description: '审查代码变更', category: '审查', usage: 'Review the code changes' },
+  { id: 'refactor', name: '重构', description: '重构代码', category: '开发', usage: 'Refactor the code for better quality' },
+  { id: 'test', name: '写测试', description: '编写测试用例', category: '开发', usage: 'Write tests' },
+  { id: 'fix', name: '修复Bug', description: '修复问题', category: '开发', usage: 'Fix the bug' },
+  { id: 'explain', name: '解释代码', description: '解释代码逻辑', category: '分析', usage: 'Explain this code' }
+];
+
+// 按 agentType 获取命令列表
+function getCommandsForAgent(agentType) {
+  switch (agentType) {
+    case 'claude-code':
+    case 'claude-api':
+      return CLAUDE_COMMANDS;
+    case 'opencode':
+      return OPENCODE_COMMANDS;
+    case 'codex':
+      return CODEX_COMMANDS;
+    default:
+      return CLAUDE_COMMANDS;
+  }
+}
+
 module.exports = {
   CLAUDE_COMMANDS,
+  OPENCODE_COMMANDS,
+  CODEX_COMMANDS,
   PERMISSION_MODES,
   MODELS,
   EFFORT_LEVELS,
-  getModelsForAgent
+  getModelsForAgent,
+  getModesForAgent,
+  getEffortsForAgent,
+  getCommandsForAgent
 };
 

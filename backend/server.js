@@ -11,7 +11,7 @@ const { execFileSync, exec } = require('child_process');
 const SessionManager = require('./sessions');
 const PermissionManager = require('./permissions');
 const ProjectManager = require('./projects');
-const { CLAUDE_COMMANDS, PERMISSION_MODES, MODELS, EFFORT_LEVELS, getModelsForAgent } = require('./commands');
+const { CLAUDE_COMMANDS, PERMISSION_MODES, MODELS, EFFORT_LEVELS, getModelsForAgent, getModesForAgent, getEffortsForAgent, getCommandsForAgent } = require('./commands');
 const { upload, handleUpload, handlePasteImage, UPLOAD_DIR } = require('./upload');
 const TokenTracker = require('./token-tracker');
 
@@ -1053,7 +1053,8 @@ app.post('/api/git/commit', async (req, res) => {
 
 // 获取所有命令
 app.get('/api/commands', (req, res) => {
-  res.json({ commands: CLAUDE_COMMANDS });
+  const agentType = req.query.agentType || 'claude-code';
+  res.json({ commands: getCommandsForAgent(agentType) });
 });
 
 // 获取权限模式
@@ -1075,9 +1076,9 @@ app.get('/api/options/efforts', (req, res) => {
 app.get('/api/options', (req, res) => {
   const agentType = req.query.agentType || 'claude-code';
   res.json({
-    modes: PERMISSION_MODES,
+    modes: getModesForAgent(agentType),
     models: getModelsForAgent(agentType),
-    efforts: EFFORT_LEVELS
+    efforts: getEffortsForAgent(agentType)
   });
 });
 
