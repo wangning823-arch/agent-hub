@@ -21,7 +21,7 @@ const IconQuote = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="no
 const IconTrash = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
 
 export default function Message({ message, index, onDelete, onCopy, onQuote }) {
-  const { type, content: rawContent, metadata, attachments } = message
+  const { type, content: rawContent, metadata, attachments, replace } = message
   // 确保 content 始终是字符串，防止 React 崩溃
   const content = rawContent != null ? (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent)) : ''
   const contentRef = useRef(null)
@@ -144,7 +144,7 @@ export default function Message({ message, index, onDelete, onCopy, onQuote }) {
     if (brief.length > 60) brief = brief.slice(0, 57) + '...'
 
     return (
-      <div className="flex justify-start message my-0.5">
+      <div className={`flex justify-start message my-0.5 ${replace ? 'message-replace' : ''}`}>
         <div className="text-xs flex items-center gap-1.5 px-2.5 py-1 rounded-lg cursor-default max-w-full transition-colors"
           style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}
           title={content}

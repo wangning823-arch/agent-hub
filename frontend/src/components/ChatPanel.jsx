@@ -190,7 +190,28 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data)
-          setMessages(prev => [...prev, msg])
+          
+          // 处理工具调用消息的合并逻辑
+          if (msg.type === 'tool_use') {
+            setMessages(prev => {
+              const lastMessage = prev[prev.length - 1]
+              // 如果最后一条消息也是tool_use类型，则替换它
+              if (lastMessage && lastMessage.type === 'tool_use') {
+                const newMessages = [...prev]
+                newMessages[newMessages.length - 1] = {
+                  ...msg,
+                  // 添加一个标记，用于替换动画
+                  replace: true
+                }
+                return newMessages
+              }
+              // 否则添加新消息
+              return [...prev, msg]
+            })
+          } else {
+            // 非工具调用消息正常添加
+            setMessages(prev => [...prev, msg])
+          }
           
           // 处理对话ID保存
           if (msg.type === 'conversation_id' && msg.conversationId) {
