@@ -4,9 +4,28 @@
  * 注意：Codex 必须在 git 仓库内运行
  */
 const Agent = require('./base');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+
+// 获取 npm 全局 bin 目录
+function getNpmGlobalBin() {
+  try {
+    return execSync('npm config get prefix', { encoding: 'utf-8' }).trim() + '/bin';
+  } catch (e) {
+    return null;
+  }
+}
+
+// 确保 PATH 包含 npm 全局目录
+function getEnvWithPath() {
+  const env = { ...process.env };
+  const npmBin = getNpmGlobalBin();
+  if (npmBin && env.PATH && !env.PATH.includes(npmBin)) {
+    env.PATH = npmBin + ':' + env.PATH;
+  }
+  return env;
+}
 
 class CodexAgent extends Agent {
   constructor(workdir, options = {}) {
@@ -82,7 +101,7 @@ class CodexAgent extends Agent {
       const proc = spawn(codexPath, args, {
         cwd: this.workdir,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env }
+        env: getEnvWithPath()
       });
 
       let stdoutBuffer = '';

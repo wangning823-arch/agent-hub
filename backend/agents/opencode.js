@@ -3,7 +3,26 @@
  * 使用 opencode run 命令进行对话，支持会话恢复
  */
 const Agent = require('./base');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
+
+// 获取 npm 全局 bin 目录
+function getNpmGlobalBin() {
+  try {
+    return execSync('npm config get prefix', { encoding: 'utf-8' }).trim() + '/bin';
+  } catch (e) {
+    return null;
+  }
+}
+
+// 确保 PATH 包含 npm 全局目录
+function getEnvWithPath() {
+  const env = { ...process.env };
+  const npmBin = getNpmGlobalBin();
+  if (npmBin && env.PATH && !env.PATH.includes(npmBin)) {
+    env.PATH = npmBin + ':' + env.PATH;
+  }
+  return env;
+}
 
 class OpenCodeAgent extends Agent {
   constructor(workdir, options = {}) {
@@ -63,10 +82,13 @@ class OpenCodeAgent extends Agent {
       // JSON格式输出
       args.push('--format', 'json');
 
+      // 确保 PATH 包含 npm 全局目录
+      const env = getEnvWithPath();
+
       const proc = spawn(opencodePath, args, {
         cwd: this.workdir,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env }
+        env
       });
 
       let stdoutBuffer = '';
