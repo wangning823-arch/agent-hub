@@ -170,26 +170,48 @@ class OpenCodeAgent extends Agent {
   }
 
   /**
-   * 处理JSON消息
+   * 处理JSON消息 - OpenCode 实际输出格式
    */
   handleJsonMessage(msg) {
-    // OpenCode 的 JSON 输出格式
-    if (msg.type === 'assistant' || msg.type === 'message') {
-      const content = msg.content || msg.text || msg.message;
-      if (content) {
-        this.emit('message', { type: 'text', content: String(content) });
+    // OpenCode 格式: { type: "text", part: { type: "text", text: "..." } }
+    if (msg.type === 'text' && msg.part?.text) {
+      this.emit('message', { type: 'text', content: msg.part.text });
+    } else if (msg.type === 'step_start') {
+      // 步骤开始
+    } else if (msg.type === 'step_finish') {
+      // 步骤完成，检查 token 统计
+      if (msg.part?.tokens) {
+        const t = msg.part.tokens;
+        this.emit('message', {
+          type: 'token_usage',
+          content: {
+            inputTokens: t.input || 0,
+            outputTokens: t.output || 0,
+            cost: t.cost || 0,
+            model: 'opencode'
+          }
+        });
+      }
+      // 保存 sessionID
+      if (msg.sessionID) {
+        this.sessionId = msg.sessionID;
+        this.emit('message', {
+          type: 'conversation_id',
+          content: this.sessionId,
+          conversationId: this.sessionId
+        });
       }
     } else if (msg.type === 'tool_use' || msg.type === 'tool') {
       this.emit('message', {
         type: 'tool_use',
-        content: JSON.stringify(msg.input || msg.args || {}, null, 2),
-        metadata: { tool: msg.name || msg.tool }
+        content: JSON.stringify(msg.input || msg.args || msg.part?.input || {}, null, 2),
+        metadata: { tool: msg.name || msg.tool || msg.part?.tool }
       });
     } else if (msg.type === 'tool_result' || msg.type === 'result') {
-      if (msg.content || msg.output) {
+      if (msg.content || msg.output || msg.part?.content) {
         this.emit('message', {
           type: 'tool_result',
-          content: String(msg.content || msg.output)
+          content: String(msg.content || msg.output || msg.part?.content)
         });
       }
     } else if (msg.type === 'error') {
@@ -197,33 +219,17 @@ class OpenCodeAgent extends Agent {
         type: 'error',
         content: msg.message || msg.error || JSON.stringify(msg)
       });
-    } else if (msg.type === 'session' || msg.session_id) {
-      // 保存会话ID
-      this.sessionId = msg.session_id || msg.id || msg.sessionId;
-      this.emit('message', {
-        type: 'conversation_id',
-        content: this.sessionId,
-        conversationId: this.sessionId
-      });
-    } else if (msg.type === 'usage' || msg.usage) {
-      // Token 使用统计
-      const usage = msg.usage || msg;
-      this.emit('message', {
-        type: 'token_usage',
-        content: {
-          inputTokens: usage.input_tokens || usage.promptTokens || 0,
-          outputTokens: usage.output_tokens || usage.completionTokens || 0,
-          cost: usage.cost || 0,
-          model: usage.model || 'unknown'
-        }
-      });
-    } else if (msg.type === 'done' || msg.type === 'complete') {
-      // 完成标记，不做额外处理
+    } else if (msg.type === 'message' || msg.type === 'assistant') {
+      // 兼容其他可能的格式
+      const content = msg.content || msg.text || msg.message || msg.part?.text;
+      if (content) {
+        this.emit('message', { type: 'text', content: String(content) });
+      }
     } else {
-      // 未知消息类型，作为文本显示
-      const text = msg.content || msg.text || msg.message || JSON.stringify(msg);
-      if (text && text !== '{}') {
-        this.emit('message', { type: 'text', content: String(text) });
+      // 未知消息类型，尝试提取文本
+      const text = msg.part?.text || msg.content || msg.text || msg.message;
+      if (text && typeof text === 'string' && text.trim()) {
+        this.emit('message', { type: 'text', content: text });
       }
     }
   }
