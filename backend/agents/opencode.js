@@ -3,7 +3,7 @@
  * 使用 opencode run 命令进行对话，支持会话恢复
  */
 const Agent = require('./base');
-const { exec, execSync } = require('child_process');
+const { exec, execSync, spawn } = require('child_process');
 const fs = require('fs');
 
 // 尝试查找 opencode 可执行文件路径（优先找实际二进制，跳过 wrapper）
@@ -125,41 +125,60 @@ class OpenCodeAgent extends Agent {
       // 确保 PATH 包含 npm 全局目录
       const env = getEnvWithPath();
 
-      // 通过 shell 执行，解决二进制 stdout 缓冲问题
-      const shellCmd = `${OPENCODE_PATH} ${args.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')} < /dev/null`;
+      console.log('[OpenCode] spawn:', OPENCODE_PATH, args.slice(0, 6).join(' '), '...');
 
-      console.log('[OpenCode] exec:', shellCmd.substring(0, 200));
-
-      execAsync(shellCmd, {
+      // 使用 spawn + shell 模式实现流式输出
+      const shellArgs = args.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ');
+      const proc = spawn('sh', ['-c', `${OPENCODE_PATH} ${shellArgs} < /dev/null`], {
         cwd: this.workdir,
         env,
-        timeout: 120000
-      }).then(({ stdout }) => {
-        // 处理 stdout 输出
-        if (stdout) {
-          const lines = stdout.split('\n');
-          for (const line of lines) {
-            if (line.trim()) {
-              this.handleOutput(line.trim());
-            }
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let buffer = '';
+      let hasOutput = false;
+
+      // 实时处理 stdout 输出
+      proc.stdout.on('data', (data) => {
+        hasOutput = true;
+        buffer += data.toString();
+        // 按行处理
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // 保留最后一个不完整的行
+        for (const line of lines) {
+          if (line.trim()) {
+            this.handleOutput(line.trim());
           }
         }
-        resolve();
-      }).catch((err) => {
-        // exec 超时时也会有 stdout 输出
-        if (err.stdout) {
-          const lines = err.stdout.toString().split('\n');
-          for (const line of lines) {
-            if (line.trim()) {
-              this.handleOutput(line.trim());
-            }
-          }
-          resolve();
-        } else {
-          console.error('[OpenCode] exec error:', err.message);
+      });
+
+      proc.stderr.on('data', (data) => {
+        const text = data.toString().trim();
+        if (text) {
+          console.log('[OpenCode stderr]:', text.substring(0, 200));
+        }
+      });
+
+      proc.on('close', (code) => {
+        // 处理 buffer 中剩余的内容
+        if (buffer.trim()) {
+          this.handleOutput(buffer.trim());
+        }
+
+        if (code !== 0 && !hasOutput) {
+          const err = new Error(`OpenCode 退出码: ${code}`);
+          console.error('[OpenCode] exit error:', err.message);
           this.emit('message', { type: 'error', content: `OpenCode 执行失败: ${err.message}` });
           reject(err);
+        } else {
+          resolve();
         }
+      });
+
+      proc.on('error', (err) => {
+        console.error('[OpenCode] spawn error:', err.message);
+        this.emit('message', { type: 'error', content: `OpenCode 执行失败: ${err.message}` });
+        reject(err);
       });
     });
   }
