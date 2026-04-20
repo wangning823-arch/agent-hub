@@ -128,6 +128,12 @@ class SessionManager {
     saveToFile();
   }
 
+  saveData() {
+    for (const session of this.sessions.values()) {
+      this.saveSession(session);
+    }
+  }
+
   async createSession(workdir, agentType = 'claude-code', options = {}) {
     const id = uuidv4();
     

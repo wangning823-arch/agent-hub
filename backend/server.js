@@ -40,18 +40,18 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3001;
-const tokenTracker = new TokenTracker();
-const sessionManager = new SessionManager(tokenTracker);
 const permissionManager = new PermissionManager();
 const projectManager = new ProjectManager();
 
 const TOKEN_FILE = path.join(__dirname, '..', '.token');
 
-let wsConnectionHandler;
+let tokenTracker, sessionManager, wsConnectionHandler;
 
 async function initApp() {
   const { initDb } = require('./db');
   await initDb();
+  tokenTracker = new TokenTracker();
+  sessionManager = new SessionManager(tokenTracker);
   await sessionManager.init();
   wsConnectionHandler = wsHandler(sessionManager, TOKEN_FILE);
 }
@@ -87,19 +87,6 @@ app.get('/api/agents', (req, res) => {
   });
 });
 
-app.use('/api/sessions', sessionsRouter(sessionManager));
-app.use('/api/tags', tagsRouter(sessionManager));
-app.use('/api/projects', projectsRouter(projectManager, sessionManager));
-app.use('/api/files', filesRouter(ALLOWED_ROOT));
-app.use('/api/git', gitRouter(ALLOWED_ROOT, permissionManager));
-app.use('/api/search', searchRouter(sessionManager));
-app.use('/api/permissions', permissionsRouter(permissionManager));
-app.use('/api/tokens', tokensRouter(tokenTracker));
-app.use('/api/export', exportRouter(sessionManager));
-app.use('/api/health', healthRouter());
-app.use('/api/upload', uploadRouter());
-app.use('/api/options', optionsRouter());
-
 app.get('/api/auth/check', (req, res) => {
   let ACCESS_TOKEN = '';
   try {
@@ -116,7 +103,23 @@ app.get("*", (req, res, next) => {
 
 (async () => {
   await initApp();
-  
+
+  // 路由注册必须在initApp之后，确保sessionManager已初始化
+  console.log('DEBUG: sessionManager type:', typeof sessionManager);
+  console.log('DEBUG: sessionManager value:', JSON.stringify(sessionManager, null, 2));
+  app.use('/api/sessions', sessionsRouter(sessionManager));
+  app.use('/api/tags', tagsRouter(sessionManager));
+  app.use('/api/projects', projectsRouter(projectManager, sessionManager));
+  app.use('/api/files', filesRouter(ALLOWED_ROOT));
+  app.use('/api/git', gitRouter(ALLOWED_ROOT, permissionManager));
+  app.use('/api/search', searchRouter(sessionManager));
+  app.use('/api/permissions', permissionsRouter(permissionManager));
+  app.use('/api/tokens', tokensRouter(tokenTracker));
+  app.use('/api/export', exportRouter(sessionManager));
+  app.use('/api/health', healthRouter());
+  app.use('/api/upload', uploadRouter());
+  app.use('/api/options', optionsRouter());
+
   wsConnectionHandler(wss);
   
   server.listen(PORT, '0.0.0.0', () => {
@@ -144,9 +147,9 @@ app.get("*", (req, res, next) => {
 
 process.on('SIGINT', async () => {
   console.log('\n正在关闭...');
-  const sessions = sessionManager.listSessions();
-  for (const session of sessions) {
-    await sessionManager.removeSession(session.id);
+  // 保存所有session数据到数据库，但不删除它们
+  if (sessionManager) {
+    sessionManager.saveData();
   }
   process.exit(0);
 });
