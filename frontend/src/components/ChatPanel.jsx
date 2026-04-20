@@ -5,7 +5,7 @@ import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
 import { API_BASE, getWebSocketUrl } from '../config'
 
-export default function ChatPanel({ sessionId, agentType = 'claude-code', options = {}, onOptionsChange, onWorkingChange }) {
+export default function ChatPanel({ sessionId, agentType = 'claude-code', options = {}, onOptionsChange, onWorkingChange, onStartingChange, isWorking = false, isStarting = false }) {
   const toast = useToast()
   const notification = useNotification()
   const [messages, setMessages] = useState([])
@@ -267,6 +267,10 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
             if (msg.type === 'status' && (msg.content === 'task_started' || msg.content === 'task_done')) {
               if (onWorkingChange) {
                 onWorkingChange(msg.content === 'task_started')
+              }
+            } else if (msg.type === 'status' && (msg.content === 'agent_starting' || msg.content === 'agent_started')) {
+              if (onStartingChange) {
+                onStartingChange(msg.content === 'agent_starting')
               }
             } else {
               // 非工具调用消息正常添加
@@ -578,6 +582,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
 
   // 发送消息
   const sendMessage = () => {
+    if (isWorking || isStarting) return
     if ((!input.trim() && attachments.length === 0) || !wsRef.current || wsRef.current.readyState !== 1) {
       return
     }
@@ -751,9 +756,10 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
-                placeholder="输入消息..."
+                placeholder={isStarting ? 'Agent启动中，请稍候...' : isWorking ? '任务进行中，请等待完成...' : '输入消息...'}
+                disabled={isWorking || isStarting}
                 className="w-full bg-transparent text-sm resize-none focus:outline-none"
-                style={{ color: 'var(--text-primary)', minHeight: 40, maxHeight: 120 }}
+                style={{ color: 'var(--text-primary)', minHeight: 40, maxHeight: 120, opacity: (isWorking || isStarting) ? 0.5 : 1 }}
                 rows={1}
               />
             </div>
@@ -761,9 +767,9 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
             <div className="flex items-center gap-1 px-2 pb-2">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
+                disabled={uploading || isWorking || isStarting}
                 className="p-1.5 rounded-lg transition-colors text-xs"
-                style={{ color: 'var(--text-muted)' }}
+                style={{ color: 'var(--text-muted)', opacity: (isWorking || isStarting) ? 0.4 : 1 }}
                 title="上传文件"
               >{uploading ? '⏳' : '📎'}</button>
               <select
@@ -800,11 +806,28 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
                 </select>
               )}
               <div className="flex-1" />
+              {isWorking && (
+                <button
+                  onClick={async () => {
+                    try {
+                      await fetch(`${API_BASE}/sessions/${sessionId}/stop`, { method: 'POST' })
+                    } catch (e) {
+                      console.error('停止任务失败:', e)
+                    }
+                  }}
+                  className="p-1.5 rounded-lg transition-colors text-xs flex items-center gap-1"
+                  style={{ background: 'var(--error, #ef4444)', color: 'white' }}
+                  title="停止当前任务"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                  停止
+                </button>
+              )}
               <button
                 onClick={sendMessage}
-                disabled={!connected || (input.trim() === '' && attachments.length === 0)}
+                disabled={!connected || isWorking || isStarting || (input.trim() === '' && attachments.length === 0)}
                 className="p-1.5 rounded-lg transition-colors"
-                style={{ background: 'var(--accent-primary)', color: 'white', opacity: (!connected || (input.trim() === '' && attachments.length === 0)) ? 0.4 : 1 }}
+                style={{ background: 'var(--accent-primary)', color: 'white', opacity: (!connected || isWorking || isStarting || (input.trim() === '' && attachments.length === 0)) ? 0.4 : 1 }}
                 title="发送"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>

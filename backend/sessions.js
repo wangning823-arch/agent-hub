@@ -78,6 +78,7 @@ class SessionManager {
             options: this.options,
             isActive: this.isActive,
             isWorking: this.isWorking || false,
+            isStarting: this.isStarting || false,
             conversationId: this.conversationId,
             lastMessageAt: this.messages.length > 0
               ? this.messages[this.messages.length - 1].time
@@ -185,7 +186,14 @@ class SessionManager {
     }
 
     if (!session.agent) {
-      await this._resumeAgent(session);
+      session.isStarting = true;
+      this.broadcast(sessionId, { type: 'status', content: 'agent_starting' });
+      try {
+        await this._resumeAgent(session);
+      } finally {
+        session.isStarting = false;
+        this.broadcast(sessionId, { type: 'status', content: 'agent_started' });
+      }
     }
 
     session.messages.push({ role: 'user', content: message, time: new Date().toISOString() });
@@ -212,7 +220,14 @@ class SessionManager {
     if (session.isActive) {
       return session;
     }
-    await this._resumeAgent(session);
+    session.isStarting = true;
+    this.broadcast(sessionId, { type: 'status', content: 'agent_starting' });
+    try {
+      await this._resumeAgent(session);
+    } finally {
+      session.isStarting = false;
+      this.broadcast(sessionId, { type: 'status', content: 'agent_started' });
+    }
     this.saveSession(session);
     return session;
   }

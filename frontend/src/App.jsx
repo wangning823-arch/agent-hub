@@ -134,9 +134,9 @@ export default function App() {
             try {
               const statusRes = await fetch(`${API_BASE}/sessions/${s.id}/status`)
               const status = await statusRes.json()
-              return { id: s.id, isActive: status.isActive, isWorking: status.isWorking }
+              return { id: s.id, isActive: status.isActive, isWorking: status.isWorking, isStarting: status.isStarting }
             } catch {
-              return { id: s.id, isActive: false, isWorking: false }
+              return { id: s.id, isActive: false, isWorking: false, isStarting: false }
             }
           })
         
@@ -145,7 +145,7 @@ export default function App() {
         setSessions(prev => prev.map(s => {
           const status = statuses.find(st => st.id === s.id)
           if (status) {
-            return { ...s, isActive: status.isActive, isWorking: status.isWorking }
+            return { ...s, isActive: status.isActive, isWorking: status.isWorking, isStarting: status.isStarting }
           }
           return s
         }))
@@ -249,6 +249,12 @@ export default function App() {
   const setSessionWorking = (sessionId, isWorking) => {
     setSessions(prev => prev.map(s =>
       s.id === sessionId ? { ...s, isWorking } : s
+    ))
+  }
+
+  const setSessionStarting = (sessionId, isStarting) => {
+    setSessions(prev => prev.map(s =>
+      s.id === sessionId ? { ...s, isStarting } : s
     ))
   }
 
@@ -414,8 +420,11 @@ export default function App() {
               sessionId={activeSession}
               agentType={currentSession?.agentType || 'claude-code'}
               options={currentOptions}
+              isWorking={currentSession?.isWorking || false}
+              isStarting={currentSession?.isStarting || false}
               onOptionsChange={(opts) => handleUpdateOptions(activeSession, opts)}
               onWorkingChange={(isWorking) => setSessionWorking(activeSession, isWorking)}
+              onStartingChange={(isStarting) => setSessionStarting(activeSession, isStarting)}
             />
           ) : (
             <div className="h-full flex items-center justify-center p-4">

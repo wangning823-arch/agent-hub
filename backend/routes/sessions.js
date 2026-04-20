@@ -42,7 +42,28 @@ module.exports = (sessionManager) => {
     }
     const isActive = sessionManager.isAgentRunning(req.params.id);
     const isWorking = session.isWorking || false;
-    res.json({ isActive, isWorking });
+    const isStarting = session.isStarting || false;
+    res.json({ isActive, isWorking, isStarting });
+  });
+
+  router.post('/:id/stop', async (req, res) => {
+    try {
+      const session = sessionManager.getSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: '会话不存在' });
+      }
+      if (session.agent && session.agent.activeProc) {
+        try { session.agent.activeProc.kill('SIGTERM'); } catch (e) {}
+        session.agent.activeProc = null;
+      }
+      session.isWorking = false;
+      session.isStarting = false;
+      sessionManager.saveSession(session);
+      sessionManager.broadcast(req.params.id, { type: 'status', content: 'task_done' });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   router.delete('/:id', async (req, res) => {
