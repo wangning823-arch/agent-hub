@@ -230,9 +230,13 @@ class SessionManager {
     this.broadcast(sessionId, { type: 'status', content: 'agent_starting' });
     try {
       await this._resumeAgent(session);
+      this.broadcast(sessionId, { type: 'status', content: 'agent_started' });
+    } catch (err) {
+      session.isActive = false;
+      this.broadcast(sessionId, { type: 'error', content: `Agent启动失败: ${err.message}` });
+      throw err;
     } finally {
       session.isStarting = false;
-      this.broadcast(sessionId, { type: 'status', content: 'agent_started' });
     }
     this.saveSession(session);
     return session;

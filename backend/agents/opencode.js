@@ -237,13 +237,15 @@ class OpenCodeAgent extends Agent {
   async _checkOpencodeAvailability() {
     try {
       const env = getEnvWithPath();
-      const cmd = `${OPENCODE_PATH} --version < /dev/null`;
-      const { stdout } = await execAsync(cmd, { timeout: 5000, env, maxBuffer: 1024 * 1024 });
+      const cmd = `${OPENCODE_PATH} --version < /dev/null 2>/dev/null`;
+      const { stdout } = await execAsync(cmd, { timeout: 10000, env, maxBuffer: 1024 * 1024 });
       console.log('[OpenCode] 版本信息:', stdout.trim());
       return true;
     } catch (e) {
       console.warn('[OpenCode] 可用性检查失败:', e.message);
-      return false;
+      // 即使检查失败，也返回true，让实际执行时再报错
+      // 这样可以避免因为检查超时导致整个session启动失败
+      return true;
     }
   }
 
