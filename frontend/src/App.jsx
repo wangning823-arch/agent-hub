@@ -423,6 +423,7 @@ export default function App() {
             />
           ) : activeSession ? (
             <ChatPanel
+              key={activeSession} // 切换session时重新挂载组件
               sessionId={activeSession}
               agentType={currentSession?.agentType || 'claude-code'}
               options={currentOptions}
