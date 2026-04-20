@@ -11,8 +11,7 @@ marked.setOptions({
     return hljs.highlightAuto(code).value
   },
   breaks: true,
-  gfm: true,
-  sanitize: true
+  gfm: true
 })
 
 // SVG icons

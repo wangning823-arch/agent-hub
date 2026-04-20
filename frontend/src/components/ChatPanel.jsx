@@ -81,7 +81,12 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
             displayContent = msg.content
           } else if (typeof msg.content === 'object' && msg.content !== null) {
             displayType = msg.content.type || 'assistant'
-            displayContent = msg.content.content || msg.content
+            const rawContent = msg.content.content
+            if (rawContent === '{}' || rawContent === '' || !rawContent) {
+              displayContent = ''
+            } else {
+              displayContent = rawContent
+            }
           } else {
             displayContent = msg.content
           }
@@ -93,10 +98,14 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
           }
         })
         
-        // 将新加载的消息添加到列表前面（过滤掉工具调用）
-        const filtered = formattedMessages.filter(msg =>
-          msg.type !== 'tool_use' && msg.type !== 'tool_result'
-        )
+        // 将新加载的消息添加到列表前面（过滤掉工具调用和空消息）
+        const filtered = formattedMessages.filter(msg => {
+          if (msg.type === 'tool_use' || msg.type === 'tool_result') return false
+          const content = msg.content
+          if (typeof content === 'string' && (content === '{}' || content.trim() === '')) return false
+          if (typeof content === 'object' && (content === null || Object.keys(content).length === 0)) return false
+          return true
+        })
         setMessages(prev => [...filtered, ...prev])
         setMessageOffset(prev => Math.max(0, prev - PAGE_SIZE))
         
@@ -132,9 +141,13 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
             if (msg.role === 'user') {
               displayContent = msg.content
             } else if (typeof msg.content === 'object' && msg.content !== null) {
-              // 保持对象结构，让 Message 组件自己渲染
               displayType = msg.content.type || 'assistant'
-              displayContent = msg.content.content || msg.content
+              const rawContent = msg.content.content
+              if (rawContent === '{}' || rawContent === '' || !rawContent) {
+                displayContent = ''
+              } else {
+                displayContent = rawContent
+              }
             } else {
               displayContent = msg.content
             }
@@ -145,10 +158,14 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
               timestamp: msg.time
             }
           })
-          // 过滤掉工具调用历史记录 - 只保留用户消息、助手回复、错误等
-          const filteredMessages = formattedMessages.filter(msg =>
-            msg.type !== 'tool_use' && msg.type !== 'tool_result'
-          )
+          // 过滤掉工具调用历史记录和空消息
+          const filteredMessages = formattedMessages.filter(msg => {
+            if (msg.type === 'tool_use' || msg.type === 'tool_result') return false
+            const content = msg.content
+            if (typeof content === 'string' && (content === '{}' || content.trim() === '')) return false
+            if (typeof content === 'object' && (content === null || Object.keys(content).length === 0)) return false
+            return true
+          })
           setMessages(filteredMessages)
           setHasMore(data.messages.length >= PAGE_SIZE)
           setMessageOffset(formattedMessages.length)

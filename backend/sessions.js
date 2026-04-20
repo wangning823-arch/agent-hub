@@ -208,7 +208,11 @@ class SessionManager {
 
     agent.on('message', (msg) => this.broadcast(session.id, msg));
     agent.on('error', (err) => this.broadcast(session.id, { type: 'error', content: err.toString() }));
-    agent.on('stopped', () => this.broadcast(session.id, { type: 'status', content: 'Agent已停止' }));
+    agent.on('stopped', () => {
+      session.isActive = false;
+      this.saveSession(session);
+      this.broadcast(session.id, { type: 'status', content: 'Agent已停止' });
+    });
 
     try {
       await agent.start();
