@@ -100,8 +100,10 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
         
         // 将新加载的消息添加到列表前面（过滤掉工具调用和空消息）
         const filtered = formattedMessages.filter(msg => {
-          if (msg.type === 'tool_use' || msg.type === 'tool_result') return false
           const content = msg.content
+          const contentType = typeof content === 'object' && content !== null ? content.type : null
+          if (contentType === 'tool_use' || contentType === 'tool_result') return false
+          if (msg.type === 'tool_use' || msg.type === 'tool_result') return false
           if (typeof content === 'string' && (content === '{}' || content.trim() === '')) return false
           if (typeof content === 'object' && (content === null || Object.keys(content).length === 0)) return false
           return true
@@ -160,8 +162,10 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
           })
           // 过滤掉工具调用历史记录和空消息
           const filteredMessages = formattedMessages.filter(msg => {
-            if (msg.type === 'tool_use' || msg.type === 'tool_result') return false
             const content = msg.content
+            const contentType = typeof content === 'object' && content !== null ? content.type : null
+            if (contentType === 'tool_use' || contentType === 'tool_result') return false
+            if (msg.type === 'tool_use' || msg.type === 'tool_result') return false
             if (typeof content === 'string' && (content === '{}' || content.trim() === '')) return false
             if (typeof content === 'object' && (content === null || Object.keys(content).length === 0)) return false
             return true

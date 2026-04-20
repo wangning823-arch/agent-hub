@@ -67,7 +67,7 @@ export default function Sidebar({
 
   const loadCommands = async () => {
     try {
-      const data = await fetch(`${API_BASE}/commands?agentType=${agentType}`).then(r => r.json())
+      const data = await fetch(`${API_BASE}/options/commands?agentType=${agentType}`).then(r => r.json())
       setCommands(data.commands || [])
     } catch (error) { console.error('加载命令失败:', error) }
   }

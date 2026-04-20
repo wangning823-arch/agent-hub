@@ -35,6 +35,15 @@ module.exports = (sessionManager) => {
     res.json(session.toJSON());
   });
 
+  router.get('/:id/status', (req, res) => {
+    const session = sessionManager.getSession(req.params.id);
+    if (!session) {
+      return res.status(404).json({ error: '会话不存在' });
+    }
+    const isActive = sessionManager.isAgentRunning(req.params.id);
+    res.json({ isActive });
+  });
+
   router.delete('/:id', async (req, res) => {
     try {
       await sessionManager.removeSession(req.params.id);

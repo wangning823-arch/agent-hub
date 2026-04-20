@@ -169,6 +169,12 @@ class SessionManager {
     return Array.from(this.sessions.values()).map(s => s.toJSON());
   }
 
+  isAgentRunning(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    return session.isActive && session.agent && !session.agent.killed;
+  }
+
   async sendMessage(sessionId, message) {
     const session = this.sessions.get(sessionId);
     if (!session) {

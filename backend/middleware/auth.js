@@ -13,7 +13,9 @@ module.exports = (TOKEN_FILE) => {
       req.path.startsWith('/assets') ||
       req.path === '/api/health' ||
       req.path === '/api/auth/check' ||
-      req.path === '/api/agents'
+      req.path === '/api/agents' ||
+      req.path.startsWith('/api/options') ||
+      req.path === '/api/permissions'
     ) {
       return next();
     }

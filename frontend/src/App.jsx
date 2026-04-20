@@ -123,6 +123,43 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    const checkAgentStatus = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/sessions`)
+        const data = await res.json()
+        if (!Array.isArray(data)) return
+        
+        const statusPromises = data
+          .filter(s => s.isActive)
+          .map(async (s) => {
+            try {
+              const statusRes = await fetch(`${API_BASE}/sessions/${s.id}/status`)
+              const status = await statusRes.json()
+              return { id: s.id, isActive: status.isActive }
+            } catch {
+              return { id: s.id, isActive: false }
+            }
+          )
+        
+        const statuses = await Promise.all(statusPromises)
+        
+        setSessions(prev => prev.map(s => {
+          const status = statuses.find(st => st.id === s.id)
+          if (status) {
+            return { ...s, isActive: status.isActive }
+          }
+          return s
+        }))
+      } catch (e) {
+        console.error('检查agent状态失败:', e)
+      }
+    }
+
+    const interval = setInterval(checkAgentStatus, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault()
