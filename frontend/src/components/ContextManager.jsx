@@ -73,13 +73,14 @@ export default function ContextManager({ sessionId, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-gray-900 rounded-lg w-full max-w-md overflow-hidden shadow-2xl border border-gray-700">
+      <div className="rounded-lg w-full max-w-md overflow-hidden shadow-2xl border" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-subtle)' }}>
         {/* 标题栏 */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-700">
-          <h2 className="text-lg font-semibold text-white">📊 上下文与Token</h2>
+        <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+          <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>📊 上下文与Token</h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white text-xl"
+            className="text-xl"
+            style={{ color: 'var(--text-muted)' }}
           >
             ✕
           </button>
@@ -88,33 +89,33 @@ export default function ContextManager({ sessionId, onClose }) {
         {/* 内容 */}
         <div className="p-4 space-y-4">
           {/* 上下文信息 */}
-          <div className="bg-gray-800 rounded-lg p-4">
-            <h3 className="text-sm font-medium text-gray-300 mb-3">💬 上下文信息</h3>
+          <div className="rounded-lg p-4" style={{ background: 'var(--bg-tertiary)' }}>
+            <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>💬 上下文信息</h3>
             {contextInfo ? (
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">消息数量</span>
-                  <span className="text-white">{contextInfo.messageCount}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>消息数量</span>
+                  <span style={{ color: 'var(--text-primary)' }}>{contextInfo.messageCount}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">预估Token</span>
-                  <span className="text-white">~{formatTokens(contextInfo.estimatedTokens)}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>预估Token</span>
+                  <span style={{ color: 'var(--text-primary)' }}>~{formatTokens(contextInfo.estimatedTokens)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">对话ID</span>
-                  <span className="text-white text-xs truncate max-w-[150px]">
+                  <span style={{ color: 'var(--text-muted)' }}>对话ID</span>
+                  <span className="text-xs truncate max-w-[150px]" style={{ color: 'var(--text-primary)' }}>
                     {contextInfo.conversationId || '无'}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">状态</span>
-                  <span className={contextInfo.isActive ? 'text-green-400' : 'text-yellow-400'}>
+                  <span style={{ color: 'var(--text-muted)' }}>状态</span>
+                  <span style={{ color: contextInfo.isActive ? 'var(--success)' : 'var(--warning)' }}>
                     {contextInfo.isActive ? '活跃' : '未激活'}
                   </span>
                 </div>
               </div>
             ) : (
-              <div className="text-gray-500 text-sm">加载中...</div>
+              <div className="text-sm" style={{ color: 'var(--text-muted)' }}>加载中...</div>
             )}
 
             {/* 上下文操作 */}
@@ -122,13 +123,15 @@ export default function ContextManager({ sessionId, onClose }) {
               <button
                 onClick={handleCompact}
                 disabled={loading}
-                className="flex-1 px-3 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50 text-sm"
+                className="flex-1 px-3 py-2 rounded disabled:opacity-50 text-sm"
+                style={{ background: 'var(--warning)', color: '#fff' }}
               >
                 {loading ? '处理中...' : '🗜️ 压缩上下文'}
               </button>
               <button
                 onClick={loadContextInfo}
-                className="px-3 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 text-sm"
+                className="px-3 py-2 rounded text-sm"
+                style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}
               >
                 🔄
               </button>
@@ -136,51 +139,53 @@ export default function ContextManager({ sessionId, onClose }) {
           </div>
 
           {/* Token统计 */}
-          <div className="bg-gray-800 rounded-lg p-4">
-            <h3 className="text-sm font-medium text-gray-300 mb-3">🪙 Token统计</h3>
+          <div className="rounded-lg p-4" style={{ background: 'var(--bg-tertiary)' }}>
+            <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>🪙 Token统计</h3>
             {tokenStats ? (
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">输入Token</span>
-                  <span className="text-white">{formatTokens(tokenStats.totalInputTokens)}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>输入Token</span>
+                  <span style={{ color: 'var(--text-primary)' }}>{formatTokens(tokenStats.totalInputTokens)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">输出Token</span>
-                  <span className="text-white">{formatTokens(tokenStats.totalOutputTokens)}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>输出Token</span>
+                  <span style={{ color: 'var(--text-primary)' }}>{formatTokens(tokenStats.totalOutputTokens)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">缓存读取</span>
-                  <span className="text-blue-400">{formatTokens(tokenStats.totalCacheReadTokens)}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>缓存读取</span>
+                  <span style={{ color: 'var(--accent-secondary)' }}>{formatTokens(tokenStats.totalCacheReadTokens)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">缓存写入</span>
-                  <span className="text-purple-400">{formatTokens(tokenStats.totalCacheWriteTokens)}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>缓存写入</span>
+                  <span style={{ color: 'var(--accent-primary)' }}>{formatTokens(tokenStats.totalCacheWriteTokens)}</span>
                 </div>
-                <div className="border-t border-gray-700 my-2" />
+                <div className="my-2" style={{ borderTop: '1px solid var(--border-subtle)' }} />
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">总费用</span>
-                  <span className="text-green-400 font-medium">{formatCost(tokenStats.totalCost)}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>总费用</span>
+                  <span style={{ color: 'var(--success)', fontWeight: 'medium' }}>{formatCost(tokenStats.totalCost)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">消息次数</span>
-                  <span className="text-white">{tokenStats.messageCount}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>消息次数</span>
+                  <span style={{ color: 'var(--text-primary)' }}>{tokenStats.messageCount}</span>
                 </div>
               </div>
             ) : (
-              <div className="text-gray-500 text-sm">加载中...</div>
+              <div className="text-sm" style={{ color: 'var(--text-muted)' }}>加载中...</div>
             )}
 
             {/* Token操作 */}
             <div className="mt-4 flex gap-2">
               <button
                 onClick={handleClearStats}
-                className="flex-1 px-3 py-2 bg-red-600/50 text-red-300 rounded hover:bg-red-600 text-sm"
+                className="flex-1 px-3 py-2 rounded text-sm"
+                style={{ background: 'var(--error-soft)', color: 'var(--error)' }}
               >
                 🗑️ 清除统计
               </button>
               <button
                 onClick={loadTokenStats}
-                className="px-3 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 text-sm"
+                className="px-3 py-2 rounded text-sm"
+                style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}
               >
                 🔄
               </button>
@@ -188,9 +193,9 @@ export default function ContextManager({ sessionId, onClose }) {
           </div>
 
           {/* 使用提示 */}
-          <div className="bg-gray-800/50 rounded-lg p-3 text-xs text-gray-500">
-            <p>💡 <strong>压缩上下文</strong>可以减少token使用，但可能丢失一些对话历史</p>
-            <p className="mt-1">💡 <strong>缓存读取</strong>不计入费用，是Claude的提示缓存功能</p>
+          <div className="rounded-lg p-3 text-xs" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
+            <p>💡 <strong style={{ color: 'var(--text-secondary)' }}>压缩上下文</strong>可以减少token使用，但可能丢失一些对话历史</p>
+            <p className="mt-1">💡 <strong style={{ color: 'var(--text-secondary)' }}>缓存读取</strong>不计入费用，是Claude的提示缓存功能</p>
           </div>
         </div>
       </div>
