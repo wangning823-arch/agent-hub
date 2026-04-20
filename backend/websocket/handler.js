@@ -20,24 +20,36 @@ module.exports = (sessionManager, TOKEN_FILE) => {
         if (agent.updateOptions) {
           agent.updateOptions({ mode: params.mode });
         }
+        // 同步更新session.options并保存
+        session.options = { ...session.options, mode: params.mode };
+        sessionManager.saveSession(session);
         break;
 
       case 'set_model':
         if (agent.updateOptions) {
           agent.updateOptions({ model: params.model });
         }
+        // 同步更新session.options并保存
+        session.options = { ...session.options, model: params.model };
+        sessionManager.saveSession(session);
         break;
 
       case 'set_effort':
         if (agent.updateOptions) {
           agent.updateOptions({ effort: params.effort });
         }
+        // 同步更新session.options并保存
+        session.options = { ...session.options, effort: params.effort };
+        sessionManager.saveSession(session);
         break;
 
       case 'update_options':
         if (agent.updateOptions) {
           agent.updateOptions(params);
         }
+        // 同步更新session.options并保存
+        session.options = { ...session.options, ...params };
+        sessionManager.saveSession(session);
         break;
 
       default:

@@ -52,9 +52,13 @@ module.exports = (sessionManager) => {
       if (!session) {
         return res.status(404).json({ error: '会话不存在' });
       }
-      if (session.agent && session.agent.activeProc) {
-        try { session.agent.activeProc.kill('SIGTERM'); } catch (e) {}
-        session.agent.activeProc = null;
+      // 调用agent的stop方法，确保完整清理
+      if (session.agent) {
+        try {
+          await session.agent.stop();
+        } catch (e) {
+          console.error('停止agent失败:', e);
+        }
       }
       session.isWorking = false;
       session.isStarting = false;

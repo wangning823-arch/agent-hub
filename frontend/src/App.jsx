@@ -109,14 +109,16 @@ export default function App() {
       .then(data => {
         if (!Array.isArray(data)) { setSessions([]); return }
         setSessions(data)
+        // 加载所有session的options，不只是第一个
+        const allOptions = {}
+        data.forEach(s => {
+          if (s.options) {
+            allOptions[s.id] = s.options
+          }
+        })
+        setSessionOptions(prev => ({ ...allOptions, ...prev }))
         if (data.length > 0 && !activeSession) {
           setActiveSession(data[0].id)
-          if (data[0].options) {
-            setSessionOptions(prev => ({
-              ...prev,
-              [data[0].id]: data[0].options
-            }))
-          }
         }
       })
       .catch(console.error)
@@ -352,7 +354,11 @@ export default function App() {
           activeSession={activeSession}
           agentType={currentSession?.agentType || 'claude-code'}
           sessionOptions={sessionOptions}
-          onSelectSession={(id) => { setActiveSession(id); if (isMobile) setLeftSidebarOpen(false) }}
+          onSelectSession={(id) => { 
+            setActiveSession(id); 
+            // sessionOptions已经在加载时和更新时同步，不需要额外操作
+            if (isMobile) setLeftSidebarOpen(false); 
+          }}
           onCloseSession={removeSession}
           onResumeSession={resumeSession}
           onNewSession={() => setShowNewModal(true)}
@@ -483,7 +489,11 @@ export default function App() {
       )}
       {showSearch && (
         <SearchPanel
-          onSelectSession={(id) => { setActiveSession(id); if (isMobile) setLeftSidebarOpen(false) }}
+          onSelectSession={(id) => { 
+            setActiveSession(id); 
+            // sessionOptions已经在加载时和更新时同步，不需要额外操作
+            if (isMobile) setLeftSidebarOpen(false); 
+          }}
           onClose={() => setShowSearch(false)}
         />
       )}

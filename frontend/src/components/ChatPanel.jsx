@@ -32,7 +32,14 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   const [currentMode, setCurrentMode] = useState(options?.mode || 'auto')
   const [currentModel, setCurrentModel] = useState(options?.model || '')
   const [currentEffort, setCurrentEffort] = useState(options?.effort || 'medium')
-  
+
+  // 当 options prop 变化时（切换session），同步更新内部状态
+  useEffect(() => {
+    if (options?.mode) setCurrentMode(options.mode)
+    if (options?.model) setCurrentModel(options.model)
+    if (options?.effort) setCurrentEffort(options.effort)
+  }, [options?.mode, options?.model, options?.effort])
+
   const wsRef = useRef(null)
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -820,7 +827,6 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
                   title="停止当前任务"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-                  停止
                 </button>
               )}
               <button
