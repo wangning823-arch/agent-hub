@@ -41,7 +41,8 @@ module.exports = (sessionManager) => {
       return res.status(404).json({ error: '会话不存在' });
     }
     const isActive = sessionManager.isAgentRunning(req.params.id);
-    res.json({ isActive });
+    const isWorking = session.isWorking || false;
+    res.json({ isActive, isWorking });
   });
 
   router.delete('/:id', async (req, res) => {

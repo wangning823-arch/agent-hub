@@ -43,11 +43,13 @@ class SessionManager {
         WHERE session_id = '${sessionData.id.replace(/'/g, "''")}' ORDER BY id
       `);
       
-      const messages = msgRows.length > 0 ? msgRows[0].values.map(m => ({
-        role: m[0],
-        content: m[1],
-        time: m[2]
-      })) : [];
+      const messages = msgRows.length > 0 ? msgRows[0].values.map(m => {
+        let content = m[1];
+        if (m[0] === 'assistant' && typeof content === 'string') {
+          try { content = JSON.parse(content); } catch(e) {}
+        }
+        return { role: m[0], content, time: m[2] };
+      }) : [];
       
       const session = {
         id: sessionData.id,
@@ -64,7 +66,7 @@ class SessionManager {
         updatedAt: new Date(sessionData.updated_at),
         isActive: false,
         messages: messages,
-        toJSON: function() {
+  toJSON() {
           return {
             id: this.id,
             agentType: this.agentType || 'claude-code',
@@ -75,6 +77,7 @@ class SessionManager {
             updatedAt: this.updatedAt,
             options: this.options,
             isActive: this.isActive,
+            isWorking: this.isWorking || false,
             conversationId: this.conversationId,
             lastMessageAt: this.messages.length > 0
               ? this.messages[this.messages.length - 1].time
@@ -186,7 +189,19 @@ class SessionManager {
     }
 
     session.messages.push({ role: 'user', content: message, time: new Date().toISOString() });
-    await session.agent.send(message);
+    this.saveSession(session);
+
+    // 标记任务开始
+    session.isWorking = true;
+    this.broadcast(sessionId, { type: 'status', content: 'task_started' });
+
+    try {
+      await session.agent.send(message);
+    } finally {
+      // 标记任务结束
+      session.isWorking = false;
+      this.broadcast(sessionId, { type: 'status', content: 'task_done' });
+    }
   }
 
   async resumeSession(sessionId) {
@@ -246,6 +261,7 @@ class SessionManager {
       const metaTypes = ['status', 'token_usage', 'conversation_id', 'title_update'];
       if (!metaTypes.includes(message.type)) {
         session.messages.push({ role: 'assistant', content: message, time: new Date().toISOString() });
+        this.saveSession(session);
       }
       
       if (message.conversationId) {

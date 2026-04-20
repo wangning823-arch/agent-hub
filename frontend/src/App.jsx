@@ -130,23 +130,22 @@ export default function App() {
         if (!Array.isArray(data)) return
         
         const statusPromises = data
-          .filter(s => s.isActive)
           .map(async (s) => {
             try {
               const statusRes = await fetch(`${API_BASE}/sessions/${s.id}/status`)
               const status = await statusRes.json()
-              return { id: s.id, isActive: status.isActive }
+              return { id: s.id, isActive: status.isActive, isWorking: status.isWorking }
             } catch {
-              return { id: s.id, isActive: false }
+              return { id: s.id, isActive: false, isWorking: false }
             }
-          )
+          })
         
         const statuses = await Promise.all(statusPromises)
         
         setSessions(prev => prev.map(s => {
           const status = statuses.find(st => st.id === s.id)
           if (status) {
-            return { ...s, isActive: status.isActive }
+            return { ...s, isActive: status.isActive, isWorking: status.isWorking }
           }
           return s
         }))
@@ -245,6 +244,12 @@ export default function App() {
     } catch (error) {
       toast.error('恢复会话失败: ' + error.message)
     }
+  }
+
+  const setSessionWorking = (sessionId, isWorking) => {
+    setSessions(prev => prev.map(s =>
+      s.id === sessionId ? { ...s, isWorking } : s
+    ))
   }
 
   const handleSelectProject = (result) => {
@@ -410,6 +415,7 @@ export default function App() {
               agentType={currentSession?.agentType || 'claude-code'}
               options={currentOptions}
               onOptionsChange={(opts) => handleUpdateOptions(activeSession, opts)}
+              onWorkingChange={(isWorking) => setSessionWorking(activeSession, isWorking)}
             />
           ) : (
             <div className="h-full flex items-center justify-center p-4">

@@ -5,7 +5,7 @@ import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
 import { API_BASE, getWebSocketUrl } from '../config'
 
-export default function ChatPanel({ sessionId, agentType = 'claude-code', options = {}, onOptionsChange }) {
+export default function ChatPanel({ sessionId, agentType = 'claude-code', options = {}, onOptionsChange, onWorkingChange }) {
   const toast = useToast()
   const notification = useNotification()
   const [messages, setMessages] = useState([])
@@ -263,8 +263,15 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
               }
             })
           } else {
-            // 非工具调用消息正常添加
-            setMessages(prev => [...prev, msg])
+            // 内部状态消息：不显示在聊天中
+            if (msg.type === 'status' && (msg.content === 'task_started' || msg.content === 'task_done')) {
+              if (onWorkingChange) {
+                onWorkingChange(msg.content === 'task_started')
+              }
+            } else {
+              // 非工具调用消息正常添加
+              setMessages(prev => [...prev, msg])
+            }
           }
           
           // 处理对话ID保存

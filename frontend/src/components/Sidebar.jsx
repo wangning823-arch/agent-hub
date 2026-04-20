@@ -225,7 +225,7 @@ export default function Sidebar({
                   >
                     <div className="flex items-center gap-2 min-w-0 w-full">
                       {session.isPinned && <span className="text-xs flex-shrink-0" style={{ color: 'var(--warning)' }}>📌</span>}
-                      {session.isActive ? <IconRunning /> : <IconPause />}
+                      {session.isWorking ? <IconRunning /> : session.isActive ? <span className="text-xs" style={{ color: 'var(--success, #22c55e)' }}>●</span> : <IconPause />}
                       {editingSession === session.id ? (
                         <input
                           type="text"
