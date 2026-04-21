@@ -41,6 +41,7 @@ export default function App() {
   const [activeSession, setActiveSession] = useState(null)
   const [sessionOptions, setSessionOptions] = useState({})
   const [showNewModal, setShowNewModal] = useState(false)
+  const [preselectedProject, setPreselectedProject] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showProjectManager, setShowProjectManager] = useState(false)
   const toast = useToast()
@@ -471,14 +472,15 @@ export default function App() {
         <NewSessionModal
           agents={agents}
           onCreate={createSession}
-          onClose={() => setShowNewModal(false)}
-          currentWorkdir={currentSession?.workdir}
+          onClose={() => { setShowNewModal(false); setPreselectedProject(null) }}
+          preselectedProject={preselectedProject}
         />
       )}
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
       {showProjectManager && (
         <ProjectManager
           onSelectProject={handleSelectProject}
+          onNewSession={(project) => { setPreselectedProject(project); setShowProjectManager(false); setShowNewModal(true) }}
           onClose={() => setShowProjectManager(false)}
         />
       )}

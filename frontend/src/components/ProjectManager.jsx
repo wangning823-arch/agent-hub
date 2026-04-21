@@ -3,7 +3,7 @@ import { useToast } from './Toast'
 
 const API_BASE = '/api'
 
-export default function ProjectManager({ onSelectProject, onClose }) {
+export default function ProjectManager({ onSelectProject, onNewSession, onClose }) {
   const [projects, setProjects] = useState([])
   const [recentProjects, setRecentProjects] = useState([])
   const [favoriteProjects, setFavoriteProjects] = useState([])
@@ -102,9 +102,20 @@ export default function ProjectManager({ onSelectProject, onClose }) {
       setShowCreateForm(false)
       setGitUrl('')
 
-      // 如果是 clone 或导入的，直接启动项目
+      // 如果是 clone 或导入的，打开新建会话
       if (result.project) {
-        onSelectProject(result.project)
+        if (onNewSession) {
+          onNewSession(result.project)
+        } else {
+          try {
+            const startResult = await fetch(`${API_BASE}/projects/${result.project.id}/start`, {
+              method: 'POST'
+            }).then(r => r.json())
+            onSelectProject(startResult)
+          } catch (e) {
+            toast.error('启动项目失败: ' + e.message)
+          }
+        }
       }
     } catch (error) {
       toast.error('导入失败: ' + error.message)
@@ -132,14 +143,18 @@ export default function ProjectManager({ onSelectProject, onClose }) {
   }
 
   const startProject = async (project) => {
-    try {
-      const result = await fetch(`${API_BASE}/projects/${project.id}/start`, {
-        method: 'POST'
-      }).then(r => r.json())
-
-      onSelectProject(result)
-    } catch (error) {
-      toast.error('启动项目失败: ' + error.message)
+    if (onNewSession) {
+      onNewSession(project)
+    } else {
+      // fallback: 直接启动（兼容旧逻辑）
+      try {
+        const result = await fetch(`${API_BASE}/projects/${project.id}/start`, {
+          method: 'POST'
+        }).then(r => r.json())
+        onSelectProject(result)
+      } catch (error) {
+        toast.error('启动项目失败: ' + error.message)
+      }
     }
   }
 
