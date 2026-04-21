@@ -20,3 +20,4 @@ data/*.db
 data/backups/
 .token
 uploads/
+memory/

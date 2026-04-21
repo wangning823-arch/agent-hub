@@ -79,8 +79,11 @@ class CredentialManager {
    * 生成存储key
    */
   _makeKey(host, cred) {
-    if (cred.username) return `${cred.username}@${host}`;
-    return host;
+    const parts = [];
+    if (cred.username) parts.push(cred.username);
+    parts.push(host);
+    if (cred.type) parts.push(cred.type);
+    return parts.join(':');
   }
 
   /**
@@ -99,7 +102,6 @@ class CredentialManager {
     };
     this.credentials.set(key, toStore);
     this.saveCredentials();
-    this.applyCredentialToMatchingProjects(host, cred);
   }
 
   /**
@@ -141,7 +143,7 @@ class CredentialManager {
     if (!host) return [];
     const results = [];
     for (const [key, cred] of this.credentials.entries()) {
-      if (cred.host === host || key === host || key.endsWith(`@${host}`)) {
+      if (cred.host === host || key === host || key.includes(`:${host}:`) || key.endsWith(`:${host}`)) {
         results.push(cred);
       }
     }
