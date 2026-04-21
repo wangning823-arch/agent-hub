@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useTheme } from './ThemeContext'
 import { useNotification } from '../hooks/useNotification'
+import CredentialManager from './CredentialManager'
 
 const API_BASE = '/api'
 
@@ -88,6 +89,7 @@ export default function SettingsPanel({ onClose }) {
         <div className="flex border-b" style={{ borderColor: 'var(--border-subtle)' }}>
           {[
             { key: 'theme', icon: '🎨', label: '主题' },
+            { key: 'credentials', icon: '🔑', label: '凭证' },
             { key: 'permissions', icon: '🔐', label: '权限' },
             { key: 'notifications', icon: '🔔', label: '通知' },
           ].map(tab => (
@@ -122,6 +124,8 @@ export default function SettingsPanel({ onClose }) {
               </div>
             </div>
           )}
+
+          {activeTab === 'credentials' && <CredentialManager />}
 
           {activeTab === 'permissions' && (
             <>

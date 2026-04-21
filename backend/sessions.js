@@ -1,9 +1,12 @@
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
+const fs = require('fs');
+const { execSync } = require('child_process');
 const Session = require('./models/session');
 const { createAgent, resumeAgentMessages } = require('./agents/factory');
 const WSClients = require('./ws-clients');
 const { getDb, saveToFile } = require('./db');
+const credentialManager = require('./credentialManager');
 
 class SessionManager {
   constructor(tokenTracker = null) {
@@ -11,6 +14,140 @@ class SessionManager {
     this.wsClients = new WSClients();
     this.tokenTracker = tokenTracker;
     this.initialized = false;
+  }
+
+  /**
+   * 为工作目录配置Git凭证（如果能检测到远程主机且有凭证的话）
+   * @param {string} workdir
+   */
+  _setupGitForWorkdir(workdir) {
+    try {
+      const host = this._getGitHostFromWorkdir(workdir);
+      if (host) {
+        const cred = credentialManager.getCredentialForHost(host);
+        if (cred) {
+          this._applyCredentialToWorkdir(workdir, cred);
+        }
+      }
+    } catch (e) {
+      // 忽略错误，不影响会话创建
+      console.debug('设置Git凭证时出错:', e.message);
+    }
+  }
+
+  /**
+   * 从工作目录检测Git远程主机（如github.com）
+   * @param {string} workdir
+   * @returns {string|null}
+   */
+  _getGitHostFromWorkdir(workdir) {
+    try {
+      const gitDir = path.join(workdir, '.git');
+      if (!fs.existsSync(gitDir)) return null;
+
+      // 获取远程URL
+      let url;
+      try {
+        url = execSync('git config --local --get remote.origin.url', {
+          cwd: workdir,
+          encoding: 'utf8'
+        }).trim();
+      } catch (e) {
+        // 如果没有origin，尝试第一个远程
+        const remotes = execSync('git remote', {
+          cwd: workdir,
+          encoding: 'utf8'
+        })
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean);
+        if (remotes.length === 0) return null;
+        url = execSync(`git config --local --get remote.${remotes[0]}.url`, {
+          cwd: workdir,
+          encoding: 'utf8'
+        }).trim();
+      }
+      if (!url) return null;
+
+      // 解析主机名
+      if (url.startsWith('https://')) {
+        const after = url.substring(8);
+        const slash = after.indexOf('/');
+        if (slash !== -1) {
+          return after.substring(0, slash);
+        }
+      } else if (url.startsWith('git@')) {
+        const after = url.substring(4);
+        const colon = after.indexOf(':');
+        if (colon !== -1) {
+          return after.substring(0, colon);
+        }
+      } else if (url.startsWith('ssh://')) {
+        const after = url.substring(6);
+        const at = after.indexOf('@');
+        if (at !== -1) {
+          const afterAt = after.substring(at + 1);
+          const slash = afterAt.indexOf('/');
+          if (slash !== -1) {
+            return afterAt.substring(0, slash);
+          }
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * 将凭证应用到指定工作目录的Git配置
+   * @param {string} workdir
+   * @param {Object} cred - 从CredentialManager获取的凭证对象
+   * @returns {Object} {success: boolean, message: string}
+   */
+  _applyCredentialToWorkdir(workdir, cred) {
+    try {
+      const gitDir = path.join(workdir, '.git');
+      if (!fs.existsSync(gitDir)) {
+        return { success: false, message: '非Git仓库' };
+      }
+
+      if (cred.type === 'token') {
+        // 配置凭证助手
+        execSync(`git config --local credential.helper "store --file=.git/credentials"`, {
+          cwd: workdir
+        });
+        // 写入凭证文件
+        const username = cred.username || 'git';
+        if (!cred.secret) {
+          return { success: false, message: 'Token缺失' };
+        }
+        const credentialsLine = `https://${username}:${cred.secret}@${cred.host}\n`;
+        const credentialsFile = path.join(workdir, '.git', 'credentials');
+        fs.writeFileSync(credentialsFile, credentialsLine, { encoding: 'utf8' });
+        fs.chmodSync(credentialsFile, parseInt('600', 8)); // 仅所有者可读写
+        return { success: true, message: 'Token凭证已配置' };
+      } else if (cred.type === 'ssh') {
+        // 配置使用SSH
+        execSync('git config --local core.sshCommand "ssh -o StrictHostKeyChecking=no"', {
+          cwd: workdir
+        });
+        // 如果提供了私钥数据，写入临时文件并指定
+        if (cred.keyData) {
+          const keyPath = path.join(workdir, '.git', 'id_rsa');
+          fs.writeFileSync(keyPath, cred.keyData, { encoding: 'utf8' });
+          fs.chmodSync(keyPath, parseInt('600', 8));
+          execSync(`git config --local core.sshCommand "ssh -i ${keyPath} -o StrictHostKeyChecking=no"`, {
+            cwd: workdir
+          });
+        }
+        return { success: true, message: 'SSH凭证已配置' };
+      } else {
+        return { success: false, message: `未知凭证类型: ${cred.type}` };
+      }
+    } catch (error) {
+      return { success: false, message: `配置失败: ${error.message}` };
+    }
   }
 
   async init() {
@@ -150,6 +287,9 @@ class SessionManager {
       console.log(`创建目录: ${absoluteWorkdir}`);
     }
     
+    // 为工作目录配置Git凭证（如果能检测到远程主机且有凭证的话）
+    this._setupGitForWorkdir(absoluteWorkdir);
+    
     const agent = createAgent(absoluteWorkdir, agentType, options);
     const session = new Session(id, agent, absoluteWorkdir, options);
     session.agentType = agentType;
@@ -245,6 +385,9 @@ class SessionManager {
   async _resumeAgent(session) {
     const agentType = session.agentType || 'claude-code';
     const options = { ...session.options, conversationId: session.conversationId };
+
+    // 为工作目录配置Git凭证（如果能检测到远程主机且有凭证的话）
+    this._setupGitForWorkdir(session.workdir);
 
     const agent = createAgent(session.workdir, agentType, options);
 

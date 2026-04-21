@@ -16,22 +16,12 @@ export default function ProjectManager({ onSelectProject, onClose }) {
   const [gitUrl, setGitUrl] = useState('')
   const [newProject, setNewProject] = useState({
     name: '',
-    workdir: '',
-    agentType: 'claude-code',
-    mode: 'auto',
-    model: '',
-    effort: 'medium'
-  })
-  const [options, setOptions] = useState({
-    modes: [],
-    models: [],
-    efforts: []
+    workdir: ''
   })
 
   // 加载数据
   useEffect(() => {
     loadProjects()
-    loadOptions()
   }, [])
 
   const loadProjects = async () => {
@@ -49,15 +39,6 @@ export default function ProjectManager({ onSelectProject, onClose }) {
     }
   }
 
-  const loadOptions = async () => {
-    try {
-      const data = await fetch(`${API_BASE}/options`).then(r => r.json())
-      setOptions(data)
-    } catch (error) {
-      console.error('加载选项失败:', error)
-    }
-  }
-
   const searchProjects = async (query) => {
     setSearchQuery(query)
     if (query.trim()) {
@@ -72,28 +53,21 @@ export default function ProjectManager({ onSelectProject, onClose }) {
     }
   }
 
-  const createProject = async () => {
-    try {
-      const project = await fetch(`${API_BASE}/projects`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newProject)
-      }).then(r => r.json())
+   const createProject = async () => {
+     try {
+       const project = await fetch(`${API_BASE}/projects`, {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify(newProject)
+       }).then(r => r.json())
 
-      setProjects(prev => [...prev, project])
-      setShowCreateForm(false)
-      setNewProject({
-        name: '',
-        workdir: '',
-        agentType: 'claude-code',
-        mode: 'auto',
-        model: '',
-        effort: 'medium'
-      })
-    } catch (error) {
-      toast.error('创建项目失败: ' + error.message)
-    }
-  }
+       setProjects(prev => [...prev, project])
+       setShowCreateForm(false)
+       setNewProject({ name: '', workdir: '' })
+     } catch (error) {
+       toast.error('创建项目失败: ' + error.message)
+     }
+   }
 
   // 从 Git URL 导入项目
   const importFromGit = async () => {
@@ -103,17 +77,11 @@ export default function ProjectManager({ onSelectProject, onClose }) {
     }
     setImporting(true)
     try {
-      const result = await fetch(`${API_BASE}/projects/import-git`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gitUrl: gitUrl.trim(),
-          agentType: newProject.agentType,
-          mode: newProject.mode,
-          model: newProject.model,
-          effort: newProject.effort
-        })
-      }).then(r => r.json())
+       const result = await fetch(`${API_BASE}/projects/import-git`, {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ gitUrl: gitUrl.trim() })
+       }).then(r => r.json())
 
       if (result.error) {
         toast.error(result.error)
@@ -311,130 +279,53 @@ export default function ProjectManager({ onSelectProject, onClose }) {
               </div>
 
               <div className="space-y-4">
-                {createMode === 'git' ? (
-                  /* Git URL 导入模式 */
-                  <>
-                    <div>
-                      <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>Git 仓库地址 *</label>
-                      <input
-                        type="text"
-                        value={gitUrl}
-                        onChange={(e) => setGitUrl(e.target.value)}
-                        className="w-full px-3 py-2 rounded"
-                        style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
-                        placeholder="https://github.com/user/repo 或 user/repo"
-                        onKeyDown={(e) => e.key === 'Enter' && importFromGit()}
-                      />
-                      <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                        支持 GitHub/GitLab/Bitbucket，本地已有则直接进入
-                      </p>
-                    </div>
+               {createMode === 'git' ? (
+                   /* Git URL 导入模式 */
+                   <>
+                     <div>
+                       <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>Git 仓库地址 *</label>
+                       <input
+                         type="text"
+                         value={gitUrl}
+                         onChange={(e) => setGitUrl(e.target.value)}
+                         className="w-full px-3 py-2 rounded"
+                         style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+                         placeholder="https://github.com/user/repo 或 user/repo"
+                         onKeyDown={(e) => e.key === 'Enter' && importFromGit()}
+                       />
+                       <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                         支持 GitHub/GitLab/Bitbucket，本地已有则直接进入
+                       </p>
+                     </div>
+                   </>
+                 ) : (
+                   /* 手动创建模式 */
+                   <>
+                     <div>
+                       <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>项目名称 *</label>
+                       <input
+                         type="text"
+                         value={newProject.name}
+                         onChange={(e) => setNewProject(prev => ({ ...prev, name: e.target.value }))}
+                         className="w-full px-3 py-2 rounded"
+                         style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+                         placeholder="我的项目"
+                       />
+                     </div>
 
-                    <div>
-                      <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>Agent 类型</label>
-                      <select
-                        value={newProject.agentType}
-                        onChange={(e) => setNewProject(prev => ({ ...prev, agentType: e.target.value }))}
-                        className="w-full px-3 py-2 rounded"
-                        style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
-                      >
-                        <option value="claude-code">Claude Code</option>
-                        <option value="opencode">OpenCode</option>
-                        <option value="codex">Codex</option>
-                      </select>
-                    </div>
-                  </>
-                ) : (
-                  /* 手动创建模式 */
-                  <>
-                    <div>
-                      <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>项目名称 *</label>
-                      <input
-                        type="text"
-                        value={newProject.name}
-                        onChange={(e) => setNewProject(prev => ({ ...prev, name: e.target.value }))}
-                        className="w-full px-3 py-2 rounded"
-                        style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
-                        placeholder="我的项目"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>工作目录 *</label>
-                      <input
-                        type="text"
-                        value={newProject.workdir}
-                        onChange={(e) => setNewProject(prev => ({ ...prev, workdir: e.target.value }))}
-                        className="w-full px-3 py-2 rounded"
-                        style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
-                        placeholder="/path/to/project 或 ~/project"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>Agent 类型</label>
-                      <select
-                        value={newProject.agentType}
-                        onChange={(e) => setNewProject(prev => ({ ...prev, agentType: e.target.value }))}
-                        className="w-full px-3 py-2 rounded"
-                        style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
-                      >
-                        <option value="claude-code">Claude Code</option>
-                        <option value="opencode">OpenCode</option>
-                        <option value="codex">Codex</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>权限模式</label>
-                      <select
-                        value={newProject.mode}
-                        onChange={(e) => setNewProject(prev => ({ ...prev, mode: e.target.value }))}
-                        className="w-full px-3 py-2 rounded"
-                        style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
-                      >
-                        {options.modes.map(mode => (
-                          <option key={mode.id} value={mode.id}>
-                            {mode.name} - {mode.description}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>模型</label>
-                      <select
-                        value={newProject.model}
-                        onChange={(e) => setNewProject(prev => ({ ...prev, model: e.target.value }))}
-                        className="w-full px-3 py-2 rounded"
-                        style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
-                      >
-                        <option value="">使用默认模型</option>
-                        {options.models.map(model => (
-                          <option key={model.id} value={model.id}>
-                            {model.name} - {model.description}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>努力程度</label>
-                      <select
-                        value={newProject.effort}
-                        onChange={(e) => setNewProject(prev => ({ ...prev, effort: e.target.value }))}
-                        className="w-full px-3 py-2 rounded"
-                        style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
-                      >
-                        {options.efforts.map(effort => (
-                          <option key={effort.id} value={effort.id}>
-                            {effort.name} - {effort.description}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                )}
+                     <div>
+                       <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>工作目录 *</label>
+                       <input
+                         type="text"
+                         value={newProject.workdir}
+                         onChange={(e) => setNewProject(prev => ({ ...prev, workdir: e.target.value }))}
+                         className="w-full px-3 py-2 rounded"
+                         style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+                         placeholder="/path/to/project 或 ~/project"
+                       />
+                     </div>
+                   </>
+                 )}
               </div>
 
               <div className="flex justify-end gap-2 mt-6">
@@ -478,6 +369,77 @@ export default function ProjectManager({ onSelectProject, onClose }) {
 }
 
 function ProjectCard({ project, onStart, onToggleFavorite, onDelete }) {
+  const [showCredPicker, setShowCredPicker] = React.useState(false)
+  const [credentials, setCredentials] = React.useState([])
+  const [loadingCreds, setLoadingCreds] = React.useState(false)
+  const [showAddForm, setShowAddForm] = React.useState(false)
+  const [newCredType, setNewCredType] = React.useState('token')
+  const [newCredSecret, setNewCredSecret] = React.useState('')
+  const [newCredKeyData, setNewCredKeyData] = React.useState('')
+  const [saving, setSaving] = React.useState(false)
+  const toast = useToast()
+
+  const loadCredentials = async () => {
+    setLoadingCreds(true)
+    try {
+      const res = await fetch('/api/credentials')
+      setCredentials(await res.json())
+    } catch (e) {
+      console.error('加载凭证失败:', e)
+    } finally {
+      setLoadingCreds(false)
+    }
+  }
+
+  const handleOpenPicker = () => {
+    setShowCredPicker(!showCredPicker)
+    if (!showCredPicker) loadCredentials()
+  }
+
+  const handleApplyCred = async (cred) => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/projects/' + project.id + '/apply-credential', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ host: cred.host })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast.success(data.message || '凭证已应用')
+      setShowCredPicker(false)
+      window.location.reload()
+    } catch (e) {
+      toast.error('应用失败: ' + e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleAddAndApply = async () => {
+    setSaving(true)
+    try {
+      const body = { host: project.gitHost, type: newCredType, username: 'git' }
+      if (newCredType === 'token') body.secret = newCredSecret
+      else body.keyData = newCredKeyData
+      const res = await fetch('/api/credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast.success(`已为 ${project.gitHost} 配置凭证`)
+      setShowCredPicker(false)
+      setShowAddForm(false)
+      window.location.reload()
+    } catch (e) {
+      toast.error('保存失败: ' + e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="rounded-lg p-4 border transition-colors" style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border-subtle)' }}>
       <div className="flex items-start justify-between">
@@ -487,11 +449,117 @@ function ProjectCard({ project, onStart, onToggleFavorite, onDelete }) {
             {project.favorite && <span style={{ color: 'var(--warning)' }}>⭐</span>}
           </div>
           <p className="text-sm truncate mt-1" style={{ color: 'var(--text-muted)' }}>{project.workdir}</p>
-          <div className="flex items-center gap-4 mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-            <span>🤖 {project.agentType}</span>
-            {project.mode && <span>⚙️ {project.mode}</span>}
-            {project.model && <span>🧠 {project.model}</span>}
-          </div>
+           {/* Git状态显示 */}
+           <div className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+             {project.gitHost ? (
+               <div className="flex items-center gap-2 flex-wrap">
+                 {project.gitConfigured ? (
+                   <span className="badge" style={{ background: 'var(--success-soft)', color: 'var(--success)' }}>
+                     🔑 已配置
+                   </span>
+                 ) : (
+                   <button
+                     onClick={handleOpenPicker}
+                     className="badge cursor-pointer"
+                     style={{ background: 'var(--warning-soft)', color: 'var(--warning)' }}
+                     title="点击配置凭证"
+                   >
+                     ⚠️ 未配置凭证 · 点击设置
+                   </button>
+                 )}
+                 <span>🌐 {project.gitHost}</span>
+               </div>
+             ) : null}
+           </div>
+           {/* 内联凭证选择 */}
+           {showCredPicker && !project.gitConfigured && (
+             <div className="mt-2 p-2 rounded space-y-2" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)' }}>
+               <div className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                 选择凭证应用到此项目：
+               </div>
+               {loadingCreds ? (
+                 <div className="text-xs" style={{ color: 'var(--text-muted)' }}>加载中...</div>
+               ) : credentials.length === 0 ? (
+                 <div className="text-xs p-2 rounded" style={{ background: 'var(--warning-soft)', color: 'var(--warning)' }}>
+                   系统暂无已存凭证，请先到 设置 → 凭证 添加凭证
+                 </div>
+               ) : (
+                 <div className="space-y-1">
+                   {credentials.map(cred => (
+                     <div key={cred.key} className="flex items-center justify-between p-1.5 rounded" style={{ background: 'var(--bg-tertiary)' }}>
+                       <div className="text-xs" style={{ color: 'var(--text-primary)' }}>
+                         <span>{cred.type === 'ssh' ? '🔑' : '🎫'}{' '}
+                           {cred.username ? <><span style={{color:'var(--accent-primary)'}}>{cred.username}</span>@{cred.host}</> : cred.host}
+                         </span>
+                         <span className="ml-1 badge text-xs" style={{ background: 'var(--accent-primary-soft)', color: 'var(--accent-primary)' }}>
+                           {cred.type === 'ssh' ? 'SSH' : 'Token'}
+                         </span>
+                         {cred.type === 'ssh' && project.gitHost && (
+                           <span className="ml-1" style={{ color: 'var(--text-muted)' }}>(将自动切为SSH地址)</span>
+                         )}
+                       </div>
+                       <button
+                         onClick={() => handleApplyCred(cred)}
+                         disabled={saving}
+                         className="text-xs px-2 py-0.5 rounded disabled:opacity-50"
+                         style={{ background: 'var(--success)', color: '#fff' }}
+                       >
+                         {saving ? '...' : '应用'}
+                       </button>
+                     </div>
+                   ))}
+                 </div>
+               )}
+               {/* 手动添加 */}
+               {!showAddForm ? (
+                 <button onClick={() => setShowAddForm(true)} className="text-xs" style={{ color: 'var(--accent-primary)' }}>
+                   + 手动添加新凭证
+                 </button>
+               ) : (
+                 <div className="space-y-1.5 pt-1 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                   <select
+                     value={newCredType}
+                     onChange={e => setNewCredType(e.target.value)}
+                     className="text-xs px-2 py-1 rounded w-full"
+                     style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
+                   >
+                     <option value="token">Token (HTTPS)</option>
+                     <option value="ssh">SSH密钥</option>
+                   </select>
+                   {newCredType === 'token' ? (
+                     <input
+                       type="password"
+                       placeholder="粘贴 GitHub Token..."
+                       value={newCredSecret}
+                       onChange={e => setNewCredSecret(e.target.value)}
+                       className="w-full text-xs px-2 py-1 rounded"
+                       style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
+                     />
+                   ) : (
+                     <textarea
+                       placeholder="粘贴 SSH 私钥..."
+                       value={newCredKeyData}
+                       onChange={e => setNewCredKeyData(e.target.value)}
+                       className="w-full text-xs px-2 py-1 rounded h-14 resize-none font-mono"
+                       style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
+                     />
+                   )}
+                   <div className="flex gap-2">
+                     <button onClick={handleAddAndApply} disabled={saving || (newCredType === 'token' ? !newCredSecret : !newCredKeyData)}
+                       className="text-xs px-2 py-0.5 rounded disabled:opacity-50" style={{ background: 'var(--success)', color: '#fff' }}>
+                       {saving ? '保存中...' : '保存并应用'}
+                     </button>
+                     <button onClick={() => setShowAddForm(false)} className="text-xs px-2 py-0.5" style={{ color: 'var(--text-muted)' }}>
+                       取消
+                     </button>
+                   </div>
+                 </div>
+               )}
+               <button onClick={() => setShowCredPicker(false)} className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                 收起
+               </button>
+             </div>
+           )}
         </div>
         
         <div className="flex items-center gap-2 ml-4">

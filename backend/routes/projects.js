@@ -3,7 +3,7 @@ const router = express.Router();
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
-const { exec } = require('child_process');
+const { exec, execSync } = require('child_process');
 
 module.exports = (projectManager, sessionManager) => {
   router.get('/', (req, res) => {
@@ -20,13 +20,13 @@ module.exports = (projectManager, sessionManager) => {
 
   router.post('/', (req, res) => {
     try {
-      const { name, workdir, agentType, mode, model, effort } = req.body;
+      const { name, workdir } = req.body;
 
       if (!name || !workdir) {
         return res.status(400).json({ error: 'name和workdir是必需的' });
       }
 
-      const project = projectManager.addProject(name, workdir, agentType, { mode, model, effort });
+      const project = projectManager.addProject(name, workdir);
       res.json(project);
     } catch (error) {
       console.error('创建项目失败:', error);
@@ -36,7 +36,7 @@ module.exports = (projectManager, sessionManager) => {
 
   router.post('/import-git', async (req, res) => {
     try {
-      const { gitUrl, agentType, mode, model, effort } = req.body;
+      const { gitUrl } = req.body;
 
       if (!gitUrl) {
         return res.status(400).json({ error: 'gitUrl 是必需的' });
@@ -89,7 +89,7 @@ module.exports = (projectManager, sessionManager) => {
 
       if (fs.existsSync(workdir)) {
         console.log(`目录 ${workdir} 已存在，导入项目`);
-        const project = projectManager.addProject(repoName, workdir, agentType || 'claude-code', { mode, model, effort });
+        const project = projectManager.addProject(repoName, workdir);
         return res.json({
           project,
           status: 'imported',
@@ -126,7 +126,7 @@ module.exports = (projectManager, sessionManager) => {
         });
       }
 
-      const project = projectManager.addProject(repoName, workdir, agentType || 'claude-code', { mode, model, effort });
+      const project = projectManager.addProject(repoName, workdir);
 
       res.json({
         project,
@@ -180,20 +180,28 @@ module.exports = (projectManager, sessionManager) => {
         return res.status(404).json({ error: '项目不存在' });
       }
 
+      const { agentType = 'claude-code', mode = 'auto', model = null, effort = 'medium' } = req.body;
+
       const session = await sessionManager.createSession(
         project.workdir,
-        project.agentType,
+        agentType,
         {
-          mode: project.mode,
-          model: project.model,
-          effort: project.effort
+          mode,
+          model,
+          effort
         }
       );
 
-      projectManager.updateProject(project.id, {
-        lastSessionId: session.id,
-        lastUsedAt: new Date().toISOString()
-      });
+      // 更新项目的最后使用信息（可选）
+      try {
+        projectManager.updateProject(project.id, {
+          lastSessionId: session.id,
+          lastUsedAt: new Date().toISOString()
+        });
+      } catch (updateErr) {
+        // 忽略更新错误，不影响会话创建
+        console.warn('更新项目最后使用信息失败:', updateErr.message);
+      }
 
       res.json({
         session: session.toJSON(),
@@ -201,6 +209,77 @@ module.exports = (projectManager, sessionManager) => {
       });
     } catch (error) {
       console.error('启动项目会话失败:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 将已存凭证应用到项目（支持HTTPS→SSH自动转换）
+  router.post('/:id/apply-credential', (req, res) => {
+    try {
+      const project = projectManager.getProject(req.params.id);
+      if (!project) return res.status(404).json({ error: '项目不存在' });
+
+      const credentialManager = require('../credentialManager');
+      const { host } = req.body;
+      if (!host) return res.status(400).json({ error: 'host是必需的' });
+
+      const cred = credentialManager.getCredentialForHost(host);
+      if (!cred) return res.status(404).json({ error: `未找到 ${host} 的凭证` });
+
+      const workdir = project.workdir;
+      const gitDir = path.join(workdir, '.git');
+      if (!fs.existsSync(gitDir)) return res.status(400).json({ error: '非Git仓库' });
+
+      // 获取当前 remote URL
+      let remoteUrl = '';
+      try {
+        remoteUrl = execSync('git config --local --get remote.origin.url', {
+          cwd: workdir, encoding: 'utf8'
+        }).trim();
+      } catch (e) {
+        return res.status(400).json({ error: '无法获取远程仓库地址' });
+      }
+
+      const isHttps = remoteUrl.startsWith('https://') || remoteUrl.startsWith('http://');
+      const isSsh = remoteUrl.startsWith('git@') || remoteUrl.startsWith('ssh://');
+
+      // 如果凭证类型和协议不匹配，尝试转换 remote URL
+      if (cred.type === 'ssh' && isHttps) {
+        // HTTPS → SSH: https://github.com/user/repo.git → git@github.com:user/repo.git
+        const match = remoteUrl.match(/https?:\/\/([^/]+)\/(.+?)(?:\.git)?$/);
+        if (match) {
+          const newUrl = `git@${match[1]}:${match[2]}.git`;
+          execSync(`git config --local remote.origin.url "${newUrl}"`, { cwd: workdir });
+          remoteUrl = newUrl;
+        }
+      } else if (cred.type === 'token' && isSsh) {
+        // SSH → HTTPS: git@github.com:user/repo.git → https://github.com/user/repo.git
+        const match = remoteUrl.match(/git@([^:]+):(.+?)(?:\.git)?$/);
+        if (match) {
+          const newUrl = `https://${match[1]}/${match[2]}.git`;
+          execSync(`git config --local remote.origin.url "${newUrl}"`, { cwd: workdir });
+          remoteUrl = newUrl;
+        }
+      }
+
+      // 应用凭证
+      const result = credentialManager.applyCredentialToWorkdir(workdir, cred);
+      if (!result.success) return res.status(500).json({ error: result.error || result.message });
+
+      // 直接更新项目的 gitHost 和 gitConfigured
+      const newHost = projectManager._getGitHostFromWorkdir(workdir);
+      project.gitHost = newHost;
+      project.gitConfigured = true;
+      project.updatedAt = new Date().toISOString();
+      projectManager.saveData();
+
+      res.json({
+        success: true,
+        message: `已将 ${cred.type === 'ssh' ? 'SSH' : 'Token'} 凭证应用到 ${project.name}`,
+        remoteUrl
+      });
+    } catch (error) {
+      console.error('应用凭证失败:', error);
       res.status(500).json({ error: error.message });
     }
   });

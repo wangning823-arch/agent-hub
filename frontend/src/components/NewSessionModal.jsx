@@ -25,7 +25,6 @@ export default function NewSessionModal({ agents, onCreate, onClose, currentWork
         if (list.length > 0) {
           setSelectedProject(list[0])
           generateTitle(list[0].name)
-          if (list[0].agentType) setAgentType(list[0].agentType)
         }
       } catch (err) {
         console.error('加载项目失败:', err)
