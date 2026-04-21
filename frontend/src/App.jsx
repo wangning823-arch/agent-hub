@@ -441,11 +441,19 @@ export default function App() {
                 <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>Agent Hub</h2>
                 <p className="mb-8" style={{ color: 'var(--text-muted)' }}>多 Agent 协作开发平台</p>
                 <div className="flex flex-col gap-3 max-w-xs mx-auto">
-                  <button onClick={() => setShowProjectManager(true)} className="btn-primary py-3 text-base">
+                  <button onClick={() => setShowProjectManager(true)} className="btn-primary py-3.5 text-base font-semibold">
                     📁 打开项目
                   </button>
-                  <button onClick={() => setShowNewModal(true)} className="btn-secondary py-3 text-base">
-                    ➕ 新建会话
+                  <button onClick={() => setShowNewModal(true)} className="py-3.5 text-base font-semibold rounded-xl transition-all"
+                    style={{
+                      background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary, #8b5cf6))',
+                      color: '#fff',
+                      boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
+                    }}
+                    onMouseEnter={e => e.target.style.boxShadow = '0 6px 20px rgba(99,102,241,0.6)'}
+                    onMouseLeave={e => e.target.style.boxShadow = '0 4px 14px rgba(99,102,241,0.4)'}
+                  >
+                    ⚡ 新建会话
                   </button>
                 </div>
               </div>

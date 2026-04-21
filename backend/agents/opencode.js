@@ -161,7 +161,8 @@ class OpenCodeAgent extends Agent {
       const proc = spawn('sh', ['-c', `${OPENCODE_PATH} ${shellArgs} < /dev/null`], {
         cwd: this.workdir,
         env,
-        stdio: ['pipe', 'pipe', 'pipe']
+        stdio: ['pipe', 'pipe', 'pipe'],
+        detached: true
       });
 
       // 记录当前活跃进程，方便后续中止/清理
@@ -337,9 +338,14 @@ class OpenCodeAgent extends Agent {
    * 停止 Agent
    */
   async stop() {
-    // 先终止活跃的子进程，避免悬挂/僵尸进程
     if (this.activeProc) {
-      try { this.activeProc.kill(); } catch (e) { /* ignore */ }
+      const pid = this.activeProc.pid;
+      try {
+        // 杀整个进程组（负PID），确保sh子进程里的opencode也被杀掉
+        process.kill(-pid, 'SIGKILL');
+      } catch (e) {
+        try { this.activeProc.kill('SIGKILL'); } catch (e2) { /* ignore */ }
+      }
       this.activeProc = null;
     }
     this.isRunning = false;
@@ -352,7 +358,12 @@ class OpenCodeAgent extends Agent {
    */
   async interrupt() {
     if (this.activeProc) {
-      try { this.activeProc.kill('SIGKILL'); } catch (e) { /* ignore */ }
+      const pid = this.activeProc.pid;
+      try {
+        process.kill(-pid, 'SIGKILL');
+      } catch (e) {
+        try { this.activeProc.kill('SIGKILL'); } catch (e2) { /* ignore */ }
+      }
       this.activeProc = null;
       this.emit('message', { type: 'status', content: '⏹️ 任务已中断' });
     }

@@ -316,8 +316,12 @@ export default function Sidebar({
               
               <button
                 onClick={onNewSession}
-                className="sidebar-item w-full justify-center gap-2"
-                style={{ color: 'var(--accent-primary)' }}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all"
+                style={{
+                  background: 'linear-gradient(135deg, var(--accent-primary), #8b5cf6)',
+                  color: '#fff',
+                  boxShadow: '0 2px 10px rgba(99,102,241,0.3)',
+                }}
               >
                 <IconPlus /> 新建会话
               </button>
