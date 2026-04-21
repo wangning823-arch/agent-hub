@@ -4,7 +4,7 @@ const router = express.Router();
 module.exports = (sessionManager) => {
   router.post('/', async (req, res) => {
     try {
-      const { workdir, agentType = 'claude-code' } = req.body;
+      const { workdir, agentType = 'claude-code', ...options } = req.body;
 
       if (!workdir) {
         return res.status(400).json({ error: 'workdir是必需的' });
@@ -15,7 +15,7 @@ module.exports = (sessionManager) => {
         return res.status(400).json({ error: `不支持的Agent类型: ${agentType}` });
       }
 
-      const session = await sessionManager.createSession(workdir, agentType);
+      const session = await sessionManager.createSession(workdir, agentType, options);
       res.json(session.toJSON());
     } catch (error) {
       console.error('创建会话失败:', error);
