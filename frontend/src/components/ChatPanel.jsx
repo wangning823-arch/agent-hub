@@ -817,14 +817,17 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
                 <button
                   onClick={async () => {
                     try {
-                      await fetch(`${API_BASE}/sessions/${sessionId}/stop`, { method: 'POST' })
+                      const res = await fetch(`${API_BASE}/sessions/${sessionId}/interrupt`, { method: 'POST' })
+                      if (res.ok) {
+                        onWorkingChange(false)
+                      }
                     } catch (e) {
-                      console.error('停止任务失败:', e)
+                      console.error('中断任务失败:', e)
                     }
                   }}
                   className="p-1.5 rounded-lg transition-colors text-xs flex items-center gap-1"
                   style={{ background: 'var(--error, #ef4444)', color: 'white' }}
-                  title="停止当前任务"
+                  title="中断当前任务"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
                 </button>

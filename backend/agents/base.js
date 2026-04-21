@@ -46,6 +46,17 @@ class Agent extends EventEmitter {
   }
 
   /**
+   * 中断当前正在运行的任务，保持Agent可用
+   */
+  async interrupt() {
+    if (this.activeProc) {
+      try { this.activeProc.kill('SIGKILL'); } catch (e) { /* ignore */ }
+      this.activeProc = null;
+    }
+    this.emit('interrupted');
+  }
+
+  /**
    * 解析Agent输出
    * 子类可覆盖
    */

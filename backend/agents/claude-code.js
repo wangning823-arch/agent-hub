@@ -273,6 +273,17 @@ class ClaudeCodeAgent extends Agent {
     this.emit('stopped', { code: 0 });
   }
 
+  /**
+   * 中断当前正在运行的任务，保持Agent可用
+   */
+  async interrupt() {
+    if (this.activeProc) {
+      try { this.activeProc.kill('SIGKILL'); } catch (e) { /* ignore */ }
+      this.activeProc = null;
+      this.emit('message', { type: 'status', content: '⏹️ 任务已中断' });
+    }
+  }
+
   // 静态健康检查：不依赖工作目录即可快速判断可用性
   static healthCheck() {
     try {

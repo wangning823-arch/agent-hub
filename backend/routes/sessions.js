@@ -46,13 +46,13 @@ module.exports = (sessionManager) => {
     res.json({ isActive, isWorking, isStarting });
   });
 
-  router.post('/:id/stop', async (req, res) => {
+router.post('/:id/stop', async (req, res) => {
     try {
       const session = sessionManager.getSession(req.params.id);
       if (!session) {
         return res.status(404).json({ error: '会话不存在' });
       }
-      // 调用agent的stop方法，确保完整清理
+      // 完全停止Agent
       if (session.agent) {
         try {
           await session.agent.stop();
@@ -64,6 +64,28 @@ module.exports = (sessionManager) => {
       session.isStarting = false;
       sessionManager.saveSession(session);
       sessionManager.broadcast(req.params.id, { type: 'status', content: 'task_done' });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post('/:id/interrupt', async (req, res) => {
+    try {
+      const session = sessionManager.getSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: '会话不存在' });
+      }
+      // 中断当前任务，保持Agent可用
+      if (session.agent && typeof session.agent.interrupt === 'function') {
+        try {
+          await session.agent.interrupt();
+        } catch (e) {
+          console.error('中断任务失败:', e);
+        }
+      }
+      session.isWorking = false;
+      sessionManager.saveSession(session);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: error.message });
