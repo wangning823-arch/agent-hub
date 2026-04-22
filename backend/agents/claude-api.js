@@ -1,8 +1,8 @@
 /**
  * Claude API Agent适配器
  * 直接使用 Anthropic SDK，不依赖 CLI
- * 使用 Anthropic 内置工具（bash + str_replace_editor）+ agentic loop
- * 与 Claude Code CLI 拥有同等的工具能力
+ * 使用自定义工具定义（兼容第三方 API 代理）+ agentic loop
+ * 支持 bash 执行 + str_replace_editor 精准编辑
  */
 const Agent = require('./base');
 const client = require('../claude-client');
@@ -10,10 +10,44 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-// Anthropic 内置工具定义（无需 input_schema，Anthropic 内部处理）
-const BUILTIN_TOOLS = [
-  { name: 'bash', type: 'bash_20250124' },
-  { name: 'str_replace_editor', type: 'text_editor_20250124' },
+// 工具定义（使用 input_schema，兼容第三方 API 代理）
+const TOOLS = [
+  {
+    name: 'bash',
+    description: 'Execute a shell command in the working directory. Use for any terminal operation: list files, run git, install packages, build, test, etc.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        command: { type: 'string', description: 'The shell command to execute' }
+      },
+      required: ['command']
+    }
+  },
+  {
+    name: 'str_replace_editor',
+    description: 'A text editor tool for viewing, creating, and editing files. Supports these commands:\n- view: View file contents or list directory (params: path, view_range?)\n- create: Create a new file (params: path, file_text)\n- str_replace: Replace a unique string in a file with new text (params: path, old_str, new_str)\n- insert: Insert text after a specific line number (params: path, insert_line, new_str)\n- undo_edit: Undo the last edit to a file (params: path)',
+    input_schema: {
+      type: 'object',
+      properties: {
+        command: {
+          type: 'string',
+          enum: ['view', 'create', 'str_replace', 'insert', 'undo_edit'],
+          description: 'The editor command to execute'
+        },
+        path: { type: 'string', description: 'Path to the file or directory (relative to workdir or absolute)' },
+        view_range: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Optional [start_line, end_line] for view command (1-indexed, inclusive)'
+        },
+        file_text: { type: 'string', description: 'Content for create command' },
+        old_str: { type: 'string', description: 'Exact string to find and replace (must be unique in file)' },
+        new_str: { type: 'string', description: 'Replacement string' },
+        insert_line: { type: 'number', description: 'Line number after which to insert (0 = insert at beginning)' }
+      },
+      required: ['command', 'path']
+    }
+  }
 ];
 
 class ClaudeApiAgent extends Agent {
@@ -25,6 +59,7 @@ class ClaudeApiAgent extends Agent {
     this.model = options.model || 'claude-opus-4-6';
     this.abortController = null;
     this.totalUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+    this._editHistory = {};
   }
 
   async start() {
@@ -42,7 +77,7 @@ class ClaudeApiAgent extends Agent {
     this.emit('message', { type: 'status', content: '🤔 思考中...' });
     this.messages.push({ role: 'user', content: message });
 
-    const timeoutMs = this.options.timeoutMs || 300000; // 5min 全局超时
+    const timeoutMs = this.options.timeoutMs || 300000;
     try {
       await Promise.race([
         this._agenticLoop(),
@@ -53,9 +88,6 @@ class ClaudeApiAgent extends Agent {
     }
   }
 
-  /**
-   * Agentic loop: API 调用 → 工具执行 → 结果喂回 → 循环直到纯文本回复
-   */
   async _agenticLoop() {
     const MAX_TURNS = 30;
 
@@ -64,7 +96,13 @@ class ClaudeApiAgent extends Agent {
 
       this.emit('message', { type: 'status', content: '🤔 思考中...' });
 
-      const response = await this._callApi();
+      let response;
+      try {
+        response = await this._callApi();
+      } catch (error) {
+        console.error(`[Claude API] Turn ${turn + 1} failed:`, error.message);
+        throw error;
+      }
 
       const assistantContent = [];
       const toolUses = [];
@@ -80,7 +118,6 @@ class ClaudeApiAgent extends Agent {
         }
       }
 
-      // 保存 assistant 消息
       this.messages.push({
         role: 'assistant',
         content: assistantContent.length === 1 && assistantContent[0].type === 'text'
@@ -92,7 +129,6 @@ class ClaudeApiAgent extends Agent {
         this.emit('message', { type: 'text', content: textContent });
       }
 
-      // 累计 token
       if (response.usage) {
         this.totalUsage.input_tokens += response.usage.input_tokens || 0;
         this.totalUsage.output_tokens += response.usage.output_tokens || 0;
@@ -106,7 +142,7 @@ class ClaudeApiAgent extends Agent {
         break;
       }
 
-      // 执行工具并收集结果
+      // 执行工具
       const toolResults = [];
       for (const toolUse of toolUses) {
         this.emit('message', {
@@ -125,7 +161,7 @@ class ClaudeApiAgent extends Agent {
 
         this.emit('message', {
           type: 'tool_result',
-          content: result,
+          content: result.length > 1000 ? result.substring(0, 1000) + '...' : result,
           metadata: { tool: toolUse.name }
         });
       }
@@ -143,15 +179,12 @@ class ClaudeApiAgent extends Agent {
     }
   }
 
-  /**
-   * 调用 Claude API
-   */
   async _callApi() {
     const params = {
       model: this.model,
       max_tokens: this.options.maxTokens || 16000,
       messages: this.messages,
-      tools: BUILTIN_TOOLS,
+      tools: TOOLS,
     };
 
     if (this.options.thinking !== false) {
@@ -162,18 +195,18 @@ class ClaudeApiAgent extends Agent {
       params.output_config = { effort: this.options.effort };
     }
 
-    const defaultSystem = `You are a Claude Agent, an AI coding assistant. You have access to tools to read, write, and edit files, execute shell commands, and search code.
+    const defaultSystem = `You are a Claude Agent, an AI coding assistant. You have tools to read, write, and edit files, execute shell commands.
 
-Key capabilities:
-- bash: Execute any shell command (ls, cat, grep, git, npm, etc.)
-- str_replace_editor: View files, create new files, make precise edits (find-and-replace, insert at line), undo edits
+Available tools:
+- bash: Execute any shell command (ls, cat, grep, git, npm, python, etc.)
+- str_replace_editor: View files, create files, make precise text replacements, insert at line, undo edits
 
 Guidelines:
-- Use tools to explore and understand the project before making changes.
-- When editing code, use str_replace_editor with the str_replace command for precise edits — don't rewrite entire files unless necessary.
+- Always use tools to explore and understand the project. Don't just explain — take action.
+- When editing code, use str_replace_editor with str_replace for precise edits.
 - Always work within: ${this.workdir}
-- Be thorough: read files before editing them. Understand context before making changes.
-- After making changes, verify them (run tests, check syntax, etc.).`;
+- Read files before editing. Understand context before making changes.
+- Verify changes after editing (run tests, check syntax).`;
 
     params.system = this.options.system || defaultSystem;
 
@@ -191,9 +224,6 @@ Guidelines:
     }
   }
 
-  /**
-   * 执行工具调用
-   */
   _executeTool(toolName, input) {
     try {
       switch (toolName) {
@@ -206,20 +236,18 @@ Guidelines:
     }
   }
 
-  // ──────────────────── Bash 工具 ────────────────────
+  // ──────────────────── Bash ────────────────────
 
   _execBash(input) {
     const command = input.command;
     if (!command) return 'Error: No command provided';
 
     const MAX_OUTPUT = 30000;
-    const TIMEOUT = 60000; // 60s
-
     try {
       const result = execSync(command, {
         cwd: this.workdir,
         encoding: 'utf8',
-        timeout: TIMEOUT,
+        timeout: 60000,
         maxBuffer: 10 * 1024 * 1024,
         env: { ...process.env, FORCE_COLOR: '0' },
         stdio: ['pipe', 'pipe', 'pipe']
@@ -227,28 +255,27 @@ Guidelines:
 
       let output = result || '';
       if (output.length > MAX_OUTPUT) {
-        output = output.substring(0, MAX_OUTPUT) + `\n... [输出已截断，共 ${result.length} 字符]`;
+        output = output.substring(0, MAX_OUTPUT) + `\n... [truncated, total ${result.length} chars]`;
       }
-      return output || '(命令执行成功，无输出)';
+      return output || '(command succeeded, no output)';
     } catch (error) {
       let errMsg = '';
       if (error.stdout) errMsg += error.stdout.toString();
       if (error.stderr) errMsg += (errMsg ? '\n' : '') + error.stderr.toString();
       if (!errMsg) errMsg = error.message;
       if (error.status != null) errMsg = `Exit code: ${error.status}\n${errMsg}`;
-      if (errMsg.length > MAX_OUTPUT) errMsg = errMsg.substring(0, MAX_OUTPUT) + '\n... [输出已截断]';
+      if (errMsg.length > MAX_OUTPUT) errMsg = errMsg.substring(0, MAX_OUTPUT) + '\n... [truncated]';
       return errMsg;
     }
   }
 
-  // ──────────────────── 文本编辑器工具 ────────────────────
+  // ──────────────────── Editor ────────────────────
 
   _execEditor(input) {
     const { command, path: filePath } = input;
     if (!command) return 'Error: No command provided';
     if (!filePath) return 'Error: No path provided';
 
-    // 解析路径
     const resolvedPath = path.isAbsolute(filePath)
       ? filePath
       : path.resolve(this.workdir, filePath);
@@ -263,9 +290,6 @@ Guidelines:
     }
   }
 
-  /**
-   * view: 查看文件或目录内容
-   */
   _editorView(resolvedPath, input) {
     if (!fs.existsSync(resolvedPath)) {
       return `Error: Path not found: ${input.path}`;
@@ -275,17 +299,13 @@ Guidelines:
 
     if (stat.isDirectory()) {
       try {
-        const result = execSync(`ls -la "${resolvedPath}"`, {
-          encoding: 'utf8',
-          timeout: 5000
-        });
-        return result || '(空目录)';
+        const result = execSync(`ls -la "${resolvedPath}"`, { encoding: 'utf8', timeout: 5000 });
+        return result || '(empty directory)';
       } catch (e) {
         return `Error listing directory: ${e.message}`;
       }
     }
 
-    // 文件查看
     const content = fs.readFileSync(resolvedPath, 'utf8');
     const lines = content.split('\n');
     const viewRange = input.view_range;
@@ -296,149 +316,114 @@ Guidelines:
       const e = Math.min(lines.length, end);
       const selected = lines.slice(s - 1, e);
       const numbered = selected.map((line, i) => `${s + i}\t${line}`).join('\n');
-      if (e < lines.length) {
-        return `${numbered}\n... [文件共 ${lines.length} 行]`;
-      }
+      if (e < lines.length) return `${numbered}\n... [file has ${lines.length} lines total]`;
       return numbered;
     }
 
-    // 完整查看（大文件截断）
     if (lines.length > 500) {
       const head = lines.slice(0, 500).map((line, i) => `${i + 1}\t${line}`).join('\n');
-      return `${head}\n... [文件共 ${lines.length} 行，仅显示前 500 行。使用 view_range 查看其他部分]`;
+      return `${head}\n... [file has ${lines.length} lines, showing first 500. Use view_range to see other parts]`;
     }
 
-    return lines.map((line, i) => `${i + 1}\t${line}`).join('\n') || '(空文件)';
+    return lines.map((line, i) => `${i + 1}\t${line}`).join('\n') || '(empty file)';
   }
 
-  /**
-   * create: 创建新文件
-   */
   _editorCreate(resolvedPath, input) {
     if (fs.existsSync(resolvedPath)) {
       return `Error: File already exists at ${input.path}. Use str_replace to edit it.`;
     }
 
     const dir = path.dirname(resolvedPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
     const content = input.file_text || '';
     fs.writeFileSync(resolvedPath, content, 'utf8');
-
-    // 保存编辑历史用于 undo
     this._saveEditHistory(resolvedPath, null, content);
 
-    const lines = content.split('\n').length;
-    return `File created successfully at ${input.path} (${lines} lines)`;
+    return `File created at ${input.path} (${content.split('\n').length} lines)`;
   }
 
-  /**
-   * str_replace: 精准查找替换
-   */
   _editorStrReplace(resolvedPath, input) {
     if (!fs.existsSync(resolvedPath)) {
       return `Error: File not found: ${input.path}`;
     }
 
-    const oldStr = input.old_str;
-    const newStr = input.new_str;
-
-    if (oldStr === undefined || newStr === undefined) {
+    const { old_str, new_str } = input;
+    if (old_str === undefined || new_str === undefined) {
       return 'Error: Both old_str and new_str are required';
     }
 
     const content = fs.readFileSync(resolvedPath, 'utf8');
+    const count = content.split(old_str).length - 1;
 
-    // 精确匹配检查
-    const count = content.split(oldStr).length - 1;
     if (count === 0) {
       return `Error: Could not find the string to replace in ${input.path}. Make sure the text matches exactly (including whitespace and indentation).`;
     }
     if (count > 1) {
-      return `Error: Found ${count} occurrences of the string in ${input.path}. The string to replace must be unique. Add more context to make it unique.`;
+      return `Error: Found ${count} occurrences of the string in ${input.path}. The string to replace must be unique. Add more surrounding context to make it unique.`;
     }
 
-    const newContent = content.replace(oldStr, newStr);
+    const newContent = content.replace(old_str, new_str);
     this._saveEditHistory(resolvedPath, content, newContent);
     fs.writeFileSync(resolvedPath, newContent, 'utf8');
 
-    // 显示修改区域
-    const beforeLines = content.substring(0, content.indexOf(oldStr)).split('\n').length;
-    const oldLines = oldStr.split('\n').length;
-    const newLines = newStr.split('\n').length;
+    const beforeLines = content.substring(0, content.indexOf(old_str)).split('\n').length;
+    const oldLineCount = old_str.split('\n').length;
+    const newLineCount = new_str.split('\n').length;
     const totalLines = newContent.split('\n').length;
 
-    return `Replacement successful in ${input.path}. Lines ${beforeLines}-${beforeLines + oldLines - 1} replaced with ${newLines} new lines. File now has ${totalLines} lines.`;
+    return `The file ${input.path} has been edited successfully. Lines ${beforeLines}-${beforeLines + oldLineCount - 1} replaced with ${newLineCount} new line(s). File now has ${totalLines} lines.`;
   }
 
-  /**
-   * insert: 在指定行后插入内容
-   */
   _editorInsert(resolvedPath, input) {
     if (!fs.existsSync(resolvedPath)) {
       return `Error: File not found: ${input.path}`;
     }
 
-    const insertLine = input.insert_line;
-    const newStr = input.new_str;
-
-    if (insertLine === undefined || newStr === undefined) {
+    const { insert_line, new_str } = input;
+    if (insert_line === undefined || new_str === undefined) {
       return 'Error: Both insert_line and new_str are required';
     }
 
     const content = fs.readFileSync(resolvedPath, 'utf8');
     const lines = content.split('\n');
 
-    if (insertLine < 0 || insertLine > lines.length) {
+    if (insert_line < 0 || insert_line > lines.length) {
       return `Error: insert_line must be between 0 and ${lines.length}`;
     }
 
-    lines.splice(insertLine, 0, newStr);
+    lines.splice(insert_line, 0, new_str);
     const newContent = lines.join('\n');
-
     this._saveEditHistory(resolvedPath, content, newContent);
     fs.writeFileSync(resolvedPath, newContent, 'utf8');
 
-    return `Inserted ${newStr.split('\n').length} line(s) after line ${insertLine} in ${input.path}. File now has ${lines.length} lines.`;
+    return `Inserted ${new_str.split('\n').length} line(s) after line ${insert_line} in ${input.path}. File now has ${lines.length} lines.`;
   }
 
-  /**
-   * undo_edit: 撤销最后一次编辑
-   */
   _editorUndo(resolvedPath) {
-    if (!this._editHistory || !this._editHistory[resolvedPath] || this._editHistory[resolvedPath].length === 0) {
+    const history = this._editHistory[resolvedPath];
+    if (!history || history.length === 0) {
       return `Error: No edit history found for ${resolvedPath}`;
     }
 
-    const history = this._editHistory[resolvedPath];
     const lastEdit = history.pop();
 
     if (lastEdit.originalContent === null) {
-      // 之前是 create，删除文件
       fs.unlinkSync(resolvedPath);
-      return `Undone: File ${resolvedPath} removed (was created by last edit)`;
+      return `Undone: File removed (was created by last edit)`;
     }
 
     fs.writeFileSync(resolvedPath, lastEdit.originalContent, 'utf8');
     return `Undone: Restored ${resolvedPath} to previous state (${lastEdit.originalContent.split('\n').length} lines)`;
   }
 
-  /**
-   * 保存编辑历史（用于 undo）
-   */
   _saveEditHistory(filePath, originalContent, newContent) {
-    if (!this._editHistory) this._editHistory = {};
     if (!this._editHistory[filePath]) this._editHistory[filePath] = [];
     this._editHistory[filePath].push({ originalContent, newContent });
-    // 最多保留 20 步历史
-    if (this._editHistory[filePath].length > 20) {
-      this._editHistory[filePath].shift();
-    }
+    if (this._editHistory[filePath].length > 20) this._editHistory[filePath].shift();
   }
 
-  // ──────────────────── Token 统计 ────────────────────
+  // ──────────────────── Token ────────────────────
 
   _emitTokenUsage() {
     if (this.totalUsage.input_tokens > 0 || this.totalUsage.output_tokens > 0) {
