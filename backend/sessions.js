@@ -369,12 +369,8 @@ class SessionManager {
       this.saveSession(session);
     }
 
-    // 如果是严重错误导致 agent 不可用，再销毁
-    if (agentError && session.agent) {
-      try {
-        session.agent.stop();
-      } catch (e) {}
-    }
+    // 不再在错误时销毁 agent，保留 agent 以便重试和重连
+    // 错误信息已通过 broadcast 发送，agent 仍保持活跃
   }
 
   async resumeSession(sessionId) {
