@@ -261,8 +261,8 @@ class SessionManager {
       const messagesToSave = session.messages.slice(-200);
       for (const msg of messagesToSave) {
         const content = typeof msg.content === 'object' ? JSON.stringify(msg.content) : msg.content;
-        db.run('INSERT INTO messages (session_id, role, content, time) VALUES (?, ?, ?, ?)', 
-          [session.id, msg.role, content, msg.time]);
+        db.run('INSERT INTO messages (session_id, role, content, time) VALUES (?, ?, ?, ?)',
+          [session.id, msg.role, content, msg.time || Date.now()]);
       }
       
       db.run('COMMIT');
@@ -334,7 +334,7 @@ class SessionManager {
   isAgentRunning(sessionId) {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
-    return session.isActive && session.agent && !session.agent.killed;
+    return session.isActive && session.agent && session.agent.isRunning;
   }
 
   async sendMessage(sessionId, message) {
@@ -412,6 +412,12 @@ class SessionManager {
   async _resumeAgent(session) {
     const agentType = session.agentType || 'claude-code';
     const options = { ...session.options, conversationId: session.conversationId };
+
+    // 检查工作目录是否存在
+    const fs = require('fs');
+    if (!fs.existsSync(session.workdir)) {
+      throw new Error(`工作目录不存在: ${session.workdir}`);
+    }
 
     // 为工作目录配置Git凭证（如果能检测到远程主机且有凭证的话）
     this._setupGitForWorkdir(session.workdir);

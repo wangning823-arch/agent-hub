@@ -66,8 +66,8 @@ class ClaudeApiAgent extends Agent {
     this.isRunning = true;
     this.emit('started');
     this.emit('message', {
-      type: 'text',
-      content: `Claude API Agent 已就绪\n📁 工作目录: ${this.workdir}\n🤖 模型: ${this.model}\n💬 发送消息开始对话`
+      type: 'status',
+      content: `✅ Claude API 已就绪`
     });
   }
 

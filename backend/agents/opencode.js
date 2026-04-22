@@ -76,11 +76,7 @@ class OpenCodeAgent extends Agent {
     const available = await this._checkOpencodeAvailability();
     if (!available) {
       this.isRunning = false;
-      this.emit('message', {
-        type: 'error',
-        content: 'OpenCode 可用性检查失败，请确认 OpenCode 已安装并在 PATH 中可访问。'
-      });
-      return;
+      throw new Error('OpenCode 可用性检查失败，请确认 OpenCode 已安装并在 PATH 中可访问。');
     }
     this.emit('started');
 

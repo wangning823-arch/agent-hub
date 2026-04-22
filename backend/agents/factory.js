@@ -13,7 +13,7 @@ const AGENT_CLASSES = {
 function createAgent(workdir, agentType, options = {}) {
   const AgentClass = AGENT_CLASSES[agentType];
   if (!AgentClass) {
-    throw new Error(`未知的Agent类型: ${agentType}`);
+    throw new Error(`未知的Agent类型: ${agentType}，支持的类型: ${Object.keys(AGENT_CLASSES).join(', ')}`);
   }
   return new AgentClass(workdir, options);
 }
@@ -27,16 +27,18 @@ function resumeAgentMessages(agent, messages) {
     agent.messages = messages
       .filter(m => m.role === 'user' || m.role === 'assistant')
       .map(m => {
+        const msg = { role: m.role };
         // 保持 content 的原始格式（数组或字符串）
         if (typeof m.content === 'string') {
-          return { role: m.role, content: m.content };
+          msg.content = m.content;
+        } else if (Array.isArray(m.content)) {
+          msg.content = m.content;
+        } else {
+          msg.content = JSON.stringify(m.content);
         }
-        // 如果是数组（包含 tool_use/tool_result），直接保留
-        if (Array.isArray(m.content)) {
-          return { role: m.role, content: m.content };
-        }
-        // 其他情况 stringify
-        return { role: m.role, content: JSON.stringify(m.content) };
+        // 保留 time 字段
+        if (m.time) msg.time = m.time;
+        return msg;
       });
   }
 }

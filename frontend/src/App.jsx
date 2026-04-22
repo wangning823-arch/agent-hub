@@ -231,6 +231,12 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE}/sessions/${sessionId}/resume`, { method: 'POST' })
       const result = await res.json()
+      if (!res.ok || result.error) {
+        const errMsg = result.error || `服务器错误 (${res.status})`
+        console.error('恢复会话失败:', errMsg)
+        toast.error('恢复会话失败: ' + errMsg, 0)
+        return
+      }
       if (result.session) {
         setSessions(prev => {
           const index = prev.findIndex(s => s.id === sessionId)
@@ -245,7 +251,8 @@ export default function App() {
         if (isMobile) setLeftSidebarOpen(false)
       }
     } catch (error) {
-      toast.error('恢复会话失败: ' + error.message)
+      console.error('恢复会话请求失败:', error)
+      toast.error('恢复会话失败: ' + error.message, 0)
     }
   }
 

@@ -129,18 +129,29 @@ router.post('/:id/stop', async (req, res) => {
         return res.status(404).json({ error: '会话不存在' });
       }
 
+      console.log(`[resume] 会话 ${req.params.id} 当前状态: isActive=${session.isActive}, agentType=${session.agentType}, workdir=${session.workdir}`);
+
+      // 如果标记为活跃但 agent 实际已停止，先重置状态
+      if (session.isActive && !sessionManager.isAgentRunning(req.params.id)) {
+        console.log(`[resume] 会话 ${req.params.id} 标记为活跃但agent已停止，重置状态`);
+        session.isActive = false;
+      }
+
       if (session.isActive) {
+        console.log(`[resume] 会话 ${req.params.id} 已经是活跃状态，跳过`);
         return res.json({ message: '会话已经是活跃状态', session: session.toJSON() });
       }
 
+      console.log(`[resume] 开始恢复会话 ${req.params.id}...`);
       await sessionManager.resumeSession(req.params.id);
+      console.log(`[resume] 会话 ${req.params.id} 恢复成功`);
 
       res.json({
         message: '会话已恢复',
         session: session.toJSON()
       });
     } catch (error) {
-      console.error('恢复会话失败:', error);
+      console.error(`[resume] 恢复会话 ${req.params.id} 失败:`, error.message);
       res.status(500).json({ error: error.message });
     }
   });

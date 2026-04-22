@@ -25,18 +25,14 @@ class ClaudeCodeAgent extends Agent {
       require('child_process').execSync(`"${claudeBin}" --version`, { stdio: 'ignore' });
     } catch (e) {
       this.isRunning = false;
-      this.emit('message', {
-        type: 'error',
-        content: 'Claude CLI 未发现或不可用，请确保 CLAUDE_CLI_PATH 指向正确的二进制，或在 PATH 中可访问。'
-      });
-      return;
+      throw new Error('Claude CLI 未发现或不可用，请确保 CLAUDE_CLI_PATH 指向正确的二进制，或在 PATH 中可访问。');
     }
     this.emit('started');
     
     // 发送欢迎消息
     this.emit('message', {
-      type: 'text',
-      content: `✅ Claude Code 已就绪\n📁 工作目录: ${this.workdir}\n💬 发送消息开始对话`
+      type: 'status',
+      content: `✅ Claude Code 已就绪`
     });
   }
 

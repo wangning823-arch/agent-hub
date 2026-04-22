@@ -51,13 +51,8 @@ class CodexAgent extends Agent {
   async start() {
     // Codex 要求在 git 仓库内运行
     if (!this.isGitRepo(this.workdir)) {
-      this.emit('message', {
-        type: 'error',
-        content: '⚠️ Codex 需要在 git 仓库内运行，请先初始化仓库: git init'
-      });
       this.isRunning = false;
-      this.emit('stopped', { code: 1 });
-      return;
+      throw new Error('Codex 需要在 git 仓库内运行，请先初始化仓库: git init');
     }
 
     this.isRunning = true;
@@ -67,19 +62,14 @@ class CodexAgent extends Agent {
       require('child_process').execSync(`"${codexBin}" --version`, { stdio: 'ignore' });
     } catch (e) {
       this.isRunning = false;
-      this.emit('message', {
-        type: 'error',
-        content: 'Codex CLI 未发现或不可用，请确保 CODEX_CLI_PATH 指向正确的二进制，或在 PATH 中可访问。'
-      });
-      this.emit('stopped', { code: 1 });
-      return;
+      throw new Error('Codex CLI 未发现或不可用，请确保 CODEX_CLI_PATH 指向正确的二进制，或在 PATH 中可访问。');
     }
     this.emit('started');
 
     // 发送欢迎消息
     this.emit('message', {
-      type: 'text',
-      content: `✅ Codex 已就绪\n📁 工作目录: ${this.workdir}\n💬 发送消息开始对话`
+      type: 'status',
+      content: `✅ Codex 已就绪`
     });
   }
 
