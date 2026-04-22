@@ -1,94 +1,29 @@
 /**
  * Claude API Agent适配器
  * 直接使用 Anthropic SDK，不依赖 CLI
- * 支持工具调用循环（agentic loop）
+ * 使用 Anthropic 内置工具（bash + str_replace_editor）+ agentic loop
+ * 与 Claude Code CLI 拥有同等的工具能力
  */
 const Agent = require('./base');
 const client = require('../claude-client');
-const { execSync, spawn } = require('child_process');
+const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-// 工具定义
-const TOOLS = [
-  {
-    name: 'bash',
-    description: 'Execute a shell command in the working directory. Use this to run any terminal command — file listing, git operations, build commands, etc.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        command: {
-          type: 'string',
-          description: 'The shell command to execute'
-        }
-      },
-      required: ['command']
-    }
-  },
-  {
-    name: 'read_file',
-    description: 'Read the contents of a file. Use this to examine code, config files, logs, etc.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        file_path: {
-          type: 'string',
-          description: 'Path to the file to read (relative to workdir or absolute)'
-        },
-        offset: {
-          type: 'number',
-          description: 'Line number to start reading from (1-indexed, default: 1)'
-        },
-        limit: {
-          type: 'number',
-          description: 'Max number of lines to read (default: 200)'
-        }
-      },
-      required: ['file_path']
-    }
-  },
-  {
-    name: 'write_file',
-    description: 'Write content to a file, creating it if it does not exist or overwriting if it does.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        file_path: {
-          type: 'string',
-          description: 'Path to the file to write (relative to workdir or absolute)'
-        },
-        content: {
-          type: 'string',
-          description: 'The content to write to the file'
-        }
-      },
-      required: ['file_path', 'content']
-    }
-  },
-  {
-    name: 'glob',
-    description: 'Find files matching a glob pattern. Useful for locating files by name or extension.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        pattern: {
-          type: 'string',
-          description: 'Glob pattern to match (e.g. "**/*.js", "src/**/*.tsx")'
-        }
-      },
-      required: ['pattern']
-    }
-  }
+// Anthropic 内置工具定义（无需 input_schema，Anthropic 内部处理）
+const BUILTIN_TOOLS = [
+  { name: 'bash', type: 'bash_20250124' },
+  { name: 'str_replace_editor', type: 'text_editor_20250124' },
 ];
 
 class ClaudeApiAgent extends Agent {
   constructor(workdir, options = {}) {
     super('claude-api', workdir);
     this.options = options;
-    this.messages = [];           // 多轮对话历史 [{role, content}]
+    this.messages = [];
     this.conversationId = options.conversationId || null;
     this.model = options.model || 'claude-opus-4-6';
-    this.abortController = null;  // 用于取消正在进行的请求
+    this.abortController = null;
     this.totalUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   }
 
@@ -101,21 +36,13 @@ class ClaudeApiAgent extends Agent {
     });
   }
 
-  /**
-   * 发送消息给 Claude API（带 agentic loop）
-   */
   async send(message) {
-    if (!this.isRunning) {
-      throw new Error('Agent未运行');
-    }
+    if (!this.isRunning) throw new Error('Agent未运行');
 
     this.emit('message', { type: 'status', content: '🤔 思考中...' });
-
-    // 添加用户消息到历史
     this.messages.push({ role: 'user', content: message });
 
-    // 全局超时保护（较长时间，因为可能有多轮工具调用）
-    const timeoutMs = this.options.timeoutMs || 300000; // 5min
+    const timeoutMs = this.options.timeoutMs || 300000; // 5min 全局超时
     try {
       await Promise.race([
         this._agenticLoop(),
@@ -127,21 +54,18 @@ class ClaudeApiAgent extends Agent {
   }
 
   /**
-   * Agentic loop: 调用 Claude API → 执行工具 → 喂回结果 → 循环直到纯文本回复
+   * Agentic loop: API 调用 → 工具执行 → 结果喂回 → 循环直到纯文本回复
    */
   async _agenticLoop() {
-    const MAX_TURNS = 25; // 最多25轮工具调用
+    const MAX_TURNS = 30;
 
     for (let turn = 0; turn < MAX_TURNS; turn++) {
-      // 检查是否被中断
       if (!this.isRunning) break;
 
       this.emit('message', { type: 'status', content: '🤔 思考中...' });
 
-      // 调用 API
       const response = await this._callApi();
 
-      // 解析响应内容
       const assistantContent = [];
       const toolUses = [];
       let textContent = '';
@@ -156,7 +80,7 @@ class ClaudeApiAgent extends Agent {
         }
       }
 
-      // 保存 assistant 消息到历史
+      // 保存 assistant 消息
       this.messages.push({
         role: 'assistant',
         content: assistantContent.length === 1 && assistantContent[0].type === 'text'
@@ -164,12 +88,11 @@ class ClaudeApiAgent extends Agent {
           : assistantContent
       });
 
-      // 如果有文本回复，发送给前端
       if (textContent) {
         this.emit('message', { type: 'text', content: textContent });
       }
 
-      // 累计 token 使用量
+      // 累计 token
       if (response.usage) {
         this.totalUsage.input_tokens += response.usage.input_tokens || 0;
         this.totalUsage.output_tokens += response.usage.output_tokens || 0;
@@ -177,34 +100,29 @@ class ClaudeApiAgent extends Agent {
         this.totalUsage.cache_creation_input_tokens += response.usage.cache_creation_input_tokens || 0;
       }
 
-      // 如果没有工具调用，说明回复完成了
+      // 没有工具调用 = 回复完成
       if (toolUses.length === 0) {
-        // 发送累计 token 统计
         this._emitTokenUsage();
         break;
       }
 
-      // 执行所有工具调用
+      // 执行工具并收集结果
       const toolResults = [];
       for (const toolUse of toolUses) {
-        // 通知前端正在执行工具
         this.emit('message', {
           type: 'tool_use',
           content: JSON.stringify(toolUse.input, null, 2),
           metadata: { tool: toolUse.name }
         });
 
-        // 执行工具
-        const result = await this._executeTool(toolUse.name, toolUse.input);
+        const result = this._executeTool(toolUse.name, toolUse.input);
 
-        // 构建 tool_result 内容
         toolResults.push({
           type: 'tool_result',
           tool_use_id: toolUse.id,
           content: result
         });
 
-        // 通知前端工具执行结果
         this.emit('message', {
           type: 'tool_result',
           content: result,
@@ -212,11 +130,9 @@ class ClaudeApiAgent extends Agent {
         });
       }
 
-      // 将工具结果作为 user 消息喂回给 Claude
       this.messages.push({ role: 'user', content: toolResults });
     }
 
-    // 生成 conversationId
     if (!this.conversationId) {
       this.conversationId = require('uuid').v4();
       this.emit('message', {
@@ -228,37 +144,36 @@ class ClaudeApiAgent extends Agent {
   }
 
   /**
-   * 调用 Claude API（单次，非流式以简化工具处理）
+   * 调用 Claude API
    */
   async _callApi() {
-    // 构建 API 参数
     const params = {
       model: this.model,
       max_tokens: this.options.maxTokens || 16000,
       messages: this.messages,
-      tools: TOOLS,
+      tools: BUILTIN_TOOLS,
     };
 
-    // Adaptive thinking
     if (this.options.thinking !== false) {
       params.thinking = { type: 'adaptive' };
     }
 
-    // Effort 级别
     if (this.options.effort) {
       params.output_config = { effort: this.options.effort };
     }
 
-    // System prompt
-    const defaultSystem = `You are a Claude Agent, an AI coding assistant integrated into Agent Hub. You have access to tools to read/write files, execute shell commands, and search code.
+    const defaultSystem = `You are a Claude Agent, an AI coding assistant. You have access to tools to read, write, and edit files, execute shell commands, and search code.
 
-Key guidelines:
-- Use tools to explore the project and complete tasks. Don't just explain — take action.
-- Execute commands with the bash tool to understand the project structure, run builds, check git status, etc.
-- Use read_file to examine source code and configuration files.
-- Always work within the project directory: ${this.workdir}
-- When asked about a project, start by exploring it — list files, read key configs, check git log.
-- Be thorough: read multiple files if needed to fully understand the context.`;
+Key capabilities:
+- bash: Execute any shell command (ls, cat, grep, git, npm, etc.)
+- str_replace_editor: View files, create new files, make precise edits (find-and-replace, insert at line), undo edits
+
+Guidelines:
+- Use tools to explore and understand the project before making changes.
+- When editing code, use str_replace_editor with the str_replace command for precise edits — don't rewrite entire files unless necessary.
+- Always work within: ${this.workdir}
+- Be thorough: read files before editing them. Understand context before making changes.
+- After making changes, verify them (run tests, check syntax, etc.).`;
 
     params.system = this.options.system || defaultSystem;
 
@@ -279,43 +194,38 @@ Key guidelines:
   /**
    * 执行工具调用
    */
-  async _executeTool(toolName, input) {
+  _executeTool(toolName, input) {
     try {
       switch (toolName) {
-        case 'bash':
-          return this._execBash(input.command);
-        case 'read_file':
-          return this._execReadFile(input.file_path, input.offset, input.limit);
-        case 'write_file':
-          return this._execWriteFile(input.file_path, input.content);
-        case 'glob':
-          return this._execGlob(input.pattern);
-        default:
-          return `Error: Unknown tool "${toolName}"`;
+        case 'bash': return this._execBash(input);
+        case 'str_replace_editor': return this._execEditor(input);
+        default: return `Error: Unknown tool "${toolName}"`;
       }
     } catch (error) {
-      return `Error executing ${toolName}: ${error.message}`;
+      return `Error: ${error.message}`;
     }
   }
 
-  /**
-   * 执行 bash 命令
-   */
-  _execBash(command) {
-    const MAX_OUTPUT = 30000; // 30KB 输出限制
-    const TIMEOUT = 30000;    // 30s 超时
+  // ──────────────────── Bash 工具 ────────────────────
+
+  _execBash(input) {
+    const command = input.command;
+    if (!command) return 'Error: No command provided';
+
+    const MAX_OUTPUT = 30000;
+    const TIMEOUT = 60000; // 60s
 
     try {
       const result = execSync(command, {
         cwd: this.workdir,
         encoding: 'utf8',
         timeout: TIMEOUT,
-        maxBuffer: 5 * 1024 * 1024,
+        maxBuffer: 10 * 1024 * 1024,
         env: { ...process.env, FORCE_COLOR: '0' },
         stdio: ['pipe', 'pipe', 'pipe']
       });
 
-      let output = result;
+      let output = result || '';
       if (output.length > MAX_OUTPUT) {
         output = output.substring(0, MAX_OUTPUT) + `\n... [输出已截断，共 ${result.length} 字符]`;
       }
@@ -323,99 +233,213 @@ Key guidelines:
     } catch (error) {
       let errMsg = '';
       if (error.stdout) errMsg += error.stdout.toString();
-      if (error.stderr) errMsg += '\n' + error.stderr.toString();
+      if (error.stderr) errMsg += (errMsg ? '\n' : '') + error.stderr.toString();
       if (!errMsg) errMsg = error.message;
-
-      if (error.status) {
-        errMsg = `Exit code: ${error.status}\n${errMsg}`;
-      }
-      if (errMsg.length > MAX_OUTPUT) {
-        errMsg = errMsg.substring(0, MAX_OUTPUT) + '\n... [输出已截断]';
-      }
+      if (error.status != null) errMsg = `Exit code: ${error.status}\n${errMsg}`;
+      if (errMsg.length > MAX_OUTPUT) errMsg = errMsg.substring(0, MAX_OUTPUT) + '\n... [输出已截断]';
       return errMsg;
     }
   }
 
-  /**
-   * 读取文件
-   */
-  _execReadFile(filePath, offset = 1, limit = 200) {
+  // ──────────────────── 文本编辑器工具 ────────────────────
+
+  _execEditor(input) {
+    const { command, path: filePath } = input;
+    if (!command) return 'Error: No command provided';
+    if (!filePath) return 'Error: No path provided';
+
+    // 解析路径
     const resolvedPath = path.isAbsolute(filePath)
       ? filePath
       : path.resolve(this.workdir, filePath);
 
-    if (!fs.existsSync(resolvedPath)) {
-      return `Error: File not found: ${filePath}`;
+    switch (command) {
+      case 'view': return this._editorView(resolvedPath, input);
+      case 'create': return this._editorCreate(resolvedPath, input);
+      case 'str_replace': return this._editorStrReplace(resolvedPath, input);
+      case 'insert': return this._editorInsert(resolvedPath, input);
+      case 'undo_edit': return this._editorUndo(resolvedPath);
+      default: return `Error: Unknown editor command "${command}"`;
     }
-
-    const stat = fs.statSync(resolvedPath);
-    if (stat.isDirectory()) {
-      return `Error: "${filePath}" is a directory, not a file. Use bash with "ls" to list it.`;
-    }
-
-    const content = fs.readFileSync(resolvedPath, 'utf8');
-    const lines = content.split('\n');
-    const start = Math.max(0, offset - 1);
-    const end = Math.min(lines.length, start + limit);
-    const selected = lines.slice(start, end);
-
-    // 添加行号
-    const numbered = selected.map((line, i) => `${start + i + 1}|${line}`).join('\n');
-
-    if (end < lines.length) {
-      return `${numbered}\n... [文件共 ${lines.length} 行，显示 ${start + 1}-${end} 行]`;
-    }
-    return numbered || '(空文件)';
   }
 
   /**
-   * 写入文件
+   * view: 查看文件或目录内容
    */
-  _execWriteFile(filePath, content) {
-    const resolvedPath = path.isAbsolute(filePath)
-      ? filePath
-      : path.resolve(this.workdir, filePath);
+  _editorView(resolvedPath, input) {
+    if (!fs.existsSync(resolvedPath)) {
+      return `Error: Path not found: ${input.path}`;
+    }
 
-    // 确保目录存在
+    const stat = fs.statSync(resolvedPath);
+
+    if (stat.isDirectory()) {
+      try {
+        const result = execSync(`ls -la "${resolvedPath}"`, {
+          encoding: 'utf8',
+          timeout: 5000
+        });
+        return result || '(空目录)';
+      } catch (e) {
+        return `Error listing directory: ${e.message}`;
+      }
+    }
+
+    // 文件查看
+    const content = fs.readFileSync(resolvedPath, 'utf8');
+    const lines = content.split('\n');
+    const viewRange = input.view_range;
+
+    if (viewRange && Array.isArray(viewRange) && viewRange.length === 2) {
+      const [start, end] = viewRange;
+      const s = Math.max(1, start);
+      const e = Math.min(lines.length, end);
+      const selected = lines.slice(s - 1, e);
+      const numbered = selected.map((line, i) => `${s + i}\t${line}`).join('\n');
+      if (e < lines.length) {
+        return `${numbered}\n... [文件共 ${lines.length} 行]`;
+      }
+      return numbered;
+    }
+
+    // 完整查看（大文件截断）
+    if (lines.length > 500) {
+      const head = lines.slice(0, 500).map((line, i) => `${i + 1}\t${line}`).join('\n');
+      return `${head}\n... [文件共 ${lines.length} 行，仅显示前 500 行。使用 view_range 查看其他部分]`;
+    }
+
+    return lines.map((line, i) => `${i + 1}\t${line}`).join('\n') || '(空文件)';
+  }
+
+  /**
+   * create: 创建新文件
+   */
+  _editorCreate(resolvedPath, input) {
+    if (fs.existsSync(resolvedPath)) {
+      return `Error: File already exists at ${input.path}. Use str_replace to edit it.`;
+    }
+
     const dir = path.dirname(resolvedPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
 
+    const content = input.file_text || '';
     fs.writeFileSync(resolvedPath, content, 'utf8');
+
+    // 保存编辑历史用于 undo
+    this._saveEditHistory(resolvedPath, null, content);
+
     const lines = content.split('\n').length;
-    return `File written successfully: ${filePath} (${lines} lines, ${content.length} chars)`;
+    return `File created successfully at ${input.path} (${lines} lines)`;
   }
 
   /**
-   * Glob 文件搜索
+   * str_replace: 精准查找替换
    */
-  _execGlob(pattern) {
-    try {
-      const result = execSync(`find . -path './.git' -prune -o -name '${pattern.replace(/'/g, "\\'")}' -print`, {
-        cwd: this.workdir,
-        encoding: 'utf8',
-        timeout: 10000,
-        maxBuffer: 1024 * 1024
-      }).trim();
+  _editorStrReplace(resolvedPath, input) {
+    if (!fs.existsSync(resolvedPath)) {
+      return `Error: File not found: ${input.path}`;
+    }
 
-      if (!result) {
-        return `No files found matching pattern: ${pattern}`;
-      }
+    const oldStr = input.old_str;
+    const newStr = input.new_str;
 
-      const files = result.split('\n');
-      if (files.length > 50) {
-        return files.slice(0, 50).join('\n') + `\n... [共 ${files.length} 个文件，仅显示前 50 个]`;
-      }
-      return result;
-    } catch (error) {
-      return `Error searching files: ${error.message}`;
+    if (oldStr === undefined || newStr === undefined) {
+      return 'Error: Both old_str and new_str are required';
+    }
+
+    const content = fs.readFileSync(resolvedPath, 'utf8');
+
+    // 精确匹配检查
+    const count = content.split(oldStr).length - 1;
+    if (count === 0) {
+      return `Error: Could not find the string to replace in ${input.path}. Make sure the text matches exactly (including whitespace and indentation).`;
+    }
+    if (count > 1) {
+      return `Error: Found ${count} occurrences of the string in ${input.path}. The string to replace must be unique. Add more context to make it unique.`;
+    }
+
+    const newContent = content.replace(oldStr, newStr);
+    this._saveEditHistory(resolvedPath, content, newContent);
+    fs.writeFileSync(resolvedPath, newContent, 'utf8');
+
+    // 显示修改区域
+    const beforeLines = content.substring(0, content.indexOf(oldStr)).split('\n').length;
+    const oldLines = oldStr.split('\n').length;
+    const newLines = newStr.split('\n').length;
+    const totalLines = newContent.split('\n').length;
+
+    return `Replacement successful in ${input.path}. Lines ${beforeLines}-${beforeLines + oldLines - 1} replaced with ${newLines} new lines. File now has ${totalLines} lines.`;
+  }
+
+  /**
+   * insert: 在指定行后插入内容
+   */
+  _editorInsert(resolvedPath, input) {
+    if (!fs.existsSync(resolvedPath)) {
+      return `Error: File not found: ${input.path}`;
+    }
+
+    const insertLine = input.insert_line;
+    const newStr = input.new_str;
+
+    if (insertLine === undefined || newStr === undefined) {
+      return 'Error: Both insert_line and new_str are required';
+    }
+
+    const content = fs.readFileSync(resolvedPath, 'utf8');
+    const lines = content.split('\n');
+
+    if (insertLine < 0 || insertLine > lines.length) {
+      return `Error: insert_line must be between 0 and ${lines.length}`;
+    }
+
+    lines.splice(insertLine, 0, newStr);
+    const newContent = lines.join('\n');
+
+    this._saveEditHistory(resolvedPath, content, newContent);
+    fs.writeFileSync(resolvedPath, newContent, 'utf8');
+
+    return `Inserted ${newStr.split('\n').length} line(s) after line ${insertLine} in ${input.path}. File now has ${lines.length} lines.`;
+  }
+
+  /**
+   * undo_edit: 撤销最后一次编辑
+   */
+  _editorUndo(resolvedPath) {
+    if (!this._editHistory || !this._editHistory[resolvedPath] || this._editHistory[resolvedPath].length === 0) {
+      return `Error: No edit history found for ${resolvedPath}`;
+    }
+
+    const history = this._editHistory[resolvedPath];
+    const lastEdit = history.pop();
+
+    if (lastEdit.originalContent === null) {
+      // 之前是 create，删除文件
+      fs.unlinkSync(resolvedPath);
+      return `Undone: File ${resolvedPath} removed (was created by last edit)`;
+    }
+
+    fs.writeFileSync(resolvedPath, lastEdit.originalContent, 'utf8');
+    return `Undone: Restored ${resolvedPath} to previous state (${lastEdit.originalContent.split('\n').length} lines)`;
+  }
+
+  /**
+   * 保存编辑历史（用于 undo）
+   */
+  _saveEditHistory(filePath, originalContent, newContent) {
+    if (!this._editHistory) this._editHistory = {};
+    if (!this._editHistory[filePath]) this._editHistory[filePath] = [];
+    this._editHistory[filePath].push({ originalContent, newContent });
+    // 最多保留 20 步历史
+    if (this._editHistory[filePath].length > 20) {
+      this._editHistory[filePath].shift();
     }
   }
 
-  /**
-   * 发送 token 使用统计
-   */
+  // ──────────────────── Token 统计 ────────────────────
+
   _emitTokenUsage() {
     if (this.totalUsage.input_tokens > 0 || this.totalUsage.output_tokens > 0) {
       this.emit('message', {
@@ -432,58 +456,32 @@ Key guidelines:
     }
   }
 
-  /**
-   * 处理错误
-   */
   _handleError(error) {
     const status = error.status;
     let message = error.message || '未知错误';
 
-    if (status === 401) {
-      message = 'API Key 无效，请检查配置';
-    } else if (status === 403) {
-      message = 'API 访问被拒绝（403），可能是模型不支持或代理不兼容，建议切换到 Claude Code 模式';
-    } else if (status === 429) {
-      message = 'API 请求过于频繁，请稍后重试';
-    } else if (status === 413) {
-      message = '请求内容过大，请减少对话历史或文件大小';
-    } else if (status >= 500) {
-      message = `API 服务器错误 (${status}): ${message}`;
-    }
+    if (status === 401) message = 'API Key 无效，请检查配置';
+    else if (status === 403) message = 'API 访问被拒绝（403），可能是模型不支持或代理不兼容，建议切换到 Claude Code 模式';
+    else if (status === 429) message = 'API 请求过于频繁，请稍后重试';
+    else if (status === 413) message = '请求内容过大，请减少对话历史或文件大小';
+    else if (status >= 500) message = `API 服务器错误 (${status}): ${message}`;
 
     this.emit('message', { type: 'error', content: `❌ ${message}` });
   }
 
-  /**
-   * 更新配置选项
-   */
   updateOptions(updates) {
     Object.assign(this.options, updates);
-    if (updates.model) {
-      this.model = updates.model;
-    }
-    this.emit('message', {
-      type: 'status',
-      content: `⚙️ 配置已更新: ${Object.keys(updates).join(', ')}`
-    });
+    if (updates.model) this.model = updates.model;
+    this.emit('message', { type: 'status', content: `⚙️ 配置已更新: ${Object.keys(updates).join(', ')}` });
   }
 
-  /**
-   * 停止 Agent
-   */
   async stop() {
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
-    }
+    if (this.abortController) { this.abortController.abort(); this.abortController = null; }
     this.isRunning = false;
     this.conversationId = null;
     this.emit('stopped', { code: 0 });
   }
 
-  /**
-   * 中断当前正在运行的任务，保持Agent可用
-   */
   async interrupt() {
     if (this.abortController) {
       this.abortController.abort();
