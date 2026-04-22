@@ -233,10 +233,12 @@ function loadOpenCodeModels() {
   // 1. 动态运行 opencode models --verbose 获取免费模型
   try {
     const opencodeBin = findOpencodeBin();
-    const output = execSync(`${opencodeBin} models --verbose < /dev/null 2>/dev/null`, {
+    const npmBinPath = getNpmBinPath();
+    const output = execSync(`${opencodeBin} models --verbose`, {
       encoding: 'utf-8',
-      timeout: 15000,
-      env: { ...process.env, PATH: getNpmBinPath() + ':' + (process.env.PATH || '') }
+      timeout: 30000,
+      maxBuffer: 10 * 1024 * 1024,
+      env: npmBinPath ? { ...process.env, PATH: npmBinPath + ':' + process.env.PATH } : process.env
     });
 
     // 输出是多组 "名称\n{JSON}" 格式，用大括号计数解析

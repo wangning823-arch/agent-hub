@@ -86,8 +86,8 @@ class OpenCodeAgent extends Agent {
 
     // 发送欢迎消息
     this.emit('message', {
-      type: 'text',
-      content: `✅ OpenCode 已就绪\n📁 工作目录: ${this.workdir}\n💬 发送消息开始对话`
+      type: 'status',
+      content: `✅ OpenCode 已就绪`
     });
   }
 

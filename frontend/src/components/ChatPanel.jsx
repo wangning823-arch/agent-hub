@@ -284,6 +284,9 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
                   msg.content !== 'agent_starting' && msg.content !== 'agent_started') {
                 setStatusMessage(msg.content)
               }
+            } else if (msg.type === 'error') {
+              // 错误消息显示在状态栏
+              setStatusMessage(msg.content)
             } else {
               // 非工具调用消息正常添加
               setMessages(prev => [...prev, msg])

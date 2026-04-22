@@ -5,6 +5,9 @@ const { PERMISSION_MODES, MODELS, EFFORT_LEVELS, getModesForAgent, getModelsForA
 module.exports = () => {
   router.get('/', (req, res) => {
     const agentType = req.query.agentType || 'claude-code';
+    console.log('[options] agentType:', agentType);
+    const models = getModelsForAgent(agentType);
+    console.log('[options] models count:', models.length);
     res.json({
       modes: getModesForAgent(agentType),
       models: getModelsForAgent(agentType),
