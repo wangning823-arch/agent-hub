@@ -187,10 +187,13 @@ router.post('/:id/stop', async (req, res) => {
     }
   });
 
-  router.delete('/:id/messages/:index', (req, res) => {
+  router.delete('/:id/messages', (req, res) => {
     try {
-      const messageIndex = parseInt(req.params.index);
-      const result = sessionManager.deleteMessage(req.params.id, messageIndex);
+      const { time } = req.body;
+      if (!time) {
+        return res.status(400).json({ error: '缺少消息时间戳 time 参数' });
+      }
+      const result = sessionManager.deleteMessageByTime(req.params.id, time);
       res.json(result);
     } catch (error) {
       res.status(500).json({ error: error.message });

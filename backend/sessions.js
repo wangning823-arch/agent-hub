@@ -177,7 +177,7 @@ class SessionManager {
       
       const msgRows = db.exec(`
         SELECT role, content, time FROM messages 
-        WHERE session_id = '${sessionData.id.replace(/'/g, "''")}' ORDER BY id
+        WHERE session_id = '${sessionData.id.replace(/'/g, "''")}' ORDER BY time
       `);
       
       const messages = msgRows.length > 0 ? msgRows[0].values.map(m => {
@@ -235,34 +235,42 @@ class SessionManager {
   saveSession(session) {
     const db = getDb();
     
-    db.run(`
-      INSERT OR REPLACE INTO sessions (id, workdir, agent_type, agent_name, conversation_id, title, options, is_pinned, is_archived, tags, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      session.id,
-      session.workdir,
-      session.agentType || 'claude-code',
-      session.agentName || session.agent?.name || 'unknown',
-      session.conversationId || null,
-      session.title || null,
-      JSON.stringify(session.options || {}),
-      session.isPinned ? 1 : 0,
-      session.isArchived ? 1 : 0,
-      JSON.stringify(session.tags || []),
-      session.createdAt instanceof Date ? session.createdAt.toISOString() : session.createdAt,
-      session.updatedAt instanceof Date ? session.updatedAt.toISOString() : new Date().toISOString()
-    ]);
+    db.run('BEGIN TRANSACTION');
+    
+    try {
+      db.run(`
+        INSERT OR REPLACE INTO sessions (id, workdir, agent_type, agent_name, conversation_id, title, options, is_pinned, is_archived, tags, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        session.id,
+        session.workdir,
+        session.agentType || 'claude-code',
+        session.agentName || session.agent?.name || 'unknown',
+        session.conversationId || null,
+        session.title || null,
+        JSON.stringify(session.options || {}),
+        session.isPinned ? 1 : 0,
+        session.isArchived ? 1 : 0,
+        JSON.stringify(session.tags || []),
+        session.createdAt instanceof Date ? session.createdAt.toISOString() : session.createdAt,
+        session.updatedAt instanceof Date ? session.updatedAt.toISOString() : new Date().toISOString()
+      ]);
 
-    db.run(`DELETE FROM messages WHERE session_id = ?`, [session.id]);
-    
-    const messagesToSave = session.messages.slice(-200);
-    for (const msg of messagesToSave) {
-      const content = typeof msg.content === 'object' ? JSON.stringify(msg.content) : msg.content;
-      db.run('INSERT INTO messages (session_id, role, content, time) VALUES (?, ?, ?, ?)', 
-        [session.id, msg.role, content, msg.time]);
+      db.run(`DELETE FROM messages WHERE session_id = ?`, [session.id]);
+      
+      const messagesToSave = session.messages.slice(-200);
+      for (const msg of messagesToSave) {
+        const content = typeof msg.content === 'object' ? JSON.stringify(msg.content) : msg.content;
+        db.run('INSERT INTO messages (session_id, role, content, time) VALUES (?, ?, ?, ?)', 
+          [session.id, msg.role, content, msg.time]);
+      }
+      
+      db.run('COMMIT');
+      saveToFile();
+    } catch (error) {
+      db.run('ROLLBACK');
+      throw error;
     }
-    
-    saveToFile();
   }
 
   saveData() {
@@ -553,6 +561,21 @@ class SessionManager {
       throw new Error('消息索引无效');
     }
     session.messages.splice(messageIndex, 1);
+    session.updatedAt = new Date();
+    this.saveSession(session);
+    return { success: true, messageCount: session.messages.length };
+  }
+
+  deleteMessageByTime(sessionId, messageTime) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`会话不存在: ${sessionId}`);
+    }
+    const index = session.messages.findIndex(m => m.time === messageTime);
+    if (index === -1) {
+      throw new Error('消息不存在');
+    }
+    session.messages.splice(index, 1);
     session.updatedAt = new Date();
     this.saveSession(session);
     return { success: true, messageCount: session.messages.length };

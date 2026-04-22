@@ -414,17 +414,19 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   }, [])
 
   // 删除消息
-  const handleDeleteMessage = async (index) => {
+  const handleDeleteMessage = async (time) => {
     if (!confirm('确定要删除这条消息吗？')) return
     
     try {
-      const response = await fetch(`${API_BASE}/sessions/${sessionId}/messages/${index}`, {
-        method: 'DELETE'
+      const response = await fetch(`${API_BASE}/sessions/${sessionId}/messages`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ time })
       })
       const data = await response.json()
       if (data.success) {
         // 从本地消息列表中移除
-        setMessages(prev => prev.filter((_, i) => i !== index))
+        setMessages(prev => prev.filter(m => m.timestamp !== time))
       }
     } catch (error) {
       console.error('删除消息失败:', error)
@@ -696,10 +698,10 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
 
         {messages.map((msg, idx) => (
           <Message 
-            key={idx} 
+            key={msg.timestamp || idx} 
             message={msg} 
             index={idx}
-            onDelete={handleDeleteMessage}
+            onDelete={(deleteIndex) => handleDeleteMessage(msg.timestamp)}
             onQuote={setQuoteReply}
           />
         ))}
