@@ -147,7 +147,7 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }) {
   )
 
   return (
-    <div className="panel flex flex-col h-full overflow-hidden" style={{ width: 300 }}>
+    <div className="panel flex flex-col h-full overflow-y-auto" style={{ width: 300 }}>
       {/* File manager */}
       <div className="border-b" style={{ borderColor: 'var(--border-subtle)' }}>
         <SectionHeader icon={<IconFolder />} label="文件管理" section="files" />
@@ -334,7 +334,7 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }) {
                     <IconClear />
                   </button>
                 </div>
-                <pre className={`text-xs p-3 rounded-lg overflow-auto max-h-40 whitespace-pre-wrap break-all`}
+                <pre className={`text-xs p-3 rounded-lg overflow-y-auto max-h-60 whitespace-pre-wrap break-all`}
                   style={{
                     background: gitError ? 'var(--error-soft)' : 'var(--bg-primary)',
                     color: gitError ? 'var(--error)' : 'var(--text-secondary)',
