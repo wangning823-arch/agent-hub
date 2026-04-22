@@ -185,7 +185,7 @@ class SessionManager {
         if (m[0] === 'assistant' && typeof content === 'string') {
           try { content = JSON.parse(content); } catch(e) {}
         }
-        return { role: m[0], content, time: m[2] };
+        return { role: m[0], content, time: Number(m[2]) };
       }) : [];
       
       const session = {
@@ -304,7 +304,11 @@ class SessionManager {
 
     agent.on('message', (msg) => this.broadcast(id, msg));
     agent.on('error', (err) => this.broadcast(id, { type: 'error', content: err.toString() }));
-    // 注意：不再监听 stopped 事件，因为任务完成后 agent 仍然可用
+    agent.on('stopped', () => {
+      session.isActive = false;
+      this.broadcast(id, { type: 'status', content: 'agent_stopped' });
+      this.saveSession(session);
+    });
 
     try {
       await agent.start();
@@ -355,7 +359,7 @@ class SessionManager {
       }
     }
 
-    session.messages.push({ role: 'user', content: message, time: new Date().toISOString() });
+    session.messages.push({ role: 'user', content: message, time: Date.now() });
     this.saveSession(session);
 
     // 标记任务开始
@@ -420,7 +424,11 @@ class SessionManager {
 
     agent.on('message', (msg) => this.broadcast(session.id, msg));
     agent.on('error', (err) => this.broadcast(session.id, { type: 'error', content: err.toString() }));
-    // 注意：不再监听 stopped 事件，因为任务完成后 agent 仍然可用
+    agent.on('stopped', () => {
+      session.isActive = false;
+      this.broadcast(session.id, { type: 'status', content: 'agent_stopped' });
+      this.saveSession(session);
+    });
 
     try {
       await agent.start();
@@ -447,7 +455,7 @@ class SessionManager {
     if (session) {
       const metaTypes = ['status', 'token_usage', 'conversation_id', 'title_update'];
       if (!metaTypes.includes(message.type)) {
-        session.messages.push({ role: 'assistant', content: message, time: new Date().toISOString() });
+        session.messages.push({ role: 'assistant', content: message, time: Date.now() });
         this.saveSession(session);
       }
       
@@ -571,7 +579,14 @@ class SessionManager {
     if (!session) {
       throw new Error(`会话不存在: ${sessionId}`);
     }
-    const index = session.messages.findIndex(m => m.time === messageTime);
+    const timeNum = typeof messageTime === 'number' ? messageTime : parseInt(messageTime, 10);
+    if (isNaN(timeNum)) {
+      throw new Error('无效的时间戳');
+    }
+    const index = session.messages.findIndex(m => {
+      const mTime = typeof m.time === 'number' ? m.time : parseInt(m.time, 10);
+      return mTime === timeNum;
+    });
     if (index === -1) {
       throw new Error('消息不存在');
     }

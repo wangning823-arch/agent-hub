@@ -86,7 +86,7 @@ export default function Message({ message, index, onDelete, onCopy, onQuote }) {
               </div>
             )}
           </div>
-          <div className="text-xs mt-1.5 text-right" style={{ color: 'var(--text-muted)' }}>{formatTime(message.timestamp)}</div>
+          <div className="text-xs mt-1.5 text-right" style={{ color: 'var(--text-muted)' }}>{formatTime(message.time)}</div>
         </div>
       </div>
     )
@@ -197,7 +197,7 @@ export default function Message({ message, index, onDelete, onCopy, onQuote }) {
           </div>
         </div>
         <div className="flex items-center justify-between mt-1.5">
-          <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatTime(message.timestamp)}</div>
+          <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatTime(message.time)}</div>
           <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
             <ActionButton onClick={handleCopy} title="复制"><IconCopy /></ActionButton>
             <ActionButton onClick={handleQuote} title="引用回复" hoverColor="var(--accent-primary)"><IconQuote /></ActionButton>

@@ -190,7 +190,7 @@ router.post('/:id/stop', async (req, res) => {
   router.delete('/:id/messages', (req, res) => {
     try {
       const { time } = req.body;
-      if (!time) {
+      if (time === undefined || time === null) {
         return res.status(400).json({ error: '缺少消息时间戳 time 参数' });
       }
       const result = sessionManager.deleteMessageByTime(req.params.id, time);
@@ -263,8 +263,8 @@ router.post('/:id/stop', async (req, res) => {
         const keepLast = Math.min(10, session.messages.length);
         const recentMessages = session.messages.slice(-keepLast);
         session.messages = [
-          { role: 'user', content: `[之前对话的摘要]\n${result.summary}`, time: new Date() },
-          { role: 'assistant', content: '已了解之前的对话内容，可以继续交流。', time: new Date() },
+          { role: 'user', content: `[之前对话的摘要]\n${result.summary}`, time: Date.now() },
+          { role: 'assistant', content: '已了解之前的对话内容，可以继续交流。', time: Date.now() },
           ...recentMessages
         ];
         session.updatedAt = new Date();

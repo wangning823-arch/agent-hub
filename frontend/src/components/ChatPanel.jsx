@@ -102,7 +102,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
           return {
             type: displayType,
             content: displayContent,
-            timestamp: msg.time
+            time: msg.time
           }
         })
         
@@ -165,7 +165,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
             return {
               type: displayType,
               content: displayContent,
-              timestamp: msg.time
+              time: msg.time
             }
           })
           // 过滤掉工具调用历史记录和空消息
@@ -278,10 +278,18 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
               if (onStartingChange) {
                 onStartingChange(msg.content === 'agent_starting')
               }
+            } else if (msg.type === 'status' && msg.content === 'agent_stopped') {
+              if (onWorkingChange) {
+                onWorkingChange(false)
+              }
+              if (onStartingChange) {
+                onStartingChange(false)
+              }
             } else if (msg.type === 'status' && typeof msg.content === 'string') {
               // 过滤内部状态消息，只显示给用户的状态
-              if (msg.content !== 'task_started' && msg.content !== 'task_done' && 
-                  msg.content !== 'agent_starting' && msg.content !== 'agent_started') {
+              if (msg.content !== 'task_started' && msg.content !== 'task_done' &&
+                  msg.content !== 'agent_starting' && msg.content !== 'agent_started' &&
+                  msg.content !== 'agent_stopped') {
                 setStatusMessage(msg.content)
               }
             } else if (msg.type === 'error') {
@@ -425,8 +433,9 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
       })
       const data = await response.json()
       if (data.success) {
-        // 从本地消息列表中移除
-        setMessages(prev => prev.filter(m => m.timestamp !== time))
+        setMessages(prev => prev.filter(m => m.time !== time))
+      } else if (data.error) {
+        toast.error('删除失败: ' + data.error)
       }
     } catch (error) {
       console.error('删除消息失败:', error)
@@ -698,10 +707,10 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
 
         {messages.map((msg, idx) => (
           <Message 
-            key={msg.timestamp || idx} 
+            key={msg.time || idx} 
             message={msg} 
             index={idx}
-            onDelete={(deleteIndex) => handleDeleteMessage(msg.timestamp)}
+            onDelete={(deleteIndex) => handleDeleteMessage(msg.time)}
             onQuote={setQuoteReply}
           />
         ))}
