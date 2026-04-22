@@ -94,8 +94,6 @@ class ClaudeApiAgent extends Agent {
     for (let turn = 0; turn < MAX_TURNS; turn++) {
       if (!this.isRunning) break;
 
-      this.emit('message', { type: 'status', content: '🤔 思考中...' });
-
       let response;
       try {
         response = await this._callApi();

@@ -331,6 +331,11 @@ class SessionManager {
       throw new Error(`会话不存在: ${sessionId}`);
     }
 
+    // 如果正在执行，拒绝新的消息
+    if (session.isWorking) {
+      throw new Error('Agent正在执行任务，请等待完成后再发送');
+    }
+
     if (!session.agent) {
       session.isStarting = true;
       this.broadcast(sessionId, { type: 'status', content: 'agent_starting' });
@@ -355,6 +360,14 @@ class SessionManager {
       // 标记任务结束
       session.isWorking = false;
       this.broadcast(sessionId, { type: 'status', content: 'task_done' });
+
+      // 释放 agent，下次发消息时重新创建（带上更新后的对话历史）
+      if (session.agent) {
+        session.agent.removeAllListeners();
+      }
+      session.agent = null;
+      session.isActive = false;
+      this.saveSession(session);
     }
   }
 

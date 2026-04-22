@@ -82,7 +82,6 @@ app.get('/api/agents', (req, res) => {
   res.json({
     agents: [
       { id: 'claude-code', name: 'Claude Code', available: true },
-      { id: 'claude-api', name: 'Claude API', available: true },
       { id: 'opencode', name: 'OpenCode', available: true },
       { id: 'codex', name: 'Codex', available: true }
     ]
