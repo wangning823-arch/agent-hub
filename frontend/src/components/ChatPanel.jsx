@@ -274,10 +274,21 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
               if (onWorkingChange) {
                 onWorkingChange(msg.content === 'task_started')
               }
-            } else if (msg.type === 'status' && (msg.content === 'agent_starting' || msg.content === 'agent_started')) {
-              if (onStartingChange) {
-                onStartingChange(msg.content === 'agent_starting')
+              if (msg.content === 'task_done') {
+                setStatusMessage('已完成')
+                setTimeout(() => setStatusMessage(''), 3000)
               }
+            } else if (msg.type === 'status' && msg.content === 'agent_starting') {
+              if (onStartingChange) {
+                onStartingChange(true)
+              }
+            } else if (msg.type === 'status' && msg.content === 'agent_started') {
+              if (onStartingChange) {
+                onStartingChange(false)
+              }
+              const agentNames = { 'claude-code': 'Claude', 'claude-api': 'Claude', 'opencode': 'OpenCode', 'codex': 'Codex' }
+              setStatusMessage(`${agentNames[agentType] || 'Agent'} 已就绪`)
+              setTimeout(() => setStatusMessage(''), 3000)
             } else if (msg.type === 'status' && msg.content === 'agent_stopped') {
               if (onWorkingChange) {
                 onWorkingChange(false)
