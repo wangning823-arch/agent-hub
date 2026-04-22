@@ -273,9 +273,13 @@ class CodexAgent extends Agent {
    * 停止 Agent
    */
   async stop() {
-    // 终止活跃的 Codex 进程
     if (this.activeProc) {
-      try { this.activeProc.kill(); } catch (e) { /* ignore */ }
+      const pid = this.activeProc.pid;
+      try {
+        process.kill(-pid, 'SIGKILL');
+      } catch (e) {
+        try { this.activeProc.kill('SIGKILL'); } catch (e2) { /* ignore */ }
+      }
       this.activeProc = null;
     }
     this.isRunning = false;
@@ -287,7 +291,12 @@ class CodexAgent extends Agent {
    */
   async interrupt() {
     if (this.activeProc) {
-      try { this.activeProc.kill('SIGKILL'); } catch (e) { /* ignore */ }
+      const pid = this.activeProc.pid;
+      try {
+        process.kill(-pid, 'SIGKILL');
+      } catch (e) {
+        try { this.activeProc.kill('SIGKILL'); } catch (e2) { /* ignore */ }
+      }
       this.activeProc = null;
       this.emit('message', { type: 'status', content: '⏹️ 任务已中断' });
     }

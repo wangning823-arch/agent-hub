@@ -77,14 +77,21 @@ class ClaudeApiAgent extends Agent {
     this.emit('message', { type: 'status', content: '🤔 思考中...' });
     this.messages.push({ role: 'user', content: message });
 
-    const timeoutMs = this.options.timeoutMs || 300000;
+    const timeoutMs = this.options.timeoutMs || 600000;
     try {
       await Promise.race([
         this._agenticLoop(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Claude API request timeout')), timeoutMs))
+        new Promise((resolve) => setTimeout(() => {
+          this.emit('message', { type: 'status', content: '⏳ 请求超时，继续等待响应...' });
+          // 超时不中断，让 agenticLoop 继续运行
+        }, timeoutMs))
       ]);
     } catch (error) {
-      this._handleError(error);
+      if (error.message === 'Aborted') {
+        this.emit('message', { type: 'status', content: '⏹️ 请求已中断' });
+      } else {
+        this._handleError(error);
+      }
     }
   }
 

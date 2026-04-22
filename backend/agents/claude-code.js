@@ -102,12 +102,10 @@ class ClaudeCodeAgent extends Agent {
           ...process.env
         }
       });
-      // 超时保护：60s 超时未返回则强制中止
+      // 超时提醒：10min 未响应则提示用户，可选择继续等待或点击停止按钮
       const timeoutId = setTimeout(() => {
-        try { proc.kill(); } catch (e) { /* ignore */ }
-        this.emit('message', { type: 'error', content: 'Claude Code 响应超时' });
-        reject(new Error('timeout'));
-      }, 60000);
+        this.emit('message', { type: 'status', content: '⏳ 响应已超时超过10分钟，如需等待请点击停止按钮终止任务...' });
+      }, 600000);
       // 清理超时定时器（在输出完成时清理）
       // 记录活跃进程，便于后续中止
       this.activeProc = proc;
@@ -263,9 +261,13 @@ class ClaudeCodeAgent extends Agent {
    * 停止Agent
    */
   async stop() {
-    // 取消正在进行的 Claude Code 调用
     if (this.activeProc) {
-      try { this.activeProc.kill(); } catch (e) { /* ignore */ }
+      const pid = this.activeProc.pid;
+      try {
+        process.kill(-pid, 'SIGKILL');
+      } catch (e) {
+        try { this.activeProc.kill('SIGKILL'); } catch (e2) { /* ignore */ }
+      }
       this.activeProc = null;
     }
     this.isRunning = false;
@@ -278,7 +280,12 @@ class ClaudeCodeAgent extends Agent {
    */
   async interrupt() {
     if (this.activeProc) {
-      try { this.activeProc.kill('SIGKILL'); } catch (e) { /* ignore */ }
+      const pid = this.activeProc.pid;
+      try {
+        process.kill(-pid, 'SIGKILL');
+      } catch (e) {
+        try { this.activeProc.kill('SIGKILL'); } catch (e2) { /* ignore */ }
+      }
       this.activeProc = null;
       this.emit('message', { type: 'status', content: '⏹️ 任务已中断' });
     }

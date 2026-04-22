@@ -296,7 +296,7 @@ class SessionManager {
 
     agent.on('message', (msg) => this.broadcast(id, msg));
     agent.on('error', (err) => this.broadcast(id, { type: 'error', content: err.toString() }));
-    agent.on('stopped', () => this.broadcast(id, { type: 'status', content: 'Agent已停止' }));
+    // 注意：不再监听 stopped 事件，因为任务完成后 agent 仍然可用
 
     try {
       await agent.start();
@@ -354,20 +354,26 @@ class SessionManager {
     session.isWorking = true;
     this.broadcast(sessionId, { type: 'status', content: 'task_started' });
 
+    let agentError = null;
     try {
       await session.agent.send(message);
+    } catch (error) {
+      agentError = error;
+      this.broadcast(sessionId, { type: 'error', content: `任务执行错误: ${error.message}` });
     } finally {
       // 标记任务结束
       session.isWorking = false;
       this.broadcast(sessionId, { type: 'status', content: 'task_done' });
 
-      // 释放 agent，下次发消息时重新创建（带上更新后的对话历史）
-      if (session.agent) {
-        session.agent.removeAllListeners();
-      }
-      session.agent = null;
-      session.isActive = false;
+      // 不销毁 agent，保持会话连续性
       this.saveSession(session);
+    }
+
+    // 如果是严重错误导致 agent 不可用，再销毁
+    if (agentError && session.agent) {
+      try {
+        session.agent.stop();
+      } catch (e) {}
     }
   }
 
@@ -410,11 +416,7 @@ class SessionManager {
 
     agent.on('message', (msg) => this.broadcast(session.id, msg));
     agent.on('error', (err) => this.broadcast(session.id, { type: 'error', content: err.toString() }));
-    agent.on('stopped', () => {
-      session.isActive = false;
-      this.saveSession(session);
-      this.broadcast(session.id, { type: 'status', content: 'Agent已停止' });
-    });
+    // 注意：不再监听 stopped 事件，因为任务完成后 agent 仍然可用
 
     try {
       await agent.start();

@@ -12,6 +12,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   const [input, setInput] = useState('')
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
+  const [statusMessage, setStatusMessage] = useState('')
   const [attachments, setAttachments] = useState([])
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -218,10 +219,8 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
         
         // 显示连接成功提示
         if (reconnectAttempts > 0) {
-          setMessages(prev => [...prev, { 
-            type: 'status', 
-            content: '✅ 已重新连接到服务器' 
-          }])
+          setStatusMessage('✅ 已重新连接到服务器')
+          setTimeout(() => setStatusMessage(''), 3000)
         }
       }
 
@@ -279,6 +278,12 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
               if (onStartingChange) {
                 onStartingChange(msg.content === 'agent_starting')
               }
+            } else if (msg.type === 'status' && typeof msg.content === 'string') {
+              // 过滤内部状态消息，只显示给用户的状态
+              if (msg.content !== 'task_started' && msg.content !== 'task_done' && 
+                  msg.content !== 'agent_starting' && msg.content !== 'agent_started') {
+                setStatusMessage(msg.content)
+              }
             } else {
               // 非工具调用消息正常添加
               setMessages(prev => [...prev, msg])
@@ -329,20 +334,14 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
           const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000) // 指数退避，最大30秒
           console.log(`${delay}ms后尝试重连 (${reconnectAttempts + 1}/${maxReconnectAttempts})`)
           
-          setMessages(prev => [...prev, { 
-            type: 'status', 
-            content: `⚠️ 连接断开，${delay/1000}秒后自动重连...` 
-          }])
+          setStatusMessage(`⚠️ 连接断开，${delay/1000}秒后自动重连...`)
           
           reconnectTimeout = setTimeout(() => {
             reconnectAttempts++
             connectWebSocket()
           }, delay)
         } else {
-          setMessages(prev => [...prev, { 
-            type: 'error', 
-            content: '❌ 连接失败，请刷新页面重试' 
-          }])
+          setStatusMessage('❌ 连接失败，请刷新页面重试')
         }
       }
 
@@ -854,8 +853,11 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
               ) : (
                 <span className={`status-dot ${connected ? 'connected' : 'disconnected'}`} style={{ width: 6, height: 6 }} />
               )}
+              {statusMessage && (
+                <span style={{ color: 'var(--accent-primary)' }}>{statusMessage}</span>
+              )}
               {attachments.length > 0 && (
-                <span style={{ color: 'var(--accent-primary)' }}>📎{attachments.length}</span>
+                <span style={{ color: 'var(--text-muted)' }}>📎{attachments.length}</span>
               )}
             </div>
             <span>Enter 发送 · Shift+Enter 换行</span>
