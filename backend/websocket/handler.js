@@ -90,19 +90,23 @@ module.exports = (sessionManager, TOKEN_FILE) => {
       console.log(`WebSocket连接: session=${sessionId}`);
       sessionManager.addClient(sessionId, ws);
 
-      ws.on('message', async (data) => {
-        try {
-          const msg = JSON.parse(data.toString());
+       ws.on('message', async (data) => {
+         try {
+           const msg = JSON.parse(data.toString());
 
-          if (msg.type === 'user_input') {
-            await sessionManager.sendMessage(sessionId, msg.content);
-          } else if (msg.type === 'command') {
-            await handleCommand(sessionId, msg.command, msg.params);
-          }
-        } catch (error) {
-          ws.send(JSON.stringify({ type: 'error', content: error.message }));
-        }
-      });
+           if (msg.type === 'ping') {
+             // 心跳响应
+             ws.send(JSON.stringify({ type: 'pong', timestamp: msg.timestamp }));
+             return;
+           } else if (msg.type === 'user_input') {
+             await sessionManager.sendMessage(sessionId, msg.content);
+           } else if (msg.type === 'command') {
+             await handleCommand(sessionId, msg.command, msg.params);
+           }
+         } catch (error) {
+           ws.send(JSON.stringify({ type: 'error', content: error.message }));
+         }
+       });
 
       ws.on('close', () => {
         console.log(`WebSocket断开: session=${sessionId}`);

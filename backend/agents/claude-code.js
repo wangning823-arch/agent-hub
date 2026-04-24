@@ -2,38 +2,38 @@
  * Claude Code Agent适配器
  * 使用 --print --continue 模式，每次调用保持对话历史
  */
-const Agent = require('./base');
-const { spawn } = require('child_process');
-const path = require('path');
+const Agent = require('./base')
+const { spawn } = require('child_process')
+const path = require('path')
 
 class ClaudeCodeAgent extends Agent {
   constructor(workdir, options = {}) {
-    super('claude-code', workdir);
-    this.conversationId = options.conversationId || null; // 支持恢复已有对话
-    this.options = options;
+    super('claude-code', workdir)
+    this.conversationId = options.conversationId || null // 支持恢复已有对话
+    this.options = options
     // 跟踪正在运行的子进程，用于优雅地中止/清理
-    this.activeProc = null;
+    this.activeProc = null
   }
 
   async start() {
     // Claude Code 不需要长期运行的进程
     // 每次发消息时启动一个新进程，用 --continue 保持历史
-    this.isRunning = true;
+    this.isRunning = true
     // 可选的自检，确保 claude CLI 可用
     try {
-      const claudeBin = process.env.CLAUDE_CLI_PATH || 'claude';
-      require('child_process').execSync(`"${claudeBin}" --version`, { stdio: 'ignore' });
+      const claudeBin = process.env.CLAUDE_CLI_PATH || 'claude'
+      require('child_process').execSync(`"${claudeBin}" --version`, { stdio: 'ignore' })
     } catch (e) {
-      this.isRunning = false;
-      throw new Error('Claude CLI 未发现或不可用，请确保 CLAUDE_CLI_PATH 指向正确的二进制，或在 PATH 中可访问。');
+      this.isRunning = false
+      throw new Error('Claude CLI 未发现或不可用，请确保 CLAUDE_CLI_PATH 指向正确的二进制，或在 PATH 中可访问。')
     }
-    this.emit('started');
+    this.emit('started')
     
     // 发送欢迎消息
     this.emit('message', {
       type: 'status',
       content: `✅ Claude Code 已就绪`
-    });
+    })
   }
 
   /**
@@ -41,15 +41,15 @@ class ClaudeCodeAgent extends Agent {
    */
   async send(message) {
     if (!this.isRunning) {
-      throw new Error('Agent未运行');
+      throw new Error('Agent未运行')
     }
 
     // 通知前端正在处理
-    this.emit('message', { type: 'status', content: '🤔 思考中...' });
+    this.emit('message', { type: 'status', content: '🤔 思考中...' })
 
     return new Promise((resolve, reject) => {
       // 直接调用 Claude Code CLI（不使用 wrapper 脚本）
-      const claudePath = process.env.CLAUDE_CLI_PATH || 'claude';
+      const claudePath = process.env.CLAUDE_CLI_PATH || 'claude'
 
       // 构建命令参数
       const args = [
@@ -57,38 +57,38 @@ class ClaudeCodeAgent extends Agent {
         '--verbose',
         '--dangerously-skip-permissions',
         '--output-format', 'stream-json'
-      ];
+      ]
 
       // 指定模型（如果用户选了的话）
       if (this.options.model) {
-        args.push('--model', this.options.model);
+        args.push('--model', this.options.model)
       }
       
       // 添加模式参数
       if (this.options.mode) {
-        args.push('--permission-mode', this.options.mode);
+        args.push('--permission-mode', this.options.mode)
       }
       
       // 添加努力程度参数
       if (this.options.effort) {
-        args.push('--effort', this.options.effort);
+        args.push('--effort', this.options.effort)
       }
       
       // 如果有之前的对话，使用 --resume 保持上下文
       if (this.conversationId) {
-        args.push('--resume', this.conversationId);
+        args.push('--resume', this.conversationId)
       } else {
-        args.push('--continue');
+        args.push('--continue')
       }
       
       // 添加用户消息（长度截断，防止超大输入导致崩溃）
-      let userMessage = message;
-      const MAX_INPUT_SIZE = 8000;
+      let userMessage = message
+      const MAX_INPUT_SIZE = 8000
       if (typeof userMessage === 'string' && userMessage.length > MAX_INPUT_SIZE) {
-        userMessage = userMessage.substring(0, MAX_INPUT_SIZE);
-        this.emit('message', { type: 'status', content: '⚠️ 输入过长，已截断以确保处理稳定' });
+        userMessage = userMessage.substring(0, MAX_INPUT_SIZE)
+        this.emit('message', { type: 'status', content: '⚠️ 输入过长，已截断以确保处理稳定' })
       }
-      args.push('-p', userMessage);
+      args.push('-p', userMessage)
 
       // 启动 Claude Code CLI
       const proc = spawn(claudePath, args, {
@@ -97,61 +97,61 @@ class ClaudeCodeAgent extends Agent {
         env: {
           ...process.env
         }
-      });
+      })
       // 超时提醒：10min 未响应则提示用户，可选择继续等待或点击停止按钮
       const timeoutId = setTimeout(() => {
-        this.emit('message', { type: 'status', content: '⏳ 响应已超时超过10分钟，如需等待请点击停止按钮终止任务...' });
-      }, 600000);
+        this.emit('message', { type: 'status', content: '⏳ 响应已超时超过10分钟，如需等待请点击停止按钮终止任务...' })
+      }, 600000)
       // 清理超时定时器（在输出完成时清理）
       // 记录活跃进程，便于后续中止
-      this.activeProc = proc;
+      this.activeProc = proc
 
-      let buffer = '';
-      let hasOutput = false;
+      let buffer = ''
+      let hasOutput = false
 
       proc.stdout.on('data', (data) => {
-        hasOutput = true;
-        buffer += data.toString();
+        hasOutput = true
+        buffer += data.toString()
         
         // 按行解析
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
+        const lines = buffer.split('\n')
+        buffer = lines.pop()
         
         for (const line of lines) {
           if (line.trim()) {
             try {
-              const msg = JSON.parse(line);
-              this.handleStreamMessage(msg);
+              const msg = JSON.parse(line)
+              this.handleStreamMessage(msg)
               
               // 保存对话ID用于后续继续
               if (msg.type === 'result' && msg.conversation_id) {
-                this.conversationId = msg.conversation_id;
+                this.conversationId = msg.conversation_id
               }
             } catch (e) {
               // 非JSON作为文本
-              this.emit('message', { type: 'text', content: line });
+              this.emit('message', { type: 'text', content: line })
             }
           }
         }
-      });
+      })
 
       proc.stderr.on('data', (data) => {
-        const msg = data.toString().trim();
+        const msg = data.toString().trim()
         if (msg && !msg.includes('Loaded') && !msg.includes('model')) {
-          console.error('[Claude stderr]:', msg);
+          console.error('[Claude stderr]:', msg)
         }
-      });
+      })
 
       proc.on('close', (code) => {
         // 取消超时定时器
-        try { clearTimeout(timeoutId); } catch {}
+        try { clearTimeout(timeoutId) } catch {}
         // 处理剩余buffer
         if (buffer.trim()) {
           try {
-            const msg = JSON.parse(buffer);
-            this.handleStreamMessage(msg);
+            const msg = JSON.parse(buffer)
+            this.handleStreamMessage(msg)
           } catch (e) {
-            this.emit('message', { type: 'text', content: buffer });
+            this.emit('message', { type: 'text', content: buffer })
           }
         }
         
@@ -159,23 +159,23 @@ class ClaudeCodeAgent extends Agent {
           this.emit('message', { 
             type: 'error', 
             content: 'Claude Code 没有返回输出，请检查配置' 
-          });
+          })
         }
         
         // 清理活跃进程引用
-        this.activeProc = null;
-        resolve();
-      });
+        this.activeProc = null
+        resolve()
+      })
 
       proc.on('error', (err) => {
         this.emit('message', { 
           type: 'error',
           content: `启动失败: ${err.message}` 
-        });
-        this.activeProc = null;
-        reject(err);
-      });
-    });
+        })
+        this.activeProc = null
+        reject(err)
+      })
+    })
   }
 
   /**
@@ -183,34 +183,34 @@ class ClaudeCodeAgent extends Agent {
    */
   handleStreamMessage(msg) {
     if (msg.type === 'assistant') {
-      const content = msg.message?.content;
+      const content = msg.message?.content
       if (Array.isArray(content)) {
         // 文本内容
-        const texts = content.filter(c => c.type === 'text').map(c => c.text);
+        const texts = content.filter(c => c.type === 'text').map(c => c.text)
         if (texts.length > 0) {
-          this.emit('message', { type: 'text', content: texts.join('\n') });
+          this.emit('message', { type: 'text', content: texts.join('\n') })
         }
         
         // 工具调用
-        const tools = content.filter(c => c.type === 'tool_use');
+        const tools = content.filter(c => c.type === 'tool_use')
         for (const tool of tools) {
           this.emit('message', {
             type: 'tool_use',
             content: JSON.stringify(tool.input, null, 2),
             metadata: { tool: tool.name }
-          });
+          })
         }
       }
     } else if (msg.type === 'result') {
       // 保存对话ID
       if (msg.conversation_id) {
-        this.conversationId = msg.conversation_id;
+        this.conversationId = msg.conversation_id
         // 通知前端保存对话ID
         this.emit('message', {
           type: 'conversation_id',
           content: msg.conversation_id,
           conversationId: msg.conversation_id
-        });
+        })
       }
       
       // 发送Token使用统计
@@ -225,13 +225,13 @@ class ClaudeCodeAgent extends Agent {
             cost: msg.total_cost_usd || 0,
             model: msg.modelUsage ? Object.keys(msg.modelUsage)[0] : 'unknown'
           }
-        });
+        })
       }
       
       // 不再单独emit result，因为assistant消息已经包含了完整内容
     } else if (msg.type === 'system' && msg.subtype === 'init') {
       // 初始化信息
-      console.log('[Claude Code] 初始化:', msg);
+      console.log('[Claude Code] 初始化:', msg)
     }
   }
 
@@ -239,18 +239,18 @@ class ClaudeCodeAgent extends Agent {
    * 发送权限审批响应（在dangerously-skip-permissions模式下不需要）
    */
   async approve(approvalId, allow = true) {
-    console.log(`[权限] ${allow ? '允许' : '拒绝'} ${approvalId}`);
+    console.log(`[权限] ${allow ? '允许' : '拒绝'} ${approvalId}`)
   }
 
   /**
    * 更新配置选项
    */
   updateOptions(updates) {
-    Object.assign(this.options, updates);
+    Object.assign(this.options, updates)
     this.emit('message', {
       type: 'status',
       content: `⚙️ 配置已更新: ${Object.keys(updates).join(', ')}`
-    });
+    })
   }
 
   /**
@@ -258,17 +258,17 @@ class ClaudeCodeAgent extends Agent {
    */
   async stop() {
     if (this.activeProc) {
-      const pid = this.activeProc.pid;
+      const pid = this.activeProc.pid
       try {
-        process.kill(-pid, 'SIGKILL');
+        process.kill(-pid, 'SIGKILL')
       } catch (e) {
-        try { this.activeProc.kill('SIGKILL'); } catch (e2) { /* ignore */ }
+        try { this.activeProc.kill('SIGKILL') } catch (e2) { /* ignore */ }
       }
-      this.activeProc = null;
+      this.activeProc = null
     }
-    this.isRunning = false;
-    this.conversationId = null;
-    this.emit('stopped', { code: 0 });
+    this.isRunning = false
+    this.conversationId = null
+    this.emit('stopped', { code: 0 })
   }
 
   /**
@@ -276,28 +276,28 @@ class ClaudeCodeAgent extends Agent {
    */
   async interrupt() {
     if (this.activeProc) {
-      const pid = this.activeProc.pid;
+      const pid = this.activeProc.pid
       try {
-        process.kill(-pid, 'SIGKILL');
+        process.kill(-pid, 'SIGKILL')
       } catch (e) {
-        try { this.activeProc.kill('SIGKILL'); } catch (e2) { /* ignore */ }
+        try { this.activeProc.kill('SIGKILL') } catch (e2) { /* ignore */ }
       }
-      this.activeProc = null;
-      this.emit('message', { type: 'status', content: '⏹️ 任务已中断' });
+      this.activeProc = null
+      this.emit('message', { type: 'status', content: '⏹️ 任务已中断' })
     }
   }
 
   // 静态健康检查：不依赖工作目录即可快速判断可用性
   static healthCheck() {
     try {
-      const claudeBin = process.env.CLAUDE_CLI_PATH || 'claude';
-      const { execSync } = require('child_process');
-      execSync(`"${claudeBin}" --version`, { stdio: 'ignore' });
-      return { ok: true, info: 'Claude Code CLI available' };
+      const claudeBin = process.env.CLAUDE_CLI_PATH || 'claude'
+      const { execSync } = require('child_process')
+      execSync(`"${claudeBin}" --version`, { stdio: 'ignore' })
+      return { ok: true, info: 'Claude Code CLI available' }
     } catch (e) {
-      return { ok: false, error: e.message };
+      return { ok: false, error: e.message }
     }
   }
 }
 
-module.exports = ClaudeCodeAgent;
+module.exports = ClaudeCodeAgent

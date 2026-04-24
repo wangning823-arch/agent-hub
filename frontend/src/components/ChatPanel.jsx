@@ -208,10 +208,14 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
 
     loadHistory()
 
-    let reconnectAttempts = 0
-    const maxReconnectAttempts = 5
-    let reconnectTimeout = null
-    let isCleanedUp = false
+     let reconnectAttempts = 0
+     const maxReconnectAttempts = 5
+     let reconnectTimeout = null
+     let isCleanedUp = false
+     let pingInterval = null
+     let pongTimeout = null
+     const PING_INTERVAL = 30000 // 30秒发送一次心跳
+     const PONG_TIMEOUT = 60000 // 60秒没收到心跳响应则断开
 
     const connectWebSocket = () => {
       if (isCleanedUp) return // 已清理，不再创建新连接
@@ -226,22 +230,44 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
-      ws.onopen = () => {
-        setConnected(true)
-        setConnecting(false)
-        reconnectAttempts = 0 // 重置重连计数
-        console.log('WebSocket已连接')
-        
-        // 显示连接成功提示
-        if (reconnectAttempts > 0) {
-          setStatusMessage('✅ 已重新连接到服务器')
-          setTimeout(() => setStatusMessage(''), 3000)
-        }
-      }
+       ws.onopen = () => {
+         setConnected(true)
+         setConnecting(false)
+         reconnectAttempts = 0 // 重置重连计数
+         console.log('WebSocket已连接')
+         
+         // 显示连接成功提示
+         if (reconnectAttempts > 0) {
+           setStatusMessage('✅ 已重新连接到服务器')
+           setTimeout(() => setStatusMessage(''), 3000)
+         }
 
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data)
+         // 启动心跳机制
+         if (pingInterval) clearInterval(pingInterval)
+         if (pongTimeout) clearTimeout(pongTimeout)
+         
+         pingInterval = setInterval(() => {
+           if (ws.readyState === WebSocket.OPEN) {
+             ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }))
+             
+             // 设置pong超时
+             pongTimeout = setTimeout(() => {
+               console.warn('心跳超时，断开连接')
+               ws.close()
+             }, PONG_TIMEOUT)
+           }
+         }, PING_INTERVAL)
+       }
+
+       ws.onmessage = (event) => {
+         try {
+           const msg = JSON.parse(event.data)
+           
+           // 处理心跳响应
+           if (msg.type === 'pong') {
+             if (pongTimeout) clearTimeout(pongTimeout)
+             return
+           }
           
           // 处理工具调用消息的合并逻辑
           if (msg.type === 'tool_use' || msg.type === 'tool_result') {
@@ -389,14 +415,20 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
 
     connectWebSocket()
 
-    return () => {
-      isCleanedUp = true
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout)
-      }
-      if (wsRef.current) {
-        wsRef.current.close()
-      }
+     return () => {
+       isCleanedUp = true
+       if (reconnectTimeout) {
+         clearTimeout(reconnectTimeout)
+       }
+       if (pingInterval) {
+         clearInterval(pingInterval)
+       }
+       if (pongTimeout) {
+         clearTimeout(pongTimeout)
+       }
+       if (wsRef.current) {
+         wsRef.current.close()
+       }
     }
   }, [sessionId])
 
