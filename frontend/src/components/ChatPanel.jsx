@@ -56,6 +56,8 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   const scrollContainerRef = useRef(null)
   const fileInputRef = useRef(null)
   const textareaRef = useRef(null)
+  const lastMessageCountRef = useRef(0)
+  const lastScrollTimeRef = useRef(0)
 
   // 加载选项
   useEffect(() => {
@@ -73,7 +75,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
     }
   }
 
-  // 滚动到底部
+  // 只在新增消息时滚动到底部，加载历史消息时不自动滚动
   const scrollToBottom = () => {
     if (messages.length === 0) return
     virtualizer.scrollToIndex(messages.length - 1, {
@@ -83,7 +85,16 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   }
 
   useEffect(() => {
-    scrollToBottom()
+    // 只在消息数量增加且最后一条是新生成的才滚动
+    if (messages.length > lastMessageCountRef.current) {
+      const lastMsg = messages[messages.length - 1]
+      const lastTime = lastMsg?.time || 0
+      if (lastTime > lastScrollTimeRef.current) {
+        scrollToBottom()
+        lastScrollTimeRef.current = lastTime
+      }
+    }
+    lastMessageCountRef.current = messages.length
   }, [messages])
 
   // 加载更多历史消息
@@ -132,9 +143,10 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
           return true
         })
         setMessages(prev => [...filtered, ...prev])
-        setMessageOffset(prev => Math.max(0, prev - PAGE_SIZE))
+        setMessageOffset(prev => prev + PAGE_SIZE)
         
-        if (data.messages.length < PAGE_SIZE || messageOffset <= 0) {
+        // 只有返回的消息少于一页才说明没有更多了
+        if (data.messages.length < PAGE_SIZE) {
           setHasMore(false)
         }
       } else {
