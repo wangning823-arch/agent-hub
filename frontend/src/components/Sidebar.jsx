@@ -24,6 +24,7 @@ const IconRunning = () => (
   </svg>
 )
 const IconCheck = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+const IconExternal = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
 
 export default function Sidebar({
   sessions,
@@ -51,11 +52,94 @@ export default function Sidebar({
   const [allTags, setAllTags] = useState([])
   const [selectedTags, setSelectedTags] = useState([])
   const [editingTags, setEditingTags] = useState(null)
+  const [skills, setSkills] = useState([])
+  const [showInstallModal, setShowInstallModal] = useState(false)
+  const [installSource, setInstallSource] = useState('')
+  const [installing, setInstalling] = useState(false)
+
+  const skillDescriptionTranslations = {
+    // 通用命令
+    'code-review': '审查代码变更，提供改进建议',
+    'debug': '帮助调试代码问题',
+    'explain': '解释代码逻辑和功能',
+    'refactor': '重构代码，改善可读性和性能',
+    'test': '编写测试用例',
+    'docs': '编写项目文档',
+    'security': '安全审查代码',
+    'deploy': '部署应用到生产环境',
+    'migrate': '迁移数据库或代码库',
+    'optimize': '优化代码性能和资源使用',
+    // Claude 官方插件
+    'agent-sdk-dev': '开发 AI Agent SDK 应用',
+    'clangd-lsp': 'C/C++ 语言服务支持',
+    'claude-automation-recommender': '分析代码库并推荐 Claude Code 自动化配置',
+    'claude-code-setup': '快速配置 Claude Code 项目',
+    'claude-md-improver': '审查和改进 CLAUDE.md 文件',
+    'claude-md-management': '管理 CLAUDE.md 项目配置文档',
+    'code-simplifier': '简化复杂代码，提升可读性',
+    'commit-commands': '生成规范的 Git 提交信息',
+    'csharp-lsp': 'C# 语言服务支持',
+    'explanatory-output-style': '提供详细解释的输出风格',
+    'feature-dev': '开发新功能和特性',
+    'frontend-design': '设计前端界面和组件',
+    'gopls-lsp': 'Go 语言服务支持',
+    'hookify': '配置 Claude Code 钩子脚本',
+    'jdtls-lsp': 'Java 语言服务支持',
+    'kotlin-lsp': 'Kotlin 语言服务支持',
+    'learning-output-style': '适合学习理解的输出风格',
+    'lua-lsp': 'Lua 语言服务支持',
+    'math-olympiad': '解决数学竞赛问题',
+    'mcp-server-dev': '开发 MCP 服务器',
+    'php-lsp': 'PHP 语言服务支持',
+    'playground': '创建交互式 HTML 演示工具',
+    'plugin-dev': '开发 Claude Code 插件',
+    'pr-review-toolkit': '全面的 PR 审查工具集',
+    'pyright-lsp': 'Python 语言服务支持',
+    'ralph-loop': '自动化循环任务执行',
+    'ruby-lsp': 'Ruby 语言服务支持',
+    'rust-analyzer-lsp': 'Rust 语言服务支持',
+    'security-guidance': '安全编码指导和检查',
+    'session-report': '生成会话工作报告',
+    'skill-creator': '创建自定义 Skill 技能',
+    'swift-lsp': 'Swift 语言服务支持',
+    'typescript-lsp': 'TypeScript 语言服务支持',
+    // 外部插件 Skills
+    'access': '管理渠道访问权限，审批配对，编辑白名单',
+    'configure': '配置消息渠道，设置机器人令牌和访问策略',
+    // Plugin Dev 子技能
+    'agent-development': '开发 Claude Code 子代理，定义系统提示和触发条件',
+    'command-development': '创建自定义斜杠命令',
+    'hook-development': '开发 Claude Code 钩子脚本',
+    'mcp-integration': '集成 MCP 服务器到插件',
+    'plugin-settings': '管理插件配置和设置',
+    'plugin-structure': '创建和组织 Claude Code 插件结构',
+    'skill-development': '开发和优化技能',
+    'writing-rules': '编写 Hookify 规则',
+    // MCP Server Dev 子技能
+    'build-mcp-app': '构建带交互式 UI 的 MCP 应用',
+    'build-mcpb': '打包和分发 MCP 服务器',
+    'build-mcp-server': '创建 MCP 服务器和工具',
+    // 示例插件
+    'example-command': '示例用户调用技能，演示 frontmatter 选项',
+    'example-skill': '示例技能模板，用于演示技能格式',
+  }
+
+  const getSkillDescription = (skill) => {
+    if (skill.description && skill.description.trim()) {
+      return skill.description
+    }
+    const key = skill.id?.toLowerCase() || skill.name?.toLowerCase() || ''
+    for (const [k, v] of Object.entries(skillDescriptionTranslations)) {
+      if (key.includes(k)) return v
+    }
+    return skill.plugin || skill.id || ''
+  }
 
   useEffect(() => {
     loadOptions()
     loadCommands()
     loadTags()
+    loadSkills()
   }, [agentType])
 
   const loadOptions = async () => {
@@ -77,6 +161,41 @@ export default function Sidebar({
       const data = await fetch(`${API_BASE}/tags`).then(r => r.json())
       setAllTags(data.tags || [])
     } catch (error) { console.error('加载标签失败:', error) }
+  }
+
+  const loadSkills = async () => {
+    try {
+      const data = await fetch(`${API_BASE}/skills/${agentType}`).then(r => r.json())
+      setSkills(data.skills || [])
+    } catch (error) { console.error('加载 Skills 失败:', error) }
+  }
+
+  const handleInstallSkill = async () => {
+    if (!installSource.trim()) return
+    setInstalling(true)
+    try {
+      const res = await fetch(`${API_BASE}/skills/install`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentType, source: installSource.trim() })
+      })
+      const result = await res.json()
+      if (result.success) {
+        setSkills(result.skills || [])
+        toast.success('安装成功！')
+        setShowInstallModal(false)
+        setInstallSource('')
+      } else {
+        toast.error(result.error || '安装失败')
+      }
+    } catch (error) { toast.error('安装失败: ' + error.message) }
+    setInstalling(false)
+  }
+
+  const handleSkillClick = (skill) => {
+    const msg = skill.id.includes(':') ? `/${skill.id}` : `/${skill.name.replace(/\s+/g, '-').toLowerCase()}`
+    const event = new CustomEvent('send-message', { detail: { message: msg } })
+    window.dispatchEvent(event)
   }
 
   const currentOptions = activeSession ? sessionOptions[activeSession] || {} : {}
@@ -316,12 +435,7 @@ export default function Sidebar({
               
               <button
                 onClick={onNewSession}
-                className="w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all"
-                style={{
-                  background: 'linear-gradient(135deg, var(--accent-primary), #8b5cf6)',
-                  color: '#fff',
-                  boxShadow: '0 2px 10px rgba(99,102,241,0.3)',
-                }}
+                className="btn-secondary w-full text-sm py-2.5 flex items-center justify-center gap-2"
               >
                 <IconPlus /> 新建会话
               </button>
@@ -432,6 +546,49 @@ export default function Sidebar({
             </div>
           )}
         </div>
+
+        {}
+        <div>
+          <SectionHeader icon="🎯" label="技能" count={skills.length} section="skills" />
+
+          {expandedSection === 'skills' && (
+            <div className="pb-2 max-h-80 overflow-y-auto">
+              {skills.length === 0 ? (
+                <div className="px-4 py-4 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+                  暂无可用技能
+                </div>
+              ) : (
+                skills.map((skill, idx) => (
+                  <button
+                    key={`${skill.id}-${idx}`}
+                    onClick={() => handleSkillClick(skill)}
+                    className="w-full px-4 py-2 text-left transition-colors"
+                    style={{ color: 'var(--text-secondary)' }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{skill.name}</span>
+                      {skill.source === 'official' && <span className="badge badge-official">官方</span>}
+                      {skill.source === 'local' && <span className="badge badge-local">本地</span>}
+                    </div>
+                    <div className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                      {getSkillDescription(skill)}
+                    </div>
+                  </button>
+                ))
+              )}
+              <div className="px-4 py-2 mt-1">
+                <button
+                  onClick={() => setShowInstallModal(true)}
+                  className="btn-secondary w-full text-sm py-2 flex items-center justify-center gap-2"
+                >
+                  <IconPlus /> 安装新技能
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Bottom actions - icon only */}
@@ -486,6 +643,41 @@ export default function Sidebar({
           title="导入备份"
         >📂</button>
       </div>
+
+      {showInstallModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-900 rounded-lg w-full max-w-md overflow-hidden shadow-2xl border border-gray-700">
+            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+              <h2 className="text-lg font-semibold text-white">安装新技能</h2>
+              <button onClick={() => setShowInstallModal(false)} className="text-gray-400 hover:text-white text-xl">✕</button>
+            </div>
+            <div className="p-4 space-y-4">
+              <p className="text-sm text-gray-400">输入 GitHub 地址、Git URL 或 Marketplace 名称</p>
+              <input
+                type="text"
+                value={installSource}
+                onChange={(e) => setInstallSource(e.target.value)}
+                placeholder="e.g., anthropics/claude-code 或 https://..."
+                className="input-field w-full"
+                autoFocus
+                onKeyDown={(e) => e.key === 'Enter' && handleInstallSkill()}
+              />
+              <div className="text-xs text-gray-500 space-y-1">
+                <div>支持的格式：</div>
+                <div>• GitHub: owner/repo 或 owner/repo#branch</div>
+                <div>• Git URL: https://gitlab.com/... 或 git@github.com:...</div>
+                <div>• 远程 marketplace: https://example.com/marketplace.json</div>
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-700 flex justify-end gap-2">
+              <button onClick={() => setShowInstallModal(false)} className="px-4 py-2 text-gray-400 hover:text-white">取消</button>
+              <button onClick={handleInstallSkill} disabled={installing || !installSource.trim()} className="btn-primary px-4 py-2">
+                {installing ? '安装中...' : '安装'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

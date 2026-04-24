@@ -22,6 +22,7 @@ const healthRouter = require('./routes/health');
 const uploadRouter = require('./routes/upload');
 const optionsRouter = require('./routes/options');
 const credentialsRouter = require('./routes/credentials');
+const skillsRouter = require('./routes/skills');
 const credentialManager = require('./credentialManager');
 
 const authMiddleware = require('./middleware/auth');
@@ -121,6 +122,7 @@ app.get("*", (req, res, next) => {
   app.use('/api/upload', uploadRouter());
   app.use('/api/options', optionsRouter());
   app.use('/api/credentials', credentialsRouter(credentialManager));
+  app.use('/api/skills', skillsRouter);
 
   wsConnectionHandler(wss);
   
