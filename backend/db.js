@@ -70,8 +70,60 @@ async function initDb() {
   db.run(`CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at)`);
 
+  // 模型管理表
+  db.run(`
+    CREATE TABLE IF NOT EXISTS providers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      npm_package TEXT DEFAULT '',
+      base_url TEXT NOT NULL,
+      base_url_anthropic TEXT DEFAULT '',
+      api_key TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  // 增量迁移：给已有的 providers 表添加 base_url_anthropic 列
+  try {
+    const cols = db.exec("PRAGMA table_info(providers)");
+    if (cols.length > 0) {
+      const colNames = cols[0].values.map(row => row[1]);
+      if (!colNames.includes('base_url_anthropic')) {
+        db.run('ALTER TABLE providers ADD COLUMN base_url_anthropic TEXT DEFAULT ""');
+        console.log('[数据库迁移] providers 表添加 base_url_anthropic 列');
+      }
+    }
+  } catch (e) { }
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS models (
+      id TEXT NOT NULL,
+      provider_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      context_limit INTEGER DEFAULT 0,
+      output_limit INTEGER DEFAULT 0,
+      input_modalities TEXT DEFAULT '["text"]',
+      output_modalities TEXT DEFAULT '["text"]',
+      PRIMARY KEY (id, provider_id),
+      FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+    )
+  `);
+
+  // 工具同步状态表：记录每个工具当前使用哪个 provider / 模型
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tool_sync (
+      tool TEXT PRIMARY KEY,
+      provider_id TEXT,
+      model_id TEXT,
+      synced_at TEXT,
+      config TEXT DEFAULT '{}'
+    )
+  `);
+
   await migrateFromJson();
   await migrateProjectsFromJson();
+  await migrateModelsFromConfigFiles();
   saveToFile();
 
   await initTokenStatsDb();
@@ -183,6 +235,122 @@ async function migrateProjectsFromJson() {
   }
 
   console.log(`迁移 ${jsonData.projects.length} 个项目到数据库`);
+}
+
+async function migrateModelsFromConfigFiles() {
+  const result = db.exec('SELECT COUNT(*) as count FROM providers');
+  const count = result.length > 0 ? result[0].values[0][0] : 0;
+  if (count > 0) return;
+
+  const now = new Date().toISOString();
+  const homeDir = process.env.HOME || '/root';
+
+  const opencodeConfigPath = path.join(homeDir, '.config', 'opencode', 'opencode.json');
+  if (fs.existsSync(opencodeConfigPath)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(opencodeConfigPath, 'utf-8'));
+      const providers = config.provider || {};
+      const defaultModel = config.model || '';
+
+      for (const [providerId, provider] of Object.entries(providers)) {
+        const insertProvider = db.prepare(
+          'INSERT INTO providers (id, name, npm_package, base_url, base_url_anthropic, api_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        const baseURL = provider.options?.baseURL || '';
+        const apiKey = provider.options?.apiKey || '';
+        insertProvider.run([providerId, provider.name || providerId, provider.npm || '', baseURL, '', apiKey, now, now]);
+
+        const models = provider.models || {};
+        for (const [modelId, modelInfo] of Object.entries(models)) {
+          const insertModel = db.prepare(
+            'INSERT INTO models (id, provider_id, name, context_limit, output_limit, input_modalities, output_modalities) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          );
+          const ctx = modelInfo.limit?.context || 0;
+          const out = modelInfo.limit?.output || 0;
+          const inMods = JSON.stringify(modelInfo.modalities?.input || ['text']);
+          const outMods = JSON.stringify(modelInfo.modalities?.output || ['text']);
+          insertModel.run([modelId, providerId, modelInfo.name || modelId, ctx, out, inMods, outMods]);
+        }
+
+        if (defaultModel.startsWith(providerId + '/')) {
+          const insertSync = db.prepare(
+            'INSERT OR REPLACE INTO tool_sync (tool, provider_id, model_id, synced_at, config) VALUES (?, ?, ?, ?, ?)'
+          );
+          const modelId = defaultModel.slice(providerId.length + 1);
+          insertSync.run(['opencode', providerId, modelId, now, '{}']);
+        }
+      }
+      console.log(`[模型迁移] 从 OpenCode 配置导入 ${Object.keys(providers).length} 个 provider`);
+    } catch (e) {
+      console.warn('[模型迁移] 读取 OpenCode 配置失败:', e.message);
+    }
+  }
+
+  const claudeSettingsPath = path.join(homeDir, '.claude', 'settings.json');
+  if (fs.existsSync(claudeSettingsPath)) {
+    try {
+      const settings = JSON.parse(fs.readFileSync(claudeSettingsPath, 'utf-8'));
+      const env = settings.env || {};
+      if (env.ANTHROPIC_BASE_URL) {
+        const anthropicBaseURL = env.ANTHROPIC_BASE_URL;
+
+        const existingResult = db.exec('SELECT id, base_url, base_url_anthropic FROM providers');
+        let matchedProvider = null;
+        if (existingResult.length > 0) {
+          for (const row of existingResult[0].values) {
+            const [pid, bUrl, bUrlAnthropic] = row;
+            if (!bUrlAnthropic && bUrl && anthropicBaseURL.includes(new URL(bUrl).hostname)) {
+              matchedProvider = { id: pid, baseUrl: bUrl };
+              break;
+            }
+          }
+        }
+
+        if (matchedProvider) {
+          const updateStmt = db.prepare('UPDATE providers SET base_url_anthropic = ? WHERE id = ?');
+          updateStmt.run([anthropicBaseURL, matchedProvider.id]);
+        } else {
+          const providerId = 'claude-custom';
+          const insertProvider = db.prepare(
+            'INSERT INTO providers (id, name, npm_package, base_url, base_url_anthropic, api_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+          );
+          insertProvider.run([providerId, 'Claude Custom', '', '', anthropicBaseURL, env.ANTHROPIC_AUTH_TOKEN || '', now, now]);
+        }
+
+        const targetProviderId = matchedProvider ? matchedProvider.id : 'claude-custom';
+
+        const claudeModelIds = new Set();
+        if (env.ANTHROPIC_MODEL) claudeModelIds.add(env.ANTHROPIC_MODEL);
+        if (env.ANTHROPIC_DEFAULT_SONNET_MODEL) claudeModelIds.add(env.ANTHROPIC_DEFAULT_SONNET_MODEL);
+        if (env.ANTHROPIC_DEFAULT_OPUS_MODEL) claudeModelIds.add(env.ANTHROPIC_DEFAULT_OPUS_MODEL);
+        if (env.ANTHROPIC_DEFAULT_HAIKU_MODEL) claudeModelIds.add(env.ANTHROPIC_DEFAULT_HAIKU_MODEL);
+
+        for (const modelId of claudeModelIds) {
+          if (!modelId) continue;
+          const checkResult = db.exec(`SELECT COUNT(*) as cnt FROM models WHERE id = '${modelId.replace(/'/g, "''")}' AND provider_id = '${targetProviderId.replace(/'/g, "''")}'`);
+          const cnt = checkResult.length > 0 ? checkResult[0].values[0][0] : 0;
+          if (cnt === 0) {
+            const insertModel = db.prepare(
+              'INSERT INTO models (id, provider_id, name, context_limit, output_limit, input_modalities, output_modalities) VALUES (?, ?, ?, ?, ?, ?, ?)'
+            );
+            insertModel.run([modelId, targetProviderId, modelId, 0, 0, '["text"]', '["text"]']);
+          }
+        }
+
+        const insertSync = db.prepare(
+          'INSERT OR REPLACE INTO tool_sync (tool, provider_id, model_id, synced_at, config) VALUES (?, ?, ?, ?, ?)'
+        );
+        const config = {};
+        if (env.ANTHROPIC_MODEL) config.model = env.ANTHROPIC_MODEL;
+        if (env.ANTHROPIC_DEFAULT_SONNET_MODEL) config.sonnetModel = env.ANTHROPIC_DEFAULT_SONNET_MODEL;
+        if (env.ANTHROPIC_DEFAULT_OPUS_MODEL) config.opusModel = env.ANTHROPIC_DEFAULT_OPUS_MODEL;
+        if (env.ANTHROPIC_DEFAULT_HAIKU_MODEL) config.haikuModel = env.ANTHROPIC_DEFAULT_HAIKU_MODEL;
+        insertSync.run(['claude-code', targetProviderId, env.ANTHROPIC_MODEL || '', now, JSON.stringify(config)]);
+      }
+    } catch (e) {
+      console.warn('[模型迁移] 读取 Claude 配置失败:', e.message);
+    }
+  }
 }
 
 async function initTokenStatsDb() {

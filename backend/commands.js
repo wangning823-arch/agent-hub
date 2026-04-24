@@ -472,6 +472,10 @@ function getCommandsForAgent(agentType) {
   }
 }
 
+function clearModelCache() {
+  _opencodeModelsCache = null;
+}
+
 module.exports = {
   CLAUDE_COMMANDS,
   OPENCODE_COMMANDS,
@@ -482,6 +486,7 @@ module.exports = {
   getModelsForAgent,
   getModesForAgent,
   getEffortsForAgent,
-  getCommandsForAgent
+  getCommandsForAgent,
+  clearModelCache
 };
 
