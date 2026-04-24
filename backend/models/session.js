@@ -8,6 +8,7 @@ class Session {
     this.options = options;
     this.isActive = true;
     this.conversationId = null;
+    this.lastSavedMessageCount = 0;
   }
 
   toJSON() {

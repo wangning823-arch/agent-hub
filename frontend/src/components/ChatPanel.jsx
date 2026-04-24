@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import Message from './Message'
 import QuoteReply from './QuoteReply'
 import { useToast } from './Toast'
@@ -22,6 +23,16 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   const [loadingMore, setLoadingMore] = useState(false)
   const [messageOffset, setMessageOffset] = useState(0)
   const PAGE_SIZE = 50
+
+  // Virtual scrolling for messages
+  const virtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 120, // Average estimated message height
+    overscan: 5, // Render extra items outside viewport for smooth scrolling
+    paddingStart: hasMore ? 60 : 0, // Account for load more button height
+    scrollPaddingEnd: 20, // Extra padding at the bottom
+  })
   
   // 引用回复状态
   const [quoteReply, setQuoteReply] = useState(null)
@@ -42,7 +53,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   }, [options?.mode, options?.model, options?.effort])
 
   const wsRef = useRef(null)
-  const messagesEndRef = useRef(null)
+  const scrollContainerRef = useRef(null)
   const fileInputRef = useRef(null)
   const textareaRef = useRef(null)
 
@@ -64,7 +75,11 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
 
   // 滚动到底部
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messages.length === 0) return
+    virtualizer.scrollToIndex(messages.length - 1, {
+      align: 'end',
+      behavior: 'smooth',
+    })
   }
 
   useEffect(() => {
@@ -686,7 +701,10 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div 
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto p-4"
+      >
         {messages.length === 0 && (
           <div className="text-center mt-20" style={{ color: 'var(--text-muted)', animation: 'slideUp 0.5s ease' }}>
             <p className="text-4xl mb-3">💬</p>
@@ -699,7 +717,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
           </div>
         )}
 
-        {hasMore && (
+        {hasMore && messages.length > 0 && (
           <div className="flex justify-center py-4">
             <button
               onClick={loadMoreMessages}
@@ -716,17 +734,43 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
           </div>
         )}
 
-        {messages.map((msg, idx) => (
-          <Message 
-            key={msg.time || idx} 
-            message={msg} 
-            index={idx}
-            onDelete={(deleteIndex) => handleDeleteMessage(msg.time)}
-            onQuote={setQuoteReply}
-          />
-        ))}
+        {messages.length > 0 && (
+          <div
+            style={{
+              height: `${virtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            {virtualizer.getVirtualItems().map((virtualItem) => {
+              const msg = messages[virtualItem.index]
+              return (
+                <div
+                  key={virtualItem.key}
+                  ref={virtualizer.measureElement}
+                  data-index={virtualItem.index}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${virtualItem.start}px)`,
+                    marginBottom: '1rem',
+                  }}
+                >
+                  <Message 
+                    key={msg.time || virtualItem.index} 
+                    message={msg} 
+                    index={virtualItem.index}
+                    onDelete={(deleteIndex) => handleDeleteMessage(msg.time)}
+                    onQuote={setQuoteReply}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        )}
 
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Bottom input area */}

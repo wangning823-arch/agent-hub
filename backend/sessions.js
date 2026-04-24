@@ -203,6 +203,7 @@ class SessionManager {
         updatedAt: new Date(sessionData.updated_at),
         isActive: false,
         messages: messages,
+        lastSavedMessageCount: messages.length,
   toJSON() {
           return {
             id: this.id,
@@ -256,14 +257,26 @@ class SessionManager {
         session.updatedAt instanceof Date ? session.updatedAt.toISOString() : new Date().toISOString()
       ]);
 
-      db.run(`DELETE FROM messages WHERE session_id = ?`, [session.id]);
-      
       const messagesToSave = session.messages.slice(-200);
-      for (const msg of messagesToSave) {
-        const content = typeof msg.content === 'object' ? JSON.stringify(msg.content) : msg.content;
-        db.run('INSERT INTO messages (session_id, role, content, time) VALUES (?, ?, ?, ?)',
-          [session.id, msg.role, content, msg.time || Date.now()]);
+      
+      if (session.messages.length < (session.lastSavedMessageCount || 0)) {
+        db.run(`DELETE FROM messages WHERE session_id = ?`, [session.id]);
+        for (const msg of messagesToSave) {
+          const content = typeof msg.content === 'object' ? JSON.stringify(msg.content) : msg.content;
+          db.run('INSERT INTO messages (session_id, role, content, time) VALUES (?, ?, ?, ?)',
+            [session.id, msg.role, content, msg.time || Date.now()]);
+        }
+      } else {
+        const newMessages = session.messages.slice(session.lastSavedMessageCount || 0);
+        const messagesToInsert = newMessages.slice(Math.max(newMessages.length - 200, 0));
+        for (const msg of messagesToInsert) {
+          const content = typeof msg.content === 'object' ? JSON.stringify(msg.content) : msg.content;
+          db.run('INSERT INTO messages (session_id, role, content, time) VALUES (?, ?, ?, ?)',
+            [session.id, msg.role, content, msg.time || Date.now()]);
+        }
       }
+      
+      session.lastSavedMessageCount = session.messages.length;
       
       db.run('COMMIT');
       saveToFile();
