@@ -4,15 +4,61 @@ const { getDb, saveToFile } = require('../db');
 const path = require('path');
 const fs = require('fs');
 
+const BACKUP_DIR = path.join(__dirname, '..', '..', 'data', 'backups', 'sync');
+
+function ensureBackupDir() {
+  if (!fs.existsSync(BACKUP_DIR)) {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  }
+}
+
+function getBackupPath(tool) {
+  ensureBackupDir();
+  return path.join(BACKUP_DIR, `${tool}.json`);
+}
+
+function backupConfig(tool, filePath, content) {
+  ensureBackupDir();
+  const backupPath = getBackupPath(tool);
+  const existing = fs.existsSync(backupPath) ? JSON.parse(fs.readFileSync(backupPath, 'utf-8')) : {};
+  existing[filePath] = {
+    content,
+    backedUpAt: new Date().toISOString()
+  };
+  fs.writeFileSync(backupPath, JSON.stringify(existing, null, 2));
+}
+
+function readBackup(tool) {
+  const backupPath = getBackupPath(tool);
+  if (!fs.existsSync(backupPath)) return null;
+  return JSON.parse(fs.readFileSync(backupPath, 'utf-8'));
+}
+
+function getConfigPaths(tool) {
+  const homeDir = process.env.HOME || '/root';
+  switch (tool) {
+    case 'claude-code':
+      return [path.join(homeDir, '.claude', 'settings.json')];
+    case 'opencode':
+      return [path.join(homeDir, '.config', 'opencode', 'opencode.json')];
+    case 'codex': {
+      const codexHome = process.env.CODEX_HOME || path.join(homeDir, '.codex');
+      return [path.join(codexHome, 'config.toml')];
+    }
+    default:
+      return [];
+  }
+}
+
 module.exports = () => {
   // ── Provider CRUD ──
 
   router.get('/providers', (req, res) => {
     const db = getDb();
-    const result = db.exec('SELECT * FROM providers ORDER BY created_at');
+    const result = db.exec('SELECT id, name, npm_package, base_url, base_url_anthropic, api_key, created_at, updated_at FROM providers ORDER BY created_at');
     const providers = result.length > 0 ? result[0].values.map(row => ({
       id: row[0], name: row[1], npmPackage: row[2], baseUrl: row[3],
-      baseUrlAnthropic: row[4], apiKey: maskKey(row[5]), createdAt: row[6], updatedAt: row[7]
+      baseUrlAnthropic: row[4], hasApiKey: !!row[5], createdAt: row[6], updatedAt: row[7]
     })) : [];
 
     const countResult = db.exec('SELECT provider_id, COUNT(*) as cnt FROM models GROUP BY provider_id');
@@ -36,7 +82,7 @@ module.exports = () => {
       const stmt = db.prepare('INSERT INTO providers (id, name, npm_package, base_url, base_url_anthropic, api_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
       stmt.run([id, name, npmPackage || '', baseUrl, baseUrlAnthropic || '', apiKey || '', now, now]);
       saveToFile();
-      res.json({ success: true, provider: { id, name, npmPackage, baseUrl, baseUrlAnthropic, apiKey: maskKey(apiKey), createdAt: now, updatedAt: now } });
+      res.json({ success: true, provider: { id, name, npmPackage, baseUrl, baseUrlAnthropic, hasApiKey: !!apiKey, createdAt: now, updatedAt: now } });
     } catch (e) {
       res.status(400).json({ error: 'Provider 已存在: ' + e.message });
     }
@@ -51,7 +97,7 @@ module.exports = () => {
     if (existing.length === 0) return res.status(404).json({ error: 'Provider 不存在' });
 
     const oldApiKey = existing[0].values[0][0];
-    const newApiKey = apiKey && !apiKey.includes('***') ? apiKey : oldApiKey;
+    const newApiKey = apiKey !== undefined && apiKey !== '' ? apiKey : oldApiKey;
 
     try {
       const stmt = db.prepare('UPDATE providers SET name=?, npm_package=?, base_url=?, base_url_anthropic=?, api_key=?, updated_at=? WHERE id=?');
@@ -188,14 +234,21 @@ module.exports = () => {
     }
 
     const [baseUrl, baseUrlAnthropic, apiKey] = result[0].values[0];
-    const anthropicUrl = baseUrlAnthropic || baseUrl;
+    if (!baseUrlAnthropic) {
+      return res.status(400).json({ error: '该 Provider 未设置 Base URL (Anthropic 协议)，无法同步到 Claude Code' });
+    }
+    const anthropicUrl = baseUrlAnthropic;
     const homeDir = process.env.HOME || '/root';
     const settingsPath = path.join(homeDir, '.claude', 'settings.json');
 
     let settings = {};
     try {
       if (fs.existsSync(settingsPath)) {
-        settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+        const originalContent = fs.readFileSync(settingsPath, 'utf-8');
+        backupConfig('claude-code', settingsPath, originalContent);
+        settings = JSON.parse(originalContent);
+      } else {
+        backupConfig('claude-code', settingsPath, '');
       }
     } catch (e) {
       return res.status(500).json({ error: '读取 Claude 配置失败: ' + e.message });
@@ -215,7 +268,7 @@ module.exports = () => {
       const syncStmt = db.prepare('INSERT OR REPLACE INTO tool_sync (tool, provider_id, model_id, synced_at, config) VALUES (?, ?, ?, ?, ?)');
       syncStmt.run(['claude-code', providerId, modelConfig?.model || '', now, JSON.stringify(modelConfig || {})]);
       saveToFile();
-      res.json({ success: true, message: 'Claude Code 配置已同步' });
+      res.json({ success: true, message: 'Claude Code 配置已同步', backedUp: true });
     } catch (e) {
       res.status(500).json({ error: '写入 Claude 配置失败: ' + e.message });
     }
@@ -231,7 +284,11 @@ module.exports = () => {
     let config = {};
     try {
       if (fs.existsSync(configPath)) {
-        config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        const originalContent = fs.readFileSync(configPath, 'utf-8');
+        backupConfig('opencode', configPath, originalContent);
+        config = JSON.parse(originalContent);
+      } else {
+        backupConfig('opencode', configPath, '');
       }
     } catch (e) {
       return res.status(500).json({ error: '读取 OpenCode 配置失败: ' + e.message });
@@ -280,7 +337,7 @@ module.exports = () => {
       const syncStmt = db.prepare('INSERT OR REPLACE INTO tool_sync (tool, provider_id, model_id, synced_at, config) VALUES (?, ?, ?, ?, ?)');
       syncStmt.run(['opencode', allProviderIds.join(','), defaultModel || '', now, JSON.stringify({ providerIds: allProviderIds, defaultModel, smallModel })]);
       saveToFile();
-      res.json({ success: true, message: 'OpenCode 配置已同步' });
+      res.json({ success: true, message: 'OpenCode 配置已同步', backedUp: true });
     } catch (e) {
       res.status(500).json({ error: '写入 OpenCode 配置失败: ' + e.message });
     }
@@ -308,6 +365,9 @@ module.exports = () => {
       let tomlContent = '';
       if (fs.existsSync(configPath)) {
         tomlContent = fs.readFileSync(configPath, 'utf-8');
+        backupConfig('codex', configPath, tomlContent);
+      } else {
+        backupConfig('codex', configPath, '');
       }
 
       const lines = tomlContent.split('\n');
@@ -336,10 +396,92 @@ module.exports = () => {
       const syncStmt = db.prepare('INSERT OR REPLACE INTO tool_sync (tool, provider_id, model_id, synced_at, config) VALUES (?, ?, ?, ?, ?)');
       syncStmt.run(['codex', providerId, modelId, now, '{}']);
       saveToFile();
-      res.json({ success: true, message: 'Codex 配置已同步' });
+      res.json({ success: true, message: 'Codex 配置已同步', backedUp: true });
     } catch (e) {
       res.status(500).json({ error: '写入 Codex 配置失败: ' + e.message });
     }
+  });
+
+  // ── Backup info & Undo sync ──
+
+  router.get('/sync/backups', (req, res) => {
+    const backups = {};
+    for (const tool of ['claude-code', 'opencode', 'codex']) {
+      const backup = readBackup(tool);
+      if (backup) {
+        backups[tool] = {};
+        for (const [filePath, info] of Object.entries(backup)) {
+          backups[tool][filePath] = {
+            backedUpAt: info.backedUpAt,
+            hasContent: info.content !== ''
+          };
+        }
+      }
+    }
+    res.json({ backups });
+  });
+
+  router.get('/sync/backups/:tool', (req, res) => {
+    const tool = req.params.tool;
+    if (!['claude-code', 'opencode', 'codex'].includes(tool)) {
+      return res.status(400).json({ error: '无效的工具名称' });
+    }
+    const backup = readBackup(tool);
+    if (!backup) {
+      return res.json({ backup: null });
+    }
+    res.json({ backup });
+  });
+
+  router.post('/sync/undo/:tool', (req, res) => {
+    const tool = req.params.tool;
+    if (!['claude-code', 'opencode', 'codex'].includes(tool)) {
+      return res.status(400).json({ error: '无效的工具名称' });
+    }
+
+    const backup = readBackup(tool);
+    if (!backup) {
+      return res.status(404).json({ error: '没有找到备份，无法撤销' });
+    }
+
+    const restored = [];
+    const errors = [];
+    for (const [filePath, info] of Object.entries(backup)) {
+      try {
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+        if (info.content === '') {
+          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+          restored.push(filePath);
+        } else {
+          fs.writeFileSync(filePath, info.content);
+          restored.push(filePath);
+        }
+      } catch (e) {
+        errors.push({ file: filePath, error: e.message });
+      }
+    }
+
+    if (errors.length > 0 && restored.length === 0) {
+      return res.status(500).json({ error: '撤销同步失败', errors });
+    }
+
+    const backupPath = getBackupPath(tool);
+    fs.unlinkSync(backupPath);
+
+    const db = getDb();
+    try {
+      db.run(`DELETE FROM tool_sync WHERE tool = '${tool.replace(/'/g, "''")}'`);
+      saveToFile();
+    } catch {}
+
+    res.json({
+      success: true,
+      message: `${tool} 同步已撤销，配置已恢复`,
+      restored,
+      errors: errors.length > 0 ? errors : undefined
+    });
   });
 
   // ── Refresh model cache ──
@@ -358,9 +500,3 @@ module.exports = () => {
 
   return router;
 };
-
-function maskKey(key) {
-  if (!key) return '';
-  if (key.length <= 12) return key.slice(0, 4) + '***';
-  return key.slice(0, 8) + '***' + key.slice(-4);
-}

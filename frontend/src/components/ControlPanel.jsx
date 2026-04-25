@@ -21,6 +21,12 @@ export default function ControlPanel({ sessionId, currentOptions, onUpdateOption
     loadOptions()
   }, [])
 
+  useEffect(() => {
+    const handler = () => loadOptions()
+    window.addEventListener('models-changed', handler)
+    return () => window.removeEventListener('models-changed', handler)
+  }, [])
+
   const loadOptions = async () => {
     try {
       const data = await fetch(`${API_BASE}/options`).then(r => r.json())

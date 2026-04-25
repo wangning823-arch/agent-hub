@@ -25,6 +25,7 @@ export default function ModelManager() {
 
   const providerFormInit = { id: '', name: '', npmPackage: '', baseUrl: '', baseUrlAnthropic: '', apiKey: '' }
   const [providerForm, setProviderForm] = useState(providerFormInit)
+  const [editingHasApiKey, setEditingHasApiKey] = useState(false)
 
   const modelFormInit = { id: '', name: '', contextLimit: 0, outputLimit: 0, inputModalities: ['text'], outputModalities: ['text'] }
   const [modelForm, setModelForm] = useState(modelFormInit)
@@ -59,7 +60,8 @@ export default function ModelManager() {
 
   const startEditProvider = (p) => {
     setEditingProvider(p.id)
-    setProviderForm({ id: p.id, name: p.name, npmPackage: p.npmPackage || '', baseUrl: p.baseUrl, baseUrlAnthropic: p.baseUrlAnthropic || '', apiKey: p.apiKey || '' })
+    setProviderForm({ id: p.id, name: p.name, npmPackage: p.npmPackage || '', baseUrl: p.baseUrl, baseUrlAnthropic: p.baseUrlAnthropic || '', apiKey: '' })
+    setEditingHasApiKey(!!p.hasApiKey)
     setAddingProvider(false)
   }
 
@@ -67,12 +69,14 @@ export default function ModelManager() {
     setAddingProvider(true)
     setEditingProvider(null)
     setProviderForm(providerFormInit)
+    setEditingHasApiKey(false)
   }
 
   const cancelProviderForm = () => {
     setAddingProvider(false)
     setEditingProvider(null)
     setProviderForm(providerFormInit)
+    setEditingHasApiKey(false)
   }
 
   const saveProvider = async (isEdit) => {
@@ -85,16 +89,19 @@ export default function ModelManager() {
         ? `${API_BASE}/models/providers/${providerForm.id}`
         : `${API_BASE}/models/providers`
       const method = isEdit ? 'PUT' : 'POST'
+      const body = { ...providerForm }
+      if (isEdit && !body.apiKey) delete body.apiKey
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(providerForm)
+        body: JSON.stringify(body)
       })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error || '保存失败'); return }
       toast.success(isEdit ? 'Provider 已更新' : 'Provider 已添加')
       cancelProviderForm()
       fetchData()
+      notifyModelsChanged()
     } catch (e) {
       toast.error('保存失败: ' + e.message)
     }
@@ -109,6 +116,7 @@ export default function ModelManager() {
       toast.success('Provider 已删除')
       if (expandedProvider === id) setExpandedProvider(null)
       fetchData()
+      notifyModelsChanged()
     } catch (e) {
       toast.error('删除失败: ' + e.message)
     }
@@ -155,6 +163,7 @@ export default function ModelManager() {
       toast.success(isEdit ? '模型已更新' : '模型已添加')
       cancelModelForm()
       fetchData()
+      notifyModelsChanged()
     } catch (e) {
       toast.error('保存失败: ' + e.message)
     }
@@ -168,9 +177,14 @@ export default function ModelManager() {
       if (!res.ok) { toast.error(data.error || '删除失败'); return }
       toast.success('模型已删除')
       fetchData()
+      notifyModelsChanged()
     } catch (e) {
       toast.error('删除失败: ' + e.message)
     }
+  }
+
+  const notifyModelsChanged = () => {
+    window.dispatchEvent(new CustomEvent('models-changed'))
   }
 
   const handleSync = async (tool, body) => {
@@ -186,6 +200,7 @@ export default function ModelManager() {
       toast.success(data.message || '同步成功')
       await fetch(`${API_BASE}/models/refresh-cache`, { method: 'POST' }).catch(() => {})
       fetchData()
+      notifyModelsChanged()
     } catch (e) {
       toast.error('同步失败: ' + e.message)
     } finally {
@@ -214,7 +229,7 @@ export default function ModelManager() {
         </div>
 
         {addingProvider && (
-          <ProviderForm form={providerForm} setForm={setProviderForm} onSave={() => saveProvider(false)} onCancel={cancelProviderForm} isNew />
+          <ProviderForm form={providerForm} setForm={setProviderForm} onSave={() => saveProvider(false)} onCancel={cancelProviderForm} isNew hasApiKey={editingHasApiKey} />
         )}
 
         {providers.length === 0 && !addingProvider && (
@@ -249,7 +264,7 @@ export default function ModelManager() {
             </div>
 
             {editingProvider === p.id && (
-              <ProviderForm form={providerForm} setForm={setProviderForm} onSave={() => saveProvider(true)} onCancel={cancelProviderForm} />
+              <ProviderForm form={providerForm} setForm={setProviderForm} onSave={() => saveProvider(true)} onCancel={cancelProviderForm} hasApiKey={editingHasApiKey} />
             )}
 
             {expandedProvider === p.id && editingProvider !== p.id && (
@@ -301,7 +316,7 @@ export default function ModelManager() {
   )
 }
 
-function ProviderForm({ form, setForm, onSave, onCancel, isNew }) {
+function ProviderForm({ form, setForm, onSave, onCancel, isNew, hasApiKey }) {
   return (
     <div className="p-3 mt-2 rounded-lg space-y-2" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}>
       <div className="grid grid-cols-2 gap-2">
@@ -329,8 +344,8 @@ function ProviderForm({ form, setForm, onSave, onCancel, isNew }) {
         <input value={form.baseUrlAnthropic} onChange={e => setForm(p => ({ ...p, baseUrlAnthropic: e.target.value }))} className="input-field text-xs" placeholder="https://api.example.com/anthropic" />
       </div>
       <div>
-        <label className="text-xs block mb-1" style={{ color: 'var(--text-secondary)' }}>API Key</label>
-        <input value={form.apiKey} onChange={e => setForm(p => ({ ...p, apiKey: e.target.value }))} className="input-field text-xs" type="password" placeholder={isNew ? '输入 API Key' : '留空保持原值'} />
+        <label className="text-xs block mb-1" style={{ color: 'var(--text-secondary)' }}>API Key {!isNew && hasApiKey && <span style={{ color: 'var(--success, #22c55e)' }}>● 已设置</span>}</label>
+        <input value={form.apiKey} onChange={e => setForm(p => ({ ...p, apiKey: e.target.value }))} className="input-field text-xs" type="password" placeholder={isNew ? '输入 API Key' : hasApiKey ? '输入新值替换，留空保持原值' : '输入 API Key'} />
       </div>
       <div className="flex gap-2 justify-end">
         <button onClick={onCancel} className="btn-secondary text-xs py-1 px-3">取消</button>
@@ -409,12 +424,27 @@ function ModelForm({ form, setForm, onSave, onCancel, isNew, toggleModality }) {
 }
 
 function ToolSyncSection({ providers, models, syncStatus, syncing, onSync }) {
+  const toast = useToast()
   const [claudeProvider, setClaudeProvider] = useState('')
   const [claudeModelConfig, setClaudeModelConfig] = useState({ model: '', sonnetModel: '', opusModel: '', haikuModel: '' })
   const [opencodeProviders, setOpencodeProviders] = useState([])
   const [opencodeDefaultModel, setOpencodeDefaultModel] = useState('')
   const [codexProvider, setCodexProvider] = useState('')
   const [codexModel, setCodexModel] = useState('')
+  const [backups, setBackups] = useState({})
+  const [undoing, setUndoing] = useState({})
+  const [expandedBackup, setExpandedBackup] = useState({})
+  const [backupContents, setBackupContents] = useState({})
+
+  const fetchBackups = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/models/sync/backups`)
+      const data = await res.json()
+      setBackups(data.backups || {})
+    } catch {}
+  }, [])
+
+  useEffect(() => { fetchBackups() }, [fetchBackups])
 
   useEffect(() => {
     if (syncStatus['claude-code']) {
@@ -443,21 +473,102 @@ function ToolSyncSection({ providers, models, syncStatus, syncing, onSync }) {
 
   const syncClaude = () => {
     if (!claudeProvider) return
-    onSync('claude-code', { providerId: claudeProvider, modelConfig: claudeModelConfig })
+    onSync('claude-code', { providerId: claudeProvider, modelConfig: claudeModelConfig }).then(() => fetchBackups())
   }
 
   const syncOpencode = () => {
     if (opencodeProviders.length === 0) return
-    onSync('opencode', { providerIds: opencodeProviders, defaultModel: opencodeDefaultModel })
+    onSync('opencode', { providerIds: opencodeProviders, defaultModel: opencodeDefaultModel }).then(() => fetchBackups())
   }
 
   const syncCodex = () => {
     if (!codexProvider || !codexModel) return
-    onSync('codex', { providerId: codexProvider, modelId: codexModel })
+    onSync('codex', { providerId: codexProvider, modelId: codexModel }).then(() => fetchBackups())
+  }
+
+  const handleUndo = async (tool) => {
+    if (!window.confirm(`确定撤销 ${tool} 的同步？将恢复同步前的配置文件。`)) return
+    setUndoing(prev => ({ ...prev, [tool]: true }))
+    try {
+      const res = await fetch(`${API_BASE}/models/sync/undo/${tool}`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) { toast.error(data.error || '撤销失败'); return }
+      toast.success(data.message || '撤销成功')
+      setExpandedBackup(prev => ({ ...prev, [tool]: false }))
+      setBackupContents(prev => ({ ...prev, [tool]: null }))
+      fetchBackups()
+      await fetch(`${API_BASE}/models/refresh-cache`, { method: 'POST' }).catch(() => {})
+      window.dispatchEvent(new CustomEvent('models-changed'))
+    } catch (e) {
+      toast.error('撤销失败: ' + e.message)
+    } finally {
+      setUndoing(prev => ({ ...prev, [tool]: false }))
+    }
+  }
+
+  const toggleBackupDetail = async (tool) => {
+    if (expandedBackup[tool]) {
+      setExpandedBackup(prev => ({ ...prev, [tool]: false }))
+      return
+    }
+    try {
+      const res = await fetch(`${API_BASE}/models/sync/backups/${tool}`)
+      const data = await res.json()
+      setBackupContents(prev => ({ ...prev, [tool]: data.backup }))
+      setExpandedBackup(prev => ({ ...prev, [tool]: true }))
+    } catch {
+      toast.error('获取备份详情失败')
+    }
+  }
+
+  const renderBackupInfo = (tool) => {
+    const toolBackups = backups[tool]
+    if (!toolBackups || Object.keys(toolBackups).length === 0) return null
+    const backupEntries = Object.entries(toolBackups)
+    return (
+      <div className="mt-2 p-2 rounded-lg" style={{ background: 'var(--bg-hover)', border: '1px solid var(--border-subtle)' }}>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-medium" style={{ color: 'var(--warning)' }}>已有备份</span>
+          <div className="flex gap-1">
+            <button onClick={() => toggleBackupDetail(tool)} className="text-xs py-0.5 px-2 rounded"
+              style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>
+              {expandedBackup[tool] ? '收起' : '查看备份'}
+            </button>
+            <button onClick={() => handleUndo(tool)} disabled={undoing[tool]}
+              className="text-xs py-0.5 px-2 rounded font-medium"
+              style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--error)' }}>
+              {undoing[tool] ? '恢复中...' : '撤销同步'}
+            </button>
+          </div>
+        </div>
+        {backupEntries.map(([filePath, info]) => (
+          <div key={filePath} className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            <span className="truncate block" title={filePath}>{filePath.split('/').pop()}</span>
+            <span>备份于 {new Date(info.backedUpAt).toLocaleString()}</span>
+            {!info.hasContent && <span className="ml-1">(原文件不存在)</span>}
+          </div>
+        ))}
+        {expandedBackup[tool] && backupContents[tool] && (
+          <div className="mt-2 p-2 rounded" style={{ background: 'var(--bg-tertiary)', maxHeight: '200px', overflow: 'auto' }}>
+            <div className="text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>备份内容：</div>
+            {Object.entries(backupContents[tool]).map(([filePath, info]) => (
+              <div key={filePath}>
+                <div className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>{filePath}</div>
+                <pre className="text-xs p-1.5 rounded overflow-x-auto" style={{ background: 'var(--bg-primary)', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                  {info.content || '(空)'}
+                </pre>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
   }
 
   const claudeModels = models[claudeProvider] || []
   const codexModels = models[codexProvider] || []
+  const claudeProviderData = providers.find(p => p.id === claudeProvider)
+  const claudeProviderHasAnthropicUrl = !!claudeProviderData?.baseUrlAnthropic
 
   return (
     <div>
@@ -508,9 +619,15 @@ function ToolSyncSection({ providers, models, syncStatus, syncing, onSync }) {
               </div>
             </div>
           )}
-          <button onClick={syncClaude} disabled={!claudeProvider || syncing['claude-code']} className="btn-primary text-xs py-1.5 px-4 w-full">
+          {claudeProvider && !claudeProviderHasAnthropicUrl && (
+            <div className="text-xs py-1.5 px-3 rounded-lg" style={{ color: 'var(--warning)', background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.2)' }}>
+              该 Provider 未设置 Base URL (Anthropic 协议)，无法同步到 Claude Code
+            </div>
+          )}
+          <button onClick={syncClaude} disabled={!claudeProvider || !claudeProviderHasAnthropicUrl || syncing['claude-code']} className="btn-primary text-xs py-1.5 px-4 w-full">
             {syncing['claude-code'] ? '同步中...' : '同步到 Claude Code'}
           </button>
+          {renderBackupInfo('claude-code')}
         </div>
       </div>
 
@@ -555,6 +672,7 @@ function ToolSyncSection({ providers, models, syncStatus, syncing, onSync }) {
           <button onClick={syncOpencode} disabled={opencodeProviders.length === 0 || syncing['opencode']} className="btn-primary text-xs py-1.5 px-4 w-full">
             {syncing['opencode'] ? '同步中...' : '同步到 OpenCode'}
           </button>
+          {renderBackupInfo('opencode')}
         </div>
       </div>
 
@@ -583,6 +701,7 @@ function ToolSyncSection({ providers, models, syncStatus, syncing, onSync }) {
           <button onClick={syncCodex} disabled={!codexProvider || !codexModel || syncing['codex']} className="btn-primary text-xs py-1.5 px-4 w-full">
             {syncing['codex'] ? '同步中...' : '同步到 Codex'}
           </button>
+          {renderBackupInfo('codex')}
         </div>
       </div>
     </div>

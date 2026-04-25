@@ -96,6 +96,18 @@ async function initDb() {
     }
   } catch (e) { }
 
+  // 增量迁移：清理从 Claude Code 自动迁移的 claude-custom provider（仅保留 base_url_anthropic 到已有 provider）
+  try {
+    const ccResult = db.exec("SELECT id FROM providers WHERE id = 'claude-custom'");
+    if (ccResult.length > 0 && ccResult[0].values.length > 0) {
+      db.run("DELETE FROM models WHERE provider_id = 'claude-custom'");
+      db.run("DELETE FROM tool_sync WHERE provider_id = 'claude-custom'");
+      db.run("DELETE FROM providers WHERE id = 'claude-custom'");
+      console.log('[数据库迁移] 已清理 claude-custom provider（模型仅从 OpenCode 配置读取）');
+      saveToFile();
+    }
+  } catch (e) { }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS models (
       id TEXT NOT NULL,
@@ -309,43 +321,19 @@ async function migrateModelsFromConfigFiles() {
         if (matchedProvider) {
           const updateStmt = db.prepare('UPDATE providers SET base_url_anthropic = ? WHERE id = ?');
           updateStmt.run([anthropicBaseURL, matchedProvider.id]);
-        } else {
-          const providerId = 'claude-custom';
-          const insertProvider = db.prepare(
-            'INSERT INTO providers (id, name, npm_package, base_url, base_url_anthropic, api_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        }
+
+        if (matchedProvider) {
+          const insertSync = db.prepare(
+            'INSERT OR REPLACE INTO tool_sync (tool, provider_id, model_id, synced_at, config) VALUES (?, ?, ?, ?, ?)'
           );
-          insertProvider.run([providerId, 'Claude Custom', '', '', anthropicBaseURL, env.ANTHROPIC_AUTH_TOKEN || '', now, now]);
+          const config = {};
+          if (env.ANTHROPIC_MODEL) config.model = env.ANTHROPIC_MODEL;
+          if (env.ANTHROPIC_DEFAULT_SONNET_MODEL) config.sonnetModel = env.ANTHROPIC_DEFAULT_SONNET_MODEL;
+          if (env.ANTHROPIC_DEFAULT_OPUS_MODEL) config.opusModel = env.ANTHROPIC_DEFAULT_OPUS_MODEL;
+          if (env.ANTHROPIC_DEFAULT_HAIKU_MODEL) config.haikuModel = env.ANTHROPIC_DEFAULT_HAIKU_MODEL;
+          insertSync.run(['claude-code', matchedProvider.id, env.ANTHROPIC_MODEL || '', now, JSON.stringify(config)]);
         }
-
-        const targetProviderId = matchedProvider ? matchedProvider.id : 'claude-custom';
-
-        const claudeModelIds = new Set();
-        if (env.ANTHROPIC_MODEL) claudeModelIds.add(env.ANTHROPIC_MODEL);
-        if (env.ANTHROPIC_DEFAULT_SONNET_MODEL) claudeModelIds.add(env.ANTHROPIC_DEFAULT_SONNET_MODEL);
-        if (env.ANTHROPIC_DEFAULT_OPUS_MODEL) claudeModelIds.add(env.ANTHROPIC_DEFAULT_OPUS_MODEL);
-        if (env.ANTHROPIC_DEFAULT_HAIKU_MODEL) claudeModelIds.add(env.ANTHROPIC_DEFAULT_HAIKU_MODEL);
-
-        for (const modelId of claudeModelIds) {
-          if (!modelId) continue;
-          const checkResult = db.exec(`SELECT COUNT(*) as cnt FROM models WHERE id = '${modelId.replace(/'/g, "''")}' AND provider_id = '${targetProviderId.replace(/'/g, "''")}'`);
-          const cnt = checkResult.length > 0 ? checkResult[0].values[0][0] : 0;
-          if (cnt === 0) {
-            const insertModel = db.prepare(
-              'INSERT INTO models (id, provider_id, name, context_limit, output_limit, input_modalities, output_modalities) VALUES (?, ?, ?, ?, ?, ?, ?)'
-            );
-            insertModel.run([modelId, targetProviderId, modelId, 0, 0, '["text"]', '["text"]']);
-          }
-        }
-
-        const insertSync = db.prepare(
-          'INSERT OR REPLACE INTO tool_sync (tool, provider_id, model_id, synced_at, config) VALUES (?, ?, ?, ?, ?)'
-        );
-        const config = {};
-        if (env.ANTHROPIC_MODEL) config.model = env.ANTHROPIC_MODEL;
-        if (env.ANTHROPIC_DEFAULT_SONNET_MODEL) config.sonnetModel = env.ANTHROPIC_DEFAULT_SONNET_MODEL;
-        if (env.ANTHROPIC_DEFAULT_OPUS_MODEL) config.opusModel = env.ANTHROPIC_DEFAULT_OPUS_MODEL;
-        if (env.ANTHROPIC_DEFAULT_HAIKU_MODEL) config.haikuModel = env.ANTHROPIC_DEFAULT_HAIKU_MODEL;
-        insertSync.run(['claude-code', targetProviderId, env.ANTHROPIC_MODEL || '', now, JSON.stringify(config)]);
       }
     } catch (e) {
       console.warn('[模型迁移] 读取 Claude 配置失败:', e.message);

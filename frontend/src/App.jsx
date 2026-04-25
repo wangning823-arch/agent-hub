@@ -97,6 +97,65 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  // 移动端边缘滑动手势
+  useEffect(() => {
+    if (!isMobile) return
+    let startX = 0
+    let startY = 0
+    const edgeThreshold = 24
+    const swipeThreshold = 50
+
+    const handleTouchStart = (e) => {
+      startX = e.touches[0].clientX
+      startY = e.touches[0].clientY
+    }
+
+    const handleTouchMove = (e) => {
+      const touch = e.touches[0]
+      const diffX = touch.clientX - startX
+      const diffY = touch.clientY - startY
+      if (Math.abs(diffX) <= Math.abs(diffY)) return
+      if (Math.abs(diffX) < 10) return
+
+      const width = window.innerWidth
+      // 从左侧边缘右滑 或 从右侧边缘左滑
+      if (
+        (startX < edgeThreshold && diffX > 0) ||
+        (startX > width - edgeThreshold && diffX < 0)
+      ) {
+        e.preventDefault()
+      }
+    }
+
+    const handleTouchEnd = (e) => {
+      const endX = e.changedTouches[0].clientX
+      const endY = e.changedTouches[0].clientY
+      const diffX = endX - startX
+      const diffY = endY - startY
+      if (Math.abs(diffY) > Math.abs(diffX)) return
+      if (Math.abs(diffX) < swipeThreshold) return
+
+      const width = window.innerWidth
+      if (diffX > 0 && startX < edgeThreshold) {
+        setLeftSidebarOpen(true)
+        setRightSidebarOpen(false)
+      } else if (diffX < 0 && startX > width - edgeThreshold) {
+        setRightSidebarOpen(true)
+        setLeftSidebarOpen(false)
+      }
+    }
+
+    document.addEventListener('touchstart', handleTouchStart, { passive: true })
+    document.addEventListener('touchmove', handleTouchMove, { passive: false })
+    document.addEventListener('touchend', handleTouchEnd, { passive: true })
+
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart)
+      document.removeEventListener('touchmove', handleTouchMove)
+      document.removeEventListener('touchend', handleTouchEnd)
+    }
+  }, [isMobile])
+
   useEffect(() => {
     fetch(`${API_BASE}/agents`)
       .then(res => res.json())

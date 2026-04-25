@@ -64,6 +64,12 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
     loadOptions()
   }, [agentType])
 
+  useEffect(() => {
+    const handler = () => loadOptions()
+    window.addEventListener('models-changed', handler)
+    return () => window.removeEventListener('models-changed', handler)
+  }, [agentType])
+
   const loadOptions = async () => {
     try {
       const data = await fetch(`${API_BASE}/options?agentType=${agentType}`).then(r => r.json())
