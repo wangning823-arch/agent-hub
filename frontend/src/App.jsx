@@ -52,9 +52,13 @@ export default function App() {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const isMobileRef = useRef(isMobile)
   const [loadingSessionId, setLoadingSessionId] = useState(null)
   const [viewportHeight, setViewportHeight] = useState(window.visualViewport?.height || window.innerHeight)
   const scrollContainerRef = useRef(null)
+  // 键盘弹出/收起期间，禁止 handleScroll 更新侧边栏状态
+  const isViewportResizingRef = useRef(false)
+  const viewportResizeTimeoutRef = useRef(null)
 
   // 全局 fetch 拦截，自动加 token
   useEffect(() => {
@@ -93,6 +97,10 @@ export default function App() {
   }
 
   useEffect(() => {
+    isMobileRef.current = isMobile
+  }, [isMobile])
+
+  useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 768
       setIsMobile(mobile)
@@ -104,15 +112,51 @@ export default function App() {
         setRightSidebarOpen(true)
       }
     }
+
+    // 键盘弹出/收起时，保存并恢复水平滚动位置，防止跳到侧边栏
+    const handleVisualResize = () => {
+      if (!isMobileRef.current || !scrollContainerRef.current) return
+      const container = scrollContainerRef.current
+      const savedScrollLeft = container.scrollLeft
+      if (window.visualViewport) {
+        setViewportHeight(window.visualViewport.height)
+      }
+      // 标记正在 resize，禁止 handleScroll 更新侧边栏状态
+      isViewportResizingRef.current = true
+      if (viewportResizeTimeoutRef.current) clearTimeout(viewportResizeTimeoutRef.current)
+      viewportResizeTimeoutRef.current = setTimeout(() => {
+        isViewportResizingRef.current = false
+      }, 500)
+      // 恢复水平滚动位置
+      requestAnimationFrame(() => {
+        container.scrollLeft = savedScrollLeft
+      })
+    }
+
+    // 输入框获得焦点时（键盘即将弹出），提前标记，防止 handleScroll 跳侧边栏
+    const handleFocusIn = (e) => {
+      if (!isMobileRef.current) return
+      const tag = e.target.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) {
+        isViewportResizingRef.current = true
+        if (viewportResizeTimeoutRef.current) clearTimeout(viewportResizeTimeoutRef.current)
+        viewportResizeTimeoutRef.current = setTimeout(() => {
+          isViewportResizingRef.current = false
+        }, 500)
+      }
+    }
+
     window.addEventListener('resize', handleResize)
+    window.addEventListener('focusin', handleFocusIn)
     if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleResize)
+      window.visualViewport.addEventListener('resize', handleVisualResize)
     }
     handleResize()
     return () => {
       window.removeEventListener('resize', handleResize)
+      window.removeEventListener('focusin', handleFocusIn)
       if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', handleResize)
+        window.visualViewport.removeEventListener('resize', handleVisualResize)
       }
     }
   }, [])
@@ -132,7 +176,9 @@ export default function App() {
     if (!isMobile || !scrollContainerRef.current) return
     const container = scrollContainerRef.current
     const handleScroll = () => {
-      // 如果不是用户主动滚动（如键盘弹出的被动resize），不更新状态
+      // 键盘弹出/收起期间，不更新侧边栏状态
+      if (isViewportResizingRef.current) return
+      // 如果不是用户主动滚动，不更新状态
       if (!isUserScrollingRef.current) return
 
       const width = container.clientWidth
