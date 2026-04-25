@@ -31,6 +31,7 @@ export default function Sidebar({
   activeSession,
   agentType = 'claude-code',
   sessionOptions,
+  loadingSessionId,
   onSelectSession,
   onCloseSession,
   onResumeSession,
@@ -40,7 +41,8 @@ export default function Sidebar({
   onRenameSession,
   onPinSession,
   onArchiveSession,
-  onUpdateTags
+  onUpdateTags,
+  onSetLoading
 }) {
   const toast = useToast()
   const [expandedSection, setExpandedSection] = useState('sessions')
@@ -344,7 +346,15 @@ export default function Sidebar({
                 sortedSessions.map(session => (
                   <div
                     key={session.id}
-                    onClick={() => session.isActive ? onSelectSession(session.id) : onResumeSession(session.id)}
+                    onClick={() => {
+                      if (session.isActive) {
+                        onSelectSession(session.id);
+                      } else {
+                        // 立即显示加载中，不等 API 返回
+                        if (onSetLoading) onSetLoading(session.id);
+                        onResumeSession(session.id);
+                      }
+                    }}
                     className={`sidebar-item group ${activeSession === session.id ? 'active' : ''}`}
                     style={{ flexDirection: 'column', alignItems: 'stretch' }}
                   >
@@ -372,6 +382,12 @@ export default function Sidebar({
                             <span className="flex-shrink-0 text-[10px] font-bold px-1 rounded"
                               style={{ color: getAgentLabel(session.agentType).color, background: getAgentLabel(session.agentType).color + '18', lineHeight: '1.4' }}>
                               {getAgentLabel(session.agentType).text}
+                            </span>
+                          )}
+                          {loadingSessionId === session.id && (
+                            <span className="flex-shrink-0 text-[10px] flex items-center gap-1" style={{ color: 'var(--accent-primary)' }}>
+                              <span className="animate-spin inline-block" style={{ animationDuration: '1s' }}>⏳</span>
+                              <span>加载中...</span>
                             </span>
                           )}
                         </span>

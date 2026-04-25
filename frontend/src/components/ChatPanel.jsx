@@ -6,7 +6,7 @@ import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
 import { API_BASE, getWebSocketUrl } from '../config'
 
-export default function ChatPanel({ sessionId, agentType = 'claude-code', options = {}, onOptionsChange, onWorkingChange, onStartingChange, isWorking = false, isStarting = false }) {
+export default function ChatPanel({ sessionId, agentType = 'claude-code', options = {}, onOptionsChange, onWorkingChange, onStartingChange, onSessionLoaded, isWorking = false, isStarting = false }) {
   const toast = useToast()
   const notification = useNotification()
   const [messages, setMessages] = useState([])
@@ -17,7 +17,8 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   const [attachments, setAttachments] = useState([])
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
-  
+  const [isLoadingSession, setIsLoadingSession] = useState(false)
+
   // 分页状态
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -82,10 +83,11 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   }
 
   const scrollToBottom = (behavior = 'smooth') => {
-    const el = scrollContainerRef.current
-    if (!el) return
-    requestAnimationFrame(() => {
-      el.scrollTo({ top: el.scrollHeight, behavior })
+    if (messages.length === 0) return
+    // 使用 virtualizer 滚动到最后一条消息
+    virtualizer.scrollToIndex(messages.length - 1, {
+      align: 'end',
+      behavior,
     })
   }
 
@@ -109,7 +111,8 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   useEffect(() => {
     if (initialLoadRef.current && messages.length > 0) {
       initialLoadRef.current = false
-      setTimeout(() => scrollToBottom('auto'), 50)
+      // 虚拟列表需要时间计算元素高度，延迟滚动
+      setTimeout(() => scrollToBottom('auto'), 150)
     } else if (isNearBottomRef.current) {
       scrollToBottom()
     }
@@ -189,6 +192,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
 
     // 加载历史消息
     const loadHistory = async () => {
+      setIsLoadingSession(true)
       try {
         const data = await fetch(`${API_BASE}/sessions/${sessionId}/messages?limit=${PAGE_SIZE}&offset=0`).then(r => r.json())
         if (data.messages && data.messages.length > 0) {
@@ -238,6 +242,9 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
       } catch (error) {
         console.error('加载历史消息失败:', error)
         toast.error('加载历史消息失败')
+      } finally {
+        setIsLoadingSession(false)
+        if (onSessionLoaded) onSessionLoaded()
       }
     }
 
@@ -268,14 +275,19 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
        ws.onopen = () => {
          setConnected(true)
          setConnecting(false)
-         reconnectAttempts = 0 // 重置重连计数
          console.log('WebSocket已连接')
-         
-         // 显示连接成功提示
-         if (reconnectAttempts > 0) {
+
+         // 显示连接成功提示（在重置重连计数之前检查）
+         const wasReconnect = reconnectAttempts > 0
+         if (wasReconnect) {
            setStatusMessage('✅ 已重新连接到服务器')
            setTimeout(() => setStatusMessage(''), 3000)
+         } else {
+           // 清除任何之前的状态消息
+           setStatusMessage('')
          }
+
+         reconnectAttempts = 0 // 重置重连计数
 
          // 启动心跳机制
          if (pingInterval) clearInterval(pingInterval)
@@ -769,12 +781,23 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
       )}
 
       {/* Messages */}
-      <div 
+      <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto p-4"
-        style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' }}
+        className="flex-1 overflow-y-auto p-3 space-y-4 message-list"
+        style={{
+          overscrollBehaviorY: 'contain',
+          WebkitOverflowScrolling: 'touch'
+        }}
       >
-        {messages.length === 0 && (
+        {isLoadingSession && (
+          <div className="flex items-center justify-center py-12">
+            <div className="flex flex-col items-center gap-3" style={{ color: 'var(--text-muted)' }}>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: 'var(--accent-primary)' }}></div>
+              <span className="text-sm">正在加载会话，请稍等...</span>
+            </div>
+          </div>
+        )}
+        {!isLoadingSession && messages.length === 0 && (
           <div className="text-center mt-20" style={{ color: 'var(--text-muted)', animation: 'slideUp 0.5s ease' }}>
             <p className="text-4xl mb-3">💬</p>
             <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>开始对话吧</p>

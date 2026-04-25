@@ -52,6 +52,7 @@ export default function App() {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const [loadingSessionId, setLoadingSessionId] = useState(null)
   const [viewportHeight, setViewportHeight] = useState(window.visualViewport?.height || window.innerHeight)
   const scrollContainerRef = useRef(null)
 
@@ -123,10 +124,17 @@ export default function App() {
     container.scrollLeft = width
   }, [isMobile])
 
+  // 跟踪是否正在滚动（用户主动滚动）
+  const isUserScrollingRef = useRef(false)
+  const scrollTimeoutRef = useRef(null)
+
   useEffect(() => {
     if (!isMobile || !scrollContainerRef.current) return
     const container = scrollContainerRef.current
     const handleScroll = () => {
+      // 如果不是用户主动滚动（如键盘弹出的被动resize），不更新状态
+      if (!isUserScrollingRef.current) return
+
       const width = container.clientWidth
       const scrollLeft = container.scrollLeft
       if (scrollLeft < width * 0.3) {
@@ -140,8 +148,33 @@ export default function App() {
         setRightSidebarOpen(false)
       }
     }
+
+    // 用于检测用户主动触摸滚动
+    const handleTouchStart = () => {
+      isUserScrollingRef.current = true
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+      }
+    }
+
+    const handleTouchEnd = () => {
+      // 触摸结束后，延迟重置标记（允许scroll事件的惯性滚动也能触发）
+      scrollTimeoutRef.current = setTimeout(() => {
+        isUserScrollingRef.current = false
+      }, 300)
+    }
+
     container.addEventListener('scroll', handleScroll, { passive: true })
-    return () => container.removeEventListener('scroll', handleScroll)
+    container.addEventListener('touchstart', handleTouchStart, { passive: true })
+    container.addEventListener('touchend', handleTouchEnd, { passive: true })
+    return () => {
+      container.removeEventListener('scroll', handleScroll)
+      container.removeEventListener('touchstart', handleTouchStart)
+      container.removeEventListener('touchend', handleTouchEnd)
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+      }
+    }
   }, [isMobile])
 
   useEffect(() => {
@@ -165,9 +198,6 @@ export default function App() {
           }
         })
         setSessionOptions(prev => ({ ...allOptions, ...prev }))
-        if (data.length > 0 && !activeSession) {
-          setActiveSession(data[0].id)
-        }
       })
       .catch(console.error)
   }, [])
@@ -281,6 +311,7 @@ export default function App() {
       if (!res.ok || result.error) {
         const errMsg = result.error || `服务器错误 (${res.status})`
         console.error('恢复会话失败:', errMsg)
+        setLoadingSessionId(null)
         toast.error('恢复会话失败: ' + errMsg, 0)
         return
       }
@@ -295,10 +326,11 @@ export default function App() {
           return [...prev, result.session]
         })
         setActiveSession(result.session.id)
-        if (isMobile) scrollToPanel('main')
+        // loadingSessionId 已经在点击时设置了
       }
     } catch (error) {
       console.error('恢复会话请求失败:', error)
+      setLoadingSessionId(null)
       toast.error('恢复会话失败: ' + error.message, 0)
     }
   }
@@ -403,9 +435,17 @@ export default function App() {
           activeSession={activeSession}
           agentType={currentSession?.agentType || 'claude-code'}
           sessionOptions={sessionOptions}
-          onSelectSession={(id) => { 
-            setActiveSession(id); 
-            if (isMobile) scrollToPanel('main'); 
+          loadingSessionId={loadingSessionId}
+          onSetLoading={(id) => setLoadingSessionId(id)}
+          onSelectSession={(id) => {
+            if (id === activeSession) {
+              // 已经是当前会话，直接滑到聊天窗口
+              if (isMobile) scrollToPanel('main');
+              return;
+            }
+            setActiveSession(id);
+            setLoadingSessionId(id);
+            // 不在这里滑动，等加载完成后由 onSessionLoaded 滑动
           }}
           onCloseSession={removeSession}
           onResumeSession={resumeSession}
@@ -480,6 +520,10 @@ export default function App() {
               onOptionsChange={(opts) => handleUpdateOptions(activeSession, opts)}
               onWorkingChange={(isWorking) => setSessionWorking(activeSession, isWorking)}
               onStartingChange={(isStarting) => setSessionStarting(activeSession, isStarting)}
+              onSessionLoaded={() => {
+                setLoadingSessionId(null);
+                if (isMobile) scrollToPanel('main');
+              }}
             />
           ) : (
             <div className="h-full flex items-center justify-center p-4">
@@ -543,9 +587,13 @@ export default function App() {
       )}
       {showSearch && (
         <SearchPanel
-          onSelectSession={(id) => { 
-            setActiveSession(id); 
-            if (isMobile) scrollToPanel('main'); 
+          onSelectSession={(id) => {
+            if (id === activeSession) {
+              if (isMobile) scrollToPanel('main');
+              return;
+            }
+            setActiveSession(id);
+            setLoadingSessionId(id);
           }}
           onClose={() => setShowSearch(false)}
         />
