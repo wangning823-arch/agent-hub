@@ -17,6 +17,30 @@ html, body {
   overscroll-behavior-x: none;
 }
 
+.mobile-scroll-container {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.mobile-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+.mobile-panel {
+  flex: 0 0 100vw;
+  width: 100vw;
+  height: 100%;
+  scroll-snap-align: start;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.mobile-panel > div {
+  width: 100% !important;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background-color: var(--bg-primary);

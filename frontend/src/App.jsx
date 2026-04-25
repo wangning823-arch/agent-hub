@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import ChatPanel from './components/ChatPanel'
 import NewSessionModal from './components/NewSessionModal'
 import SettingsPanel from './components/SettingsPanel'
@@ -17,9 +17,6 @@ const API_BASE = '/api'
 // SVG icons
 const IconMenu = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-)
-const IconX = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 )
 const IconSearch = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -55,6 +52,7 @@ export default function App() {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const scrollContainerRef = useRef(null)
 
   // 全局 fetch 拦截，自动加 token
   useEffect(() => {
@@ -83,6 +81,15 @@ export default function App() {
 
   const handleLogin = (token) => { setAccessToken(token) }
 
+  const scrollToPanel = (panel) => {
+    if (!scrollContainerRef.current) return
+    const container = scrollContainerRef.current
+    const width = container.clientWidth
+    if (panel === 'left') container.scrollTo({ left: 0, behavior: 'smooth' })
+    else if (panel === 'main') container.scrollTo({ left: width, behavior: 'smooth' })
+    else if (panel === 'right') container.scrollTo({ left: width * 2, behavior: 'smooth' })
+  }
+
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 768
@@ -97,63 +104,32 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // 移动端边缘滑动手势
   useEffect(() => {
-    if (!isMobile) return
-    let startX = 0
-    let startY = 0
-    const edgeThreshold = 24
-    const swipeThreshold = 50
+    if (!isMobile || !scrollContainerRef.current) return
+    const container = scrollContainerRef.current
+    const width = container.clientWidth
+    container.scrollLeft = width
+  }, [isMobile])
 
-    const handleTouchStart = (e) => {
-      startX = e.touches[0].clientX
-      startY = e.touches[0].clientY
-    }
-
-    const handleTouchMove = (e) => {
-      const touch = e.touches[0]
-      const diffX = touch.clientX - startX
-      const diffY = touch.clientY - startY
-      if (Math.abs(diffX) <= Math.abs(diffY)) return
-      if (Math.abs(diffX) < 10) return
-
-      const width = window.innerWidth
-      // 从左侧边缘右滑 或 从右侧边缘左滑
-      if (
-        (startX < edgeThreshold && diffX > 0) ||
-        (startX > width - edgeThreshold && diffX < 0)
-      ) {
-        e.preventDefault()
-      }
-    }
-
-    const handleTouchEnd = (e) => {
-      const endX = e.changedTouches[0].clientX
-      const endY = e.changedTouches[0].clientY
-      const diffX = endX - startX
-      const diffY = endY - startY
-      if (Math.abs(diffY) > Math.abs(diffX)) return
-      if (Math.abs(diffX) < swipeThreshold) return
-
-      const width = window.innerWidth
-      if (diffX > 0 && startX < edgeThreshold) {
+  useEffect(() => {
+    if (!isMobile || !scrollContainerRef.current) return
+    const container = scrollContainerRef.current
+    const handleScroll = () => {
+      const width = container.clientWidth
+      const scrollLeft = container.scrollLeft
+      if (scrollLeft < width * 0.3) {
         setLeftSidebarOpen(true)
         setRightSidebarOpen(false)
-      } else if (diffX < 0 && startX > width - edgeThreshold) {
-        setRightSidebarOpen(true)
+      } else if (scrollLeft > width * 1.7) {
         setLeftSidebarOpen(false)
+        setRightSidebarOpen(true)
+      } else {
+        setLeftSidebarOpen(false)
+        setRightSidebarOpen(false)
       }
     }
-
-    document.addEventListener('touchstart', handleTouchStart, { passive: true })
-    document.addEventListener('touchmove', handleTouchMove, { passive: false })
-    document.addEventListener('touchend', handleTouchEnd, { passive: true })
-
-    return () => {
-      document.removeEventListener('touchstart', handleTouchStart)
-      document.removeEventListener('touchmove', handleTouchMove)
-      document.removeEventListener('touchend', handleTouchEnd)
-    }
+    container.addEventListener('scroll', handleScroll, { passive: true })
+    return () => container.removeEventListener('scroll', handleScroll)
   }, [isMobile])
 
   useEffect(() => {
@@ -255,7 +231,7 @@ export default function App() {
       setActiveSession(session.id)
       setSessionOptions(prev => ({ ...prev, [session.id]: options }))
       setShowNewModal(false)
-      if (isMobile) setLeftSidebarOpen(false)
+      if (isMobile) scrollToPanel('main')
     } catch (error) {
       toast.error('创建会话失败: ' + error.message)
     }
@@ -307,7 +283,7 @@ export default function App() {
           return [...prev, result.session]
         })
         setActiveSession(result.session.id)
-        if (isMobile) setLeftSidebarOpen(false)
+        if (isMobile) scrollToPanel('main')
       }
     } catch (error) {
       console.error('恢复会话请求失败:', error)
@@ -336,7 +312,7 @@ export default function App() {
       [session.id]: { mode: project.mode, model: project.model, effort: project.effort }
     }))
     setShowProjectManager(false)
-    if (isMobile) setLeftSidebarOpen(false)
+    if (isMobile) scrollToPanel('main')
   }
 
   const handleUpdateOptions = (sessionId, options) => {
@@ -400,22 +376,13 @@ export default function App() {
   if (!currentToken) return <Login onLogin={handleLogin} />
 
   return (
-    <div className="h-screen flex overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-      {/* Mobile overlay */}
-      {isMobile && (leftSidebarOpen || rightSidebarOpen) && (
-        <div
-          className="absolute inset-0 z-40"
-          style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
-          onClick={() => { setLeftSidebarOpen(false); setRightSidebarOpen(false) }}
-        />
-      )}
-
+    <div
+      ref={scrollContainerRef}
+      className={`h-screen overflow-hidden ${isMobile ? 'mobile-scroll-container' : 'flex'}`}
+      style={{ background: 'var(--bg-primary)' }}
+    >
       {/* Left sidebar */}
-      <div className={`
-        ${isMobile ? 'absolute left-0 top-0 h-full z-50' : 'relative'}
-        transition-transform duration-300 ease-out
-        ${leftSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
+      <div className={isMobile ? 'mobile-panel' : 'relative'}>
         <Sidebar
           sessions={sessions}
           activeSession={activeSession}
@@ -423,8 +390,7 @@ export default function App() {
           sessionOptions={sessionOptions}
           onSelectSession={(id) => { 
             setActiveSession(id); 
-            // sessionOptions已经在加载时和更新时同步，不需要额外操作
-            if (isMobile) setLeftSidebarOpen(false); 
+            if (isMobile) scrollToPanel('main'); 
           }}
           onCloseSession={removeSession}
           onResumeSession={resumeSession}
@@ -438,16 +404,16 @@ export default function App() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+      <div className={isMobile ? 'mobile-panel' : 'flex-1 flex flex-col overflow-hidden min-w-0'}>
         {/* Header */}
         <header className="flex items-center justify-between px-3 md:px-5 py-2.5 border-b" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-subtle)' }}>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
+              onClick={() => isMobile ? scrollToPanel('left') : setLeftSidebarOpen(!leftSidebarOpen)}
               className="btn-icon"
-              title={leftSidebarOpen ? '关闭菜单' : '打开菜单'}
+              title="打开菜单"
             >
-              {leftSidebarOpen ? <IconX /> : <IconMenu />}
+              <IconMenu />
             </button>
 
             {activeSession && (
@@ -470,9 +436,9 @@ export default function App() {
               <IconSearch />
             </button>
             <button
-              onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
+              onClick={() => isMobile ? scrollToPanel('right') : setRightSidebarOpen(!rightSidebarOpen)}
               className={`btn-icon ${rightSidebarOpen ? 'active' : ''}`}
-              title={rightSidebarOpen ? '关闭文件面板' : '打开文件面板'}
+              title="打开文件面板"
             >
               <IconPanel />
             </button>
@@ -490,7 +456,7 @@ export default function App() {
             />
           ) : activeSession ? (
             <ChatPanel
-              key={activeSession} // 切换session时重新挂载组件
+              key={activeSession}
               sessionId={activeSession}
               agentType={currentSession?.agentType || 'claude-code'}
               options={currentOptions}
@@ -529,11 +495,7 @@ export default function App() {
       </div>
 
       {/* Right sidebar */}
-      <div className={`
-        ${isMobile ? 'absolute right-0 top-0 h-full z-50' : 'relative'}
-        transition-transform duration-300 ease-out
-        ${rightSidebarOpen ? 'translate-x-0' : 'translate-x-full'}
-      `}>
+      <div className={isMobile ? 'mobile-panel' : 'relative'}>
         <RightSidebar
           sessionId={activeSession}
           workdir={currentSession?.workdir}
@@ -568,8 +530,7 @@ export default function App() {
         <SearchPanel
           onSelectSession={(id) => { 
             setActiveSession(id); 
-            // sessionOptions已经在加载时和更新时同步，不需要额外操作
-            if (isMobile) setLeftSidebarOpen(false); 
+            if (isMobile) scrollToPanel('main'); 
           }}
           onClose={() => setShowSearch(false)}
         />
