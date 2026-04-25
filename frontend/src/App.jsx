@@ -52,6 +52,7 @@ export default function App() {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const [viewportHeight, setViewportHeight] = useState(window.visualViewport?.height || window.innerHeight)
   const scrollContainerRef = useRef(null)
 
   // 全局 fetch 拦截，自动加 token
@@ -94,14 +95,25 @@ export default function App() {
     const handleResize = () => {
       const mobile = window.innerWidth < 768
       setIsMobile(mobile)
+      if (window.visualViewport) {
+        setViewportHeight(window.visualViewport.height)
+      }
       if (!mobile) {
         setLeftSidebarOpen(true)
         setRightSidebarOpen(true)
       }
     }
     window.addEventListener('resize', handleResize)
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleResize)
+    }
     handleResize()
-    return () => window.removeEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleResize)
+      }
+    }
   }, [])
 
   useEffect(() => {
@@ -378,8 +390,11 @@ export default function App() {
   return (
     <div
       ref={scrollContainerRef}
-      className={`h-screen overflow-hidden ${isMobile ? 'mobile-scroll-container' : 'flex'}`}
-      style={{ background: 'var(--bg-primary)' }}
+      className={`overflow-hidden ${isMobile ? 'mobile-scroll-container' : 'flex h-screen'}`}
+      style={{
+        background: 'var(--bg-primary)',
+        ...(isMobile ? { height: `${viewportHeight}px` } : {}),
+      }}
     >
       {/* Left sidebar */}
       <div className={isMobile ? 'mobile-panel' : 'relative'}>
@@ -404,7 +419,7 @@ export default function App() {
       </div>
 
       {/* Main content */}
-      <div className={isMobile ? 'mobile-panel' : 'flex-1 flex flex-col overflow-hidden min-w-0'}>
+      <div className={isMobile ? 'mobile-panel-main' : 'flex-1 flex flex-col overflow-hidden min-w-0'}>
         {/* Header */}
         <header className="flex items-center justify-between px-3 md:px-5 py-2.5 border-b" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-subtle)' }}>
           <div className="flex items-center gap-3">

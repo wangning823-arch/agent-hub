@@ -56,8 +56,8 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   const scrollContainerRef = useRef(null)
   const fileInputRef = useRef(null)
   const textareaRef = useRef(null)
-  const lastMessageCountRef = useRef(0)
-  const lastScrollTimeRef = useRef(0)
+  const isNearBottomRef = useRef(true)
+  const initialLoadRef = useRef(true)
 
   // 加载选项
   useEffect(() => {
@@ -81,27 +81,44 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
     }
   }
 
-  // 只在新增消息时滚动到底部，加载历史消息时不自动滚动
-  const scrollToBottom = () => {
-    if (messages.length === 0) return
-    virtualizer.scrollToIndex(messages.length - 1, {
-      align: 'end',
-      behavior: 'smooth',
+  const scrollToBottom = (behavior = 'smooth') => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior })
     })
   }
 
+  const checkIfNearBottom = () => {
+    const el = scrollContainerRef.current
+    if (!el) return true
+    const threshold = 150
+    return el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+  }
+
   useEffect(() => {
-    // 只在消息数量增加且最后一条是新生成的才滚动
-    if (messages.length > lastMessageCountRef.current) {
-      const lastMsg = messages[messages.length - 1]
-      const lastTime = lastMsg?.time || 0
-      if (lastTime > lastScrollTimeRef.current) {
-        scrollToBottom()
-        lastScrollTimeRef.current = lastTime
-      }
+    const el = scrollContainerRef.current
+    if (!el) return
+    const onScroll = () => {
+      isNearBottomRef.current = checkIfNearBottom()
     }
-    lastMessageCountRef.current = messages.length
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [sessionId])
+
+  useEffect(() => {
+    if (initialLoadRef.current && messages.length > 0) {
+      initialLoadRef.current = false
+      setTimeout(() => scrollToBottom('auto'), 50)
+    } else if (isNearBottomRef.current) {
+      scrollToBottom()
+    }
   }, [messages])
+
+  useEffect(() => {
+    isNearBottomRef.current = true
+    initialLoadRef.current = true
+  }, [sessionId])
 
   // 加载更多历史消息
   const loadMoreMessages = async () => {
@@ -733,7 +750,8 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
       className={`h-full flex flex-col relative ${dragOver ? 'ring-2 ring-inset' : ''}`}
       style={{
         background: 'var(--bg-primary)',
-        '--tw-ring-color': 'var(--accent-primary)'
+        '--tw-ring-color': 'var(--accent-primary)',
+        minHeight: 0,
       }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -754,6 +772,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
       <div 
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto p-4"
+        style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' }}
       >
         {messages.length === 0 && (
           <div className="text-center mt-20" style={{ color: 'var(--text-muted)', animation: 'slideUp 0.5s ease' }}>
@@ -824,7 +843,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
       </div>
 
       {/* Bottom input area */}
-      <div style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+      <div style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-secondary)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         {/* Attachments preview */}
         {attachments.length > 0 && (
           <div className="px-4 py-2 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
@@ -881,6 +900,9 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
+                onFocus={() => {
+                  setTimeout(() => scrollToBottom('auto'), 300)
+                }}
                 placeholder={isStarting ? 'Agent启动中，请稍候...' : isWorking ? '任务进行中，请等待完成...' : '输入消息...'}
                 disabled={isWorking || isStarting}
                 className="w-full bg-transparent text-sm resize-none focus:outline-none"

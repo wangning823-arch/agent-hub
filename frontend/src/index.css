@@ -14,7 +14,7 @@
 }
 
 html, body {
-  overscroll-behavior-x: none;
+  overscroll-behavior: none;
 }
 
 .mobile-scroll-container {
@@ -25,6 +25,8 @@ html, body {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  height: 100vh;
+  height: 100dvh;
 }
 .mobile-scroll-container::-webkit-scrollbar {
   display: none;
@@ -39,6 +41,15 @@ html, body {
 }
 .mobile-panel > div {
   width: 100% !important;
+}
+.mobile-panel-main {
+  flex: 0 0 100vw;
+  width: 100vw;
+  height: 100%;
+  scroll-snap-align: start;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 body {

@@ -108,8 +108,6 @@ app.get("*", (req, res, next) => {
   await initApp();
 
   // 路由注册必须在initApp之后，确保sessionManager已初始化
-  console.log('DEBUG: sessionManager type:', typeof sessionManager);
-  console.log('DEBUG: sessionManager value:', JSON.stringify(sessionManager, null, 2));
   app.use('/api/sessions', sessionsRouter(sessionManager));
   app.use('/api/tags', tagsRouter(sessionManager));
   app.use('/api/projects', projectsRouter(projectManager, sessionManager));
