@@ -21,6 +21,7 @@ html, body {
   display: flex;
   overflow-x: auto;
   overflow-y: hidden;
+  scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -34,6 +35,8 @@ html, body {
   flex: 0 0 100vw;
   width: 100vw;
   height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -44,6 +47,8 @@ html, body {
   flex: 0 0 100vw;
   width: 100vw;
   height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
   overflow: hidden;
   display: flex;
   flex-direction: column;
