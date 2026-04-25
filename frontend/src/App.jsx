@@ -54,11 +54,7 @@ export default function App() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   const isMobileRef = useRef(isMobile)
   const [loadingSessionId, setLoadingSessionId] = useState(null)
-  const [viewportHeight, setViewportHeight] = useState(window.visualViewport?.height || window.innerHeight)
   const scrollContainerRef = useRef(null)
-  // 键盘弹出/收起期间，禁止 handleScroll 更新侧边栏状态
-  const isViewportResizingRef = useRef(false)
-  const viewportResizeTimeoutRef = useRef(null)
 
   // 全局 fetch 拦截，自动加 token
   useEffect(() => {
@@ -104,60 +100,16 @@ export default function App() {
     const handleResize = () => {
       const mobile = window.innerWidth < 768
       setIsMobile(mobile)
-      if (window.visualViewport) {
-        setViewportHeight(window.visualViewport.height)
-      }
       if (!mobile) {
         setLeftSidebarOpen(true)
         setRightSidebarOpen(true)
       }
     }
 
-    // 键盘弹出/收起时，保存并恢复水平滚动位置，防止跳到侧边栏
-    const handleVisualResize = () => {
-      if (!isMobileRef.current || !scrollContainerRef.current) return
-      const container = scrollContainerRef.current
-      const savedScrollLeft = container.scrollLeft
-      if (window.visualViewport) {
-        setViewportHeight(window.visualViewport.height)
-      }
-      // 标记正在 resize，禁止 handleScroll 更新侧边栏状态
-      isViewportResizingRef.current = true
-      if (viewportResizeTimeoutRef.current) clearTimeout(viewportResizeTimeoutRef.current)
-      viewportResizeTimeoutRef.current = setTimeout(() => {
-        isViewportResizingRef.current = false
-      }, 500)
-      // 恢复水平滚动位置
-      requestAnimationFrame(() => {
-        container.scrollLeft = savedScrollLeft
-      })
-    }
-
-    // 输入框获得焦点时（键盘即将弹出），提前标记，防止 handleScroll 跳侧边栏
-    const handleFocusIn = (e) => {
-      if (!isMobileRef.current) return
-      const tag = e.target.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) {
-        isViewportResizingRef.current = true
-        if (viewportResizeTimeoutRef.current) clearTimeout(viewportResizeTimeoutRef.current)
-        viewportResizeTimeoutRef.current = setTimeout(() => {
-          isViewportResizingRef.current = false
-        }, 500)
-      }
-    }
-
     window.addEventListener('resize', handleResize)
-    window.addEventListener('focusin', handleFocusIn)
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleVisualResize)
-    }
     handleResize()
     return () => {
       window.removeEventListener('resize', handleResize)
-      window.removeEventListener('focusin', handleFocusIn)
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', handleVisualResize)
-      }
     }
   }, [])
 
@@ -176,9 +128,6 @@ export default function App() {
     if (!isMobile || !scrollContainerRef.current) return
     const container = scrollContainerRef.current
     const handleScroll = () => {
-      // 键盘弹出/收起期间，不更新侧边栏状态
-      if (isViewportResizingRef.current) return
-      // 如果不是用户主动滚动，不更新状态
       if (!isUserScrollingRef.current) return
 
       const width = container.clientWidth
@@ -195,7 +144,6 @@ export default function App() {
       }
     }
 
-    // 用于检测用户主动触摸滚动
     const handleTouchStart = () => {
       isUserScrollingRef.current = true
       if (scrollTimeoutRef.current) {
@@ -204,7 +152,6 @@ export default function App() {
     }
 
     const handleTouchEnd = () => {
-      // 触摸结束后，延迟重置标记（允许scroll事件的惯性滚动也能触发）
       scrollTimeoutRef.current = setTimeout(() => {
         isUserScrollingRef.current = false
       }, 300)
@@ -468,10 +415,9 @@ export default function App() {
   return (
     <div
       ref={scrollContainerRef}
-      className={`overflow-hidden ${isMobile ? 'mobile-scroll-container' : 'flex h-screen'}`}
+      className={isMobile ? 'mobile-scroll-container' : 'overflow-hidden flex h-screen'}
       style={{
         background: 'var(--bg-primary)',
-        ...(isMobile ? { height: `${viewportHeight}px` } : {}),
       }}
     >
       {/* Left sidebar */}

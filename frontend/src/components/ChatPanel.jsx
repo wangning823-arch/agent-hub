@@ -929,7 +929,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
                 placeholder={isStarting ? 'Agent启动中，请稍候...' : isWorking ? '任务进行中，请等待完成...' : '输入消息...'}
                 disabled={isWorking || isStarting}
                 className="w-full bg-transparent text-sm resize-none focus:outline-none"
-                style={{ color: 'var(--text-primary)', minHeight: 40, maxHeight: 120, opacity: (isWorking || isStarting) ? 0.5 : 1 }}
+                style={{ color: 'var(--text-primary)', minHeight: 40, maxHeight: 120, opacity: (isWorking || isStarting) ? 0.5 : 1, touchAction: 'manipulation' }}
                 rows={1}
               />
             </div>
@@ -946,7 +946,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
                 value={currentMode}
                 onChange={(e) => updateOption('mode', e.target.value)}
                 className="text-xs py-1 px-1.5 rounded-lg border-none focus:outline-none"
-                style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', maxWidth: 80 }}
+                style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', maxWidth: 80, touchAction: 'manipulation' }}
               >
                 {modes.map(mode => (
                   <option key={mode.id} value={mode.id}>{mode.name}</option>
@@ -956,7 +956,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
                 value={currentModel}
                 onChange={(e) => updateOption('model', e.target.value)}
                 className="text-xs py-1 px-1.5 rounded-lg border-none focus:outline-none"
-                style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', maxWidth: 120 }}
+                style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', maxWidth: 120, touchAction: 'manipulation' }}
               >
                 <option value="">默认模型</option>
                 {models.map(model => (
@@ -968,7 +968,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
                   value={currentEffort}
                   onChange={(e) => updateOption('effort', e.target.value)}
                   className="text-xs py-1 px-1.5 rounded-lg border-none focus:outline-none"
-                  style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', maxWidth: 60 }}
+                  style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', maxWidth: 60, touchAction: 'manipulation' }}
                 >
                   {efforts.map(effort => (
                     <option key={effort.id} value={effort.id}>{effort.name}</option>
