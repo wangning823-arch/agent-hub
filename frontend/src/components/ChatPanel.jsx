@@ -758,6 +758,16 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
     setQuoteReply(null) // 清除引用
   }
 
+  // 重新发送消息
+  const handleResend = (content) => {
+    if (isWorking || isStarting || isRestoringMemory) return
+    if (!content || !wsRef.current || wsRef.current.readyState !== 1) return
+
+    setMessages(prev => [...prev, { type: 'user', content }])
+    wsRef.current.send(JSON.stringify({ type: 'user_input', content }))
+    setInput('')
+  }
+
   // 点击上下文百分比
   const handleContextClick = async () => {
     if (contextUsage.percentage < 50) return;
@@ -886,12 +896,13 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
                     marginBottom: '1rem',
                   }}
                 >
-                  <Message 
-                    key={msg.time || virtualItem.index} 
-                    message={msg} 
+                  <Message
+                    key={msg.time || virtualItem.index}
+                    message={msg}
                     index={virtualItem.index}
                     onDelete={(deleteIndex) => handleDeleteMessage(msg.time)}
                     onQuote={setQuoteReply}
+                    onResend={handleResend}
                   />
                 </div>
               )

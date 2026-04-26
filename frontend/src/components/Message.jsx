@@ -18,8 +18,9 @@ marked.setOptions({
 const IconCopy = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
 const IconQuote = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
 const IconTrash = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+const IconResend = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
 
-export default function Message({ message, index, onDelete, onCopy, onQuote }) {
+export default function Message({ message, index, onDelete, onCopy, onQuote, onResend }) {
   const { type, content: rawContent, metadata, attachments, replace } = message
   // 确保 content 始终是字符串，防止 React 崩溃
   const content = rawContent != null ? (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent)) : ''
@@ -71,7 +72,20 @@ export default function Message({ message, index, onDelete, onCopy, onQuote }) {
   // User message
   if (type === 'user') {
     return (
-      <div className="flex justify-end group message">
+      <div className="flex items-start justify-end gap-2 group message">
+        {/* 重新发送按钮 */}
+        {onResend && (
+          <button
+            onClick={() => onResend(content)}
+            className="btn-icon w-7 h-7 rounded-lg mt-8 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+            style={{ color: 'var(--text-muted)' }}
+            title="重新发送"
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--accent-primary)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+          >
+            <IconResend />
+          </button>
+        )}
         <div className="max-w-[80%] md:max-w-[70%]">
           <div className="flex justify-end gap-0.5 mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <ActionButton onClick={handleCopy} title="复制"><IconCopy /></ActionButton>
