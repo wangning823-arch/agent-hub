@@ -340,6 +340,12 @@ export default function App() {
     ))
   }
 
+  const setSessionRestoringMemory = (sessionId, isRestoringMemory) => {
+    setSessions(prev => prev.map(s =>
+      s.id === sessionId ? { ...s, isRestoringMemory } : s
+    ))
+  }
+
   const handleSelectProject = (result) => {
     const { session, project } = result
     setSessions(prev => [...prev, session])
@@ -447,6 +453,7 @@ export default function App() {
           onRenameSession={renameSession}
           onPinSession={pinSession}
           onArchiveSession={archiveSession}
+          onRestoringMemoryChange={setSessionRestoringMemory}
         />
       </div>
 
@@ -509,6 +516,7 @@ export default function App() {
               options={currentOptions}
               isWorking={currentSession?.isWorking || false}
               isStarting={currentSession?.isStarting || false}
+              isRestoringMemory={currentSession?.isRestoringMemory || false}
               onOptionsChange={(opts) => handleUpdateOptions(activeSession, opts)}
               onWorkingChange={(isWorking) => setSessionWorking(activeSession, isWorking)}
               onStartingChange={(isStarting) => setSessionStarting(activeSession, isStarting)}

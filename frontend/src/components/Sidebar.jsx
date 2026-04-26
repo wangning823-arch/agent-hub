@@ -42,7 +42,8 @@ export default function Sidebar({
   onPinSession,
   onArchiveSession,
   onUpdateTags,
-  onSetLoading
+  onSetLoading,
+  onRestoringMemoryChange
 }) {
   const toast = useToast()
   const [expandedSection, setExpandedSection] = useState('sessions')
@@ -488,6 +489,7 @@ export default function Sidebar({
                     onClick={async () => {
                       if (!activeSession) return
                       try {
+                        if (onRestoringMemoryChange) onRestoringMemoryChange(activeSession, true)
                         const res = await fetch(`${API_BASE}/sessions/${activeSession}/restore-memory`, { method: 'POST' })
                         const data = await res.json()
                         if (data.success) {
@@ -501,6 +503,8 @@ export default function Sidebar({
                         }
                       } catch (e) {
                         toast.error('恢复记忆失败: ' + e.message)
+                      } finally {
+                        if (onRestoringMemoryChange) onRestoringMemoryChange(activeSession, false)
                       }
                     }}
                     className="btn-secondary w-full text-sm py-2 flex items-center justify-center gap-2"

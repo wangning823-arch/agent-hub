@@ -6,7 +6,7 @@ import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
 import { API_BASE, getWebSocketUrl } from '../config'
 
-export default function ChatPanel({ sessionId, agentType = 'claude-code', options = {}, onOptionsChange, onWorkingChange, onStartingChange, onSessionLoaded, isWorking = false, isStarting = false }) {
+export default function ChatPanel({ sessionId, agentType = 'claude-code', options = {}, onOptionsChange, onWorkingChange, onStartingChange, onSessionLoaded, isWorking = false, isStarting = false, isRestoringMemory = false }) {
   const toast = useToast()
   const notification = useNotification()
   const [messages, setMessages] = useState([])
@@ -926,10 +926,10 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
                 onFocus={() => {
                   setTimeout(() => scrollToBottom('auto'), 300)
                 }}
-                placeholder={isStarting ? 'Agent启动中，请稍候...' : isWorking ? '任务进行中，请等待完成...' : '输入消息...'}
-                disabled={isWorking || isStarting}
+                placeholder={isStarting ? 'Agent启动中，请稍候...' : isWorking ? '任务进行中，请等待完成...' : isRestoringMemory ? '正在恢复记忆，请稍等...' : '输入消息...'}
+                disabled={isWorking || isStarting || isRestoringMemory}
                 className="w-full bg-transparent text-sm resize-none focus:outline-none"
-                style={{ color: 'var(--text-primary)', minHeight: 40, maxHeight: 120, opacity: (isWorking || isStarting) ? 0.5 : 1, touchAction: 'manipulation' }}
+                style={{ color: 'var(--text-primary)', minHeight: 40, maxHeight: 120, opacity: (isWorking || isStarting || isRestoringMemory) ? 0.5 : 1, touchAction: 'manipulation' }}
                 rows={1}
               />
             </div>
