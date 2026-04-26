@@ -165,11 +165,13 @@ class OpenCodeAgent extends Agent {
       console.log('[OpenCode] spawn:', OPENCODE_PATH, args.slice(0, 6).join(' '), '...');
 
       // 使用 spawn + shell 模式实现流式输出
-      // 对于包含换行符的消息，使用双引号包裹并转义内部特殊字符
+      // 对于包含换行符的消息，使用 $'...' 语法（支持转义序列）
       const shellArgs = args.map(a => {
-        // 如果消息包含换行符，使用双引号包裹
+        // 如果消息包含换行符，使用 $'...' 语法
         if (a.includes('\n')) {
-          return `"${a.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+          // 转义反斜杠、单引号和换行符
+          const escaped = a.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+          return `$'${escaped}'`;
         }
         return `'${a.replace(/'/g, "'\\''")}'`;
       }).join(' ');
