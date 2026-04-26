@@ -242,13 +242,17 @@ module.exports = () => {
     // 确定配置文件路径：有 workdir 则写入项目目录，否则写入全局配置
     let settingsPath;
     if (projectWorkdir) {
-      settingsPath = path.join(projectWorkdir, '.claude', 'settings.json');
+      // 解析相对路径为绝对路径
+      const resolvedWorkdir = path.isAbsolute(projectWorkdir)
+        ? projectWorkdir
+        : path.resolve(process.env.HOME || '/root', projectWorkdir);
+      settingsPath = path.join(resolvedWorkdir, '.claude', 'settings.json');
       // 确保 .claude 目录存在
       const settingsDir = path.dirname(settingsPath);
       if (!fs.existsSync(settingsDir)) fs.mkdirSync(settingsDir, { recursive: true });
       // 将 .claude/ 添加到项目的 .gitignore
       try {
-        const gitignorePath = path.join(projectWorkdir, '.gitignore');
+        const gitignorePath = path.join(resolvedWorkdir, '.gitignore');
         const gitignoreEntry = '.claude/';
         let gitignoreContent = '';
         if (fs.existsSync(gitignorePath)) {
@@ -468,14 +472,45 @@ module.exports = () => {
       return res.status(400).json({ error: '无效的工具名称' });
     }
 
+    const { workdir: undoWorkdir } = req.body || {};
+
     const backup = readBackup(tool);
     if (!backup) {
       return res.status(404).json({ error: '没有找到备份，无法撤销' });
     }
 
+    // 按 workdir 过滤：有 workdir 时只恢复对应项目的备份，无 workdir 时只恢复全局备份
+    let filteredBackup = backup;
+    if (tool === 'claude-code' && undoWorkdir !== undefined) {
+      const resolvedWorkdir = path.isAbsolute(undoWorkdir)
+        ? undoWorkdir
+        : path.resolve(process.env.HOME || '/root', undoWorkdir);
+      const projectPrefix = path.join(resolvedWorkdir, '.claude');
+      const globalSettingsPath = path.join(process.env.HOME || '/root', '.claude', 'settings.json');
+
+      filteredBackup = {};
+      for (const [filePath, info] of Object.entries(backup)) {
+        if (undoWorkdir === '') {
+          // 撤销全局：只恢复全局配置文件
+          if (filePath === globalSettingsPath) {
+            filteredBackup[filePath] = info;
+          }
+        } else {
+          // 撤销项目：只恢复该项目目录下的配置文件
+          if (filePath.startsWith(projectPrefix)) {
+            filteredBackup[filePath] = info;
+          }
+        }
+      }
+    }
+
+    if (Object.keys(filteredBackup).length === 0) {
+      return res.status(404).json({ error: '没有找到对应项目的备份，无法撤销' });
+    }
+
     const restored = [];
     const errors = [];
-    for (const [filePath, info] of Object.entries(backup)) {
+    for (const [filePath, info] of Object.entries(filteredBackup)) {
       try {
         const dir = path.dirname(filePath);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -496,14 +531,25 @@ module.exports = () => {
       return res.status(500).json({ error: '撤销同步失败', errors });
     }
 
+    // 从备份中移除已恢复的条目
     const backupPath = getBackupPath(tool);
-    fs.unlinkSync(backupPath);
+    const remainingBackup = { ...backup };
+    for (const filePath of restored) {
+      delete remainingBackup[filePath];
+    }
 
-    const db = getDb();
-    try {
-      db.run(`DELETE FROM tool_sync WHERE tool = '${tool.replace(/'/g, "''")}'`);
-      saveToFile();
-    } catch {}
+    if (Object.keys(remainingBackup).length === 0) {
+      // 没有剩余备份，删除整个备份文件和 sync 记录
+      if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath);
+      const db = getDb();
+      try {
+        db.run(`DELETE FROM tool_sync WHERE tool = '${tool.replace(/'/g, "''")}'`);
+        saveToFile();
+      } catch {}
+    } else {
+      // 还有其他项目的备份，只更新备份文件
+      fs.writeFileSync(backupPath, JSON.stringify(remainingBackup, null, 2));
+    }
 
     res.json({
       success: true,

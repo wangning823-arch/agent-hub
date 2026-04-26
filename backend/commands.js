@@ -177,7 +177,11 @@ function loadClaudeModels(workdir) {
   // 优先读取项目级配置，读不到再读全局配置
   let settingsPath;
   if (workdir) {
-    const projectSettingsPath = path.join(workdir, '.claude', 'settings.json');
+    // 解析相对路径为绝对路径
+    const resolvedWorkdir = path.isAbsolute(workdir)
+      ? workdir
+      : path.resolve(process.env.HOME || '/root', workdir);
+    const projectSettingsPath = path.join(resolvedWorkdir, '.claude', 'settings.json');
     if (fs.existsSync(projectSettingsPath)) {
       settingsPath = projectSettingsPath;
     }

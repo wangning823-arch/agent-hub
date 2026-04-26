@@ -505,10 +505,16 @@ function ToolSyncSection({ providers, models, syncStatus, syncing, onSync }) {
   }
 
   const handleUndo = async (tool) => {
-    if (!window.confirm(`确定撤销 ${tool} 的同步？将恢复同步前的配置文件。`)) return
+    const target = selectedProjectWorkdir ? `项目 "${projects.find(p => p.id === claudeProjectId)?.name}"` : '全局配置'
+    if (!window.confirm(`确定撤销 ${tool} 的 ${target} 同步？将恢复同步前的配置文件。`)) return
     setUndoing(prev => ({ ...prev, [tool]: true }))
     try {
-      const res = await fetch(`${API_BASE}/models/sync/undo/${tool}`, { method: 'POST' })
+      const body = tool === 'claude-code' ? { workdir: selectedProjectWorkdir } : {}
+      const res = await fetch(`${API_BASE}/models/sync/undo/${tool}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error || '撤销失败'); return }
       toast.success(data.message || '撤销成功')
@@ -542,11 +548,27 @@ function ToolSyncSection({ providers, models, syncStatus, syncing, onSync }) {
   const renderBackupInfo = (tool) => {
     const toolBackups = backups[tool]
     if (!toolBackups || Object.keys(toolBackups).length === 0) return null
-    const backupEntries = Object.entries(toolBackups)
+
+    // 按选中的项目过滤备份条目
+    const globalSettingsPath = `${window.location.origin}` // just for placeholder
+    const filteredEntries = Object.entries(toolBackups).filter(([filePath]) => {
+      if (tool !== 'claude-code') return true
+      if (!selectedProjectWorkdir) {
+        // 全局模式：只显示全局配置的备份
+        return !filePath.includes('/.claude/settings.json') || filePath === `${process.env.HOME || '/root'}/.claude/settings.json`
+      }
+      // 项目模式：只显示该项目目录下的备份
+      return filePath.startsWith(selectedProjectWorkdir)
+    })
+
+    if (filteredEntries.length === 0) return null
+
     return (
       <div className="mt-2 p-2 rounded-lg" style={{ background: 'var(--bg-hover)', border: '1px solid var(--border-subtle)' }}>
         <div className="flex items-center justify-between mb-1">
-          <span className="text-xs font-medium" style={{ color: 'var(--warning)' }}>已有备份</span>
+          <span className="text-xs font-medium" style={{ color: 'var(--warning)' }}>
+            已有备份 {selectedProjectWorkdir ? '(当前项目)' : '(全局)'}
+          </span>
           <div className="flex gap-1">
             <button onClick={() => toggleBackupDetail(tool)} className="text-xs py-0.5 px-2 rounded"
               style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>
@@ -559,7 +581,7 @@ function ToolSyncSection({ providers, models, syncStatus, syncing, onSync }) {
             </button>
           </div>
         </div>
-        {backupEntries.map(([filePath, info]) => (
+        {filteredEntries.map(([filePath, info]) => (
           <div key={filePath} className="text-xs" style={{ color: 'var(--text-muted)' }}>
             <span className="truncate block" title={filePath}>{filePath.split('/').pop()}</span>
             <span>备份于 {new Date(info.backedUpAt).toLocaleString()}</span>
@@ -569,7 +591,13 @@ function ToolSyncSection({ providers, models, syncStatus, syncing, onSync }) {
         {expandedBackup[tool] && backupContents[tool] && (
           <div className="mt-2 p-2 rounded" style={{ background: 'var(--bg-tertiary)', maxHeight: '200px', overflow: 'auto' }}>
             <div className="text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>备份内容：</div>
-            {Object.entries(backupContents[tool]).map(([filePath, info]) => (
+            {Object.entries(backupContents[tool])
+              .filter(([filePath]) => {
+                if (tool !== 'claude-code') return true
+                if (!selectedProjectWorkdir) return !filePath.includes('/.claude/settings.json') || filePath === `${process.env.HOME || '/root'}/.claude/settings.json`
+                return filePath.startsWith(selectedProjectWorkdir)
+              })
+              .map(([filePath, info]) => (
               <div key={filePath}>
                 <div className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>{filePath}</div>
                 <pre className="text-xs p-1.5 rounded overflow-x-auto" style={{ background: 'var(--bg-primary)', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
