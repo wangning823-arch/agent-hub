@@ -455,9 +455,10 @@ class SessionManager {
         .slice(-10);
       for (const msg of recentMessages) {
         const role = msg.role === 'user' ? '用户' : '助手';
-        const content = typeof msg.content === 'string'
+        let content = typeof msg.content === 'string'
           ? msg.content
           : (msg.content?.content || JSON.stringify(msg.content));
+        if (typeof content !== 'string') content = JSON.stringify(content);
         if (content && content.trim()) {
           historyLines.push(`[${role}]: ${content.slice(0, 500)}`);
         }
@@ -499,7 +500,7 @@ class SessionManager {
   broadcast(sessionId, message) {
     const session = this.sessions.get(sessionId);
     if (session) {
-      const metaTypes = ['status', 'token_usage', 'conversation_id', 'title_update'];
+      const metaTypes = ['status', 'token_usage', 'conversation_id', 'title_update', 'context_usage'];
       if (!metaTypes.includes(message.type)) {
         session.messages.push({ role: 'assistant', content: message, time: Date.now() });
         this.saveSession(session);

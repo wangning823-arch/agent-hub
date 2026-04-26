@@ -224,7 +224,7 @@ module.exports = () => {
   // ── Sync to CLI config files ──
 
   router.post('/sync/claude-code', (req, res) => {
-    const { providerId, modelConfig } = req.body;
+    const { providerId, modelConfig, workdir: projectWorkdir } = req.body;
     if (!providerId) return res.status(400).json({ error: 'providerId 必填' });
 
     const db = getDb();
@@ -238,8 +238,34 @@ module.exports = () => {
       return res.status(400).json({ error: '该 Provider 未设置 Base URL (Anthropic 协议)，无法同步到 Claude Code' });
     }
     const anthropicUrl = baseUrlAnthropic;
-    const homeDir = process.env.HOME || '/root';
-    const settingsPath = path.join(homeDir, '.claude', 'settings.json');
+
+    // 确定配置文件路径：有 workdir 则写入项目目录，否则写入全局配置
+    let settingsPath;
+    if (projectWorkdir) {
+      settingsPath = path.join(projectWorkdir, '.claude', 'settings.json');
+      // 确保 .claude 目录存在
+      const settingsDir = path.dirname(settingsPath);
+      if (!fs.existsSync(settingsDir)) fs.mkdirSync(settingsDir, { recursive: true });
+      // 将 .claude/ 添加到项目的 .gitignore
+      try {
+        const gitignorePath = path.join(projectWorkdir, '.gitignore');
+        const gitignoreEntry = '.claude/';
+        let gitignoreContent = '';
+        if (fs.existsSync(gitignorePath)) {
+          gitignoreContent = fs.readFileSync(gitignorePath, 'utf-8');
+        }
+        if (!gitignoreContent.split('\n').some(line => line.trim() === gitignoreEntry)) {
+          const suffix = gitignoreContent.endsWith('\n') ? '' : '\n';
+          fs.writeFileSync(gitignorePath, gitignoreContent + suffix + gitignoreEntry + '\n');
+        }
+      } catch (e) {
+        console.warn('更新 .gitignore 失败:', e.message);
+      }
+    }
+    if (!settingsPath) {
+      const homeDir = process.env.HOME || '/root';
+      settingsPath = path.join(homeDir, '.claude', 'settings.json');
+    }
 
     let settings = {};
     try {
@@ -263,12 +289,15 @@ module.exports = () => {
     if (modelConfig?.haikuModel) settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = modelConfig.haikuModel;
 
     try {
+      console.log(`[sync/claude-code] 写入配置到: ${settingsPath}`);
       fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
       const now = new Date().toISOString();
+      const syncConfig = { ...modelConfig || {}, workdir: projectWorkdir || null };
       const syncStmt = db.prepare('INSERT OR REPLACE INTO tool_sync (tool, provider_id, model_id, synced_at, config) VALUES (?, ?, ?, ?, ?)');
-      syncStmt.run(['claude-code', providerId, modelConfig?.model || '', now, JSON.stringify(modelConfig || {})]);
+      syncStmt.run(['claude-code', providerId, modelConfig?.model || '', now, JSON.stringify(syncConfig)]);
       saveToFile();
-      res.json({ success: true, message: 'Claude Code 配置已同步', backedUp: true });
+      const msg = projectWorkdir ? `Claude Code 配置已同步到项目: ${settingsPath}` : 'Claude Code 全局配置已同步';
+      res.json({ success: true, message: msg, backedUp: true, settingsPath });
     } catch (e) {
       res.status(500).json({ error: '写入 Claude 配置失败: ' + e.message });
     }

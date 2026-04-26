@@ -172,9 +172,20 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-// Claude Code - 从 ~/.claude/settings.json 读取
-function loadClaudeModels() {
-  const settingsPath = path.join(process.env.HOME || '/root', '.claude', 'settings.json');
+// Claude Code - 从配置文件读取模型，支持项目级配置
+function loadClaudeModels(workdir) {
+  // 优先读取项目级配置，读不到再读全局配置
+  let settingsPath;
+  if (workdir) {
+    const projectSettingsPath = path.join(workdir, '.claude', 'settings.json');
+    if (fs.existsSync(projectSettingsPath)) {
+      settingsPath = projectSettingsPath;
+    }
+  }
+  if (!settingsPath) {
+    settingsPath = path.join(process.env.HOME || '/root', '.claude', 'settings.json');
+  }
+
   try {
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
     const env = settings.env || {};
@@ -396,16 +407,16 @@ function loadCodexModels() {
 }
 
 // 按 agentType 获取模型列表
-function getModelsForAgent(agentType) {
+function getModelsForAgent(agentType, workdir) {
   switch (agentType) {
     case 'claude-code':
-      return loadClaudeModels();
+      return loadClaudeModels(workdir);
     case 'opencode':
       return loadOpenCodeModels();
     case 'codex':
       return loadCodexModels();
     default:
-      return loadClaudeModels();
+      return loadClaudeModels(workdir);
   }
 }
 

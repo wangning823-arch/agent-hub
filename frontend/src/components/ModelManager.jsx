@@ -427,6 +427,8 @@ function ToolSyncSection({ providers, models, syncStatus, syncing, onSync }) {
   const toast = useToast()
   const [claudeProvider, setClaudeProvider] = useState('')
   const [claudeModelConfig, setClaudeModelConfig] = useState({ model: '', sonnetModel: '', opusModel: '', haikuModel: '' })
+  const [claudeProjectId, setClaudeProjectId] = useState('')
+  const [projects, setProjects] = useState([])
   const [opencodeProviders, setOpencodeProviders] = useState([])
   const [opencodeDefaultModel, setOpencodeDefaultModel] = useState('')
   const [codexProvider, setCodexProvider] = useState('')
@@ -445,6 +447,20 @@ function ToolSyncSection({ providers, models, syncStatus, syncing, onSync }) {
   }, [])
 
   useEffect(() => { fetchBackups() }, [fetchBackups])
+
+  // 加载项目列表
+  useEffect(() => {
+    fetch(`${API_BASE}/projects`)
+      .then(r => r.json())
+      .then(data => {
+        const list = Array.isArray(data) ? data : (data.projects || [])
+        setProjects(list)
+      })
+      .catch(() => {})
+  }, [])
+
+  // 选中的项目 workdir
+  const selectedProjectWorkdir = projects.find(p => p.id === claudeProjectId)?.workdir || ''
 
   useEffect(() => {
     if (syncStatus['claude-code']) {
@@ -473,7 +489,9 @@ function ToolSyncSection({ providers, models, syncStatus, syncing, onSync }) {
 
   const syncClaude = () => {
     if (!claudeProvider) return
-    onSync('claude-code', { providerId: claudeProvider, modelConfig: claudeModelConfig }).then(() => fetchBackups())
+    const body = { providerId: claudeProvider, modelConfig: claudeModelConfig }
+    if (selectedProjectWorkdir) body.workdir = selectedProjectWorkdir
+    onSync('claude-code', body).then(() => fetchBackups())
   }
 
   const syncOpencode = () => {
@@ -580,6 +598,13 @@ function ToolSyncSection({ providers, models, syncStatus, syncing, onSync }) {
           <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-primary-soft)', color: 'var(--accent-primary)' }}>单 Provider</span>
         </div>
         <div className="space-y-2">
+          <div>
+            <label className="text-xs block mb-1" style={{ color: 'var(--text-secondary)' }}>同步目标</label>
+            <select value={claudeProjectId} onChange={e => setClaudeProjectId(e.target.value)} className="select-field text-xs w-full">
+              <option value="">全局配置（所有项目）</option>
+              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
           <div>
             <label className="text-xs block mb-1" style={{ color: 'var(--text-secondary)' }}>Provider</label>
             <select value={claudeProvider} onChange={e => setClaudeProvider(e.target.value)} className="select-field text-xs w-full">

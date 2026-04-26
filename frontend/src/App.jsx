@@ -432,6 +432,7 @@ export default function App() {
           sessions={sessions}
           activeSession={activeSession}
           agentType={currentSession?.agentType || 'claude-code'}
+          workdir={currentSession?.workdir || ''}
           sessionOptions={sessionOptions}
           loadingSessionId={loadingSessionId}
           onSetLoading={(id) => setLoadingSessionId(id)}
@@ -513,6 +514,7 @@ export default function App() {
               key={activeSession}
               sessionId={activeSession}
               agentType={currentSession?.agentType || 'claude-code'}
+              workdir={currentSession?.workdir || ''}
               options={currentOptions}
               isWorking={currentSession?.isWorking || false}
               isStarting={currentSession?.isStarting || false}

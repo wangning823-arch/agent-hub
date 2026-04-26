@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const credentialManager = require('./credentialManager');
+const { getDb } = require('./db');
 
 const PROJECTS_FILE = path.join(__dirname, '..', 'data', 'projects.json');
 
@@ -316,6 +317,17 @@ class ProjectManager {
     this.projects.set(id, project);
     this.addToRecent(id);
     this.saveData();
+
+    // 同步到 SQLite 数据库
+    try {
+      const db = getDb();
+      const stmt = db.prepare(
+        'INSERT OR IGNORE INTO projects (id, name, workdir, agent_type, mode, model, effort, created_at, updated_at, last_session_id, last_used_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      );
+      stmt.run([id, name, workdir, 'claude-code', 'auto', null, 'medium', now, now, null, now]);
+    } catch (e) {
+      console.warn('同步项目到数据库失败:', e.message);
+    }
     
     return project;
   }

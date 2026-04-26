@@ -30,6 +30,7 @@ export default function Sidebar({
   sessions,
   activeSession,
   agentType = 'claude-code',
+  workdir = '',
   sessionOptions,
   loadingSessionId,
   onSelectSession,
@@ -143,17 +144,19 @@ export default function Sidebar({
     loadCommands()
     loadTags()
     loadSkills()
-  }, [agentType])
+  }, [agentType, workdir])
 
   useEffect(() => {
     const handler = () => loadOptions()
     window.addEventListener('models-changed', handler)
     return () => window.removeEventListener('models-changed', handler)
-  }, [agentType])
+  }, [agentType, workdir])
 
   const loadOptions = async () => {
     try {
-      const data = await fetch(`${API_BASE}/options?agentType=${agentType}`).then(r => r.json())
+      const params = new URLSearchParams({ agentType })
+      if (workdir) params.set('workdir', workdir)
+      const data = await fetch(`${API_BASE}/options?${params}`).then(r => r.json())
       setOptions(data)
     } catch (error) { console.error('加载选项失败:', error) }
   }

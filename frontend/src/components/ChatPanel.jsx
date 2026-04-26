@@ -6,7 +6,7 @@ import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
 import { API_BASE, getWebSocketUrl } from '../config'
 
-export default function ChatPanel({ sessionId, agentType = 'claude-code', options = {}, onOptionsChange, onWorkingChange, onStartingChange, onSessionLoaded, isWorking = false, isStarting = false, isRestoringMemory = false }) {
+export default function ChatPanel({ sessionId, agentType = 'claude-code', workdir = '', options = {}, onOptionsChange, onWorkingChange, onStartingChange, onSessionLoaded, isWorking = false, isStarting = false, isRestoringMemory = false }) {
   const toast = useToast()
   const notification = useNotification()
   const [messages, setMessages] = useState([])
@@ -71,17 +71,19 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   // 加载选项
   useEffect(() => {
     loadOptions()
-  }, [agentType])
+  }, [agentType, workdir])
 
   useEffect(() => {
     const handler = () => loadOptions()
     window.addEventListener('models-changed', handler)
     return () => window.removeEventListener('models-changed', handler)
-  }, [agentType])
+  }, [agentType, workdir])
 
   const loadOptions = async () => {
     try {
-      const data = await fetch(`${API_BASE}/options?agentType=${agentType}`).then(r => r.json())
+      const params = new URLSearchParams({ agentType })
+      if (workdir) params.set('workdir', workdir)
+      const data = await fetch(`${API_BASE}/options?${params}`).then(r => r.json())
       setModes(data.modes || [])
       setModels(data.models || [])
       setEfforts(data.efforts || [])
@@ -172,6 +174,8 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
           const contentType = typeof content === 'object' && content !== null ? content.type : null
           if (contentType === 'tool_use' || contentType === 'tool_result') return false
           if (msg.type === 'tool_use' || msg.type === 'tool_result') return false
+          if (msg.type === 'token_usage' || msg.type === 'context_usage') return false
+          if (contentType === 'token_usage' || contentType === 'context_usage') return false
           if (typeof content === 'string' && (content === '{}' || content.trim() === '')) return false
           if (typeof content === 'object' && (content === null || Object.keys(content).length === 0)) return false
           return true
@@ -402,6 +406,9 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
             } else if (msg.type === 'error') {
               // 错误消息显示在状态栏
               setStatusMessage(msg.content)
+            } else if (msg.type === 'token_usage' || msg.type === 'context_usage') {
+              // token 用量信息不显示在聊天中
+              return
             } else {
               // 非工具调用消息正常添加
               setMessages(prev => [...prev, msg])
