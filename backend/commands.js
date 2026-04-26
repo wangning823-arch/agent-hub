@@ -178,14 +178,14 @@ function loadClaudeModels() {
   try {
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
     const env = settings.env || {};
-    
+
     const modelIds = new Set();
     const defaultModel = env.ANTHROPIC_MODEL;
     if (defaultModel) modelIds.add(defaultModel);
     if (env.ANTHROPIC_DEFAULT_SONNET_MODEL) modelIds.add(env.ANTHROPIC_DEFAULT_SONNET_MODEL);
     if (env.ANTHROPIC_DEFAULT_OPUS_MODEL) modelIds.add(env.ANTHROPIC_DEFAULT_OPUS_MODEL);
     if (env.ANTHROPIC_DEFAULT_HAIKU_MODEL) modelIds.add(env.ANTHROPIC_DEFAULT_HAIKU_MODEL);
-    
+
     const models = [];
     if (defaultModel) {
       models.push({ id: defaultModel, name: defaultModel, description: '当前默认模型' });
@@ -195,7 +195,23 @@ function loadClaudeModels() {
         models.push({ id, name: id, description: '' });
       }
     }
-    
+
+    // 从数据库合并 contextLimit
+    try {
+      const { getDb } = require('./db');
+      const db = getDb();
+      const result = db.exec('SELECT id, context_limit FROM models');
+      if (result.length > 0) {
+        const ctxMap = {};
+        for (const row of result[0].values) {
+          ctxMap[row[0]] = row[1];
+        }
+        for (const m of models) {
+          if (ctxMap[m.id]) m.contextLimit = ctxMap[m.id];
+        }
+      }
+    } catch (_) {}
+
     if (models.length === 0) {
       return [{ id: 'claude-sonnet-4-6', name: 'Sonnet 4', description: '默认模型' }];
     }

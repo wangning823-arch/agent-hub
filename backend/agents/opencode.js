@@ -59,6 +59,22 @@ function execAsync(cmd, options) {
   });
 }
 
+// 读取 opencode 配置获取当前模型的 context window
+function getOpenCodeContextWindow() {
+  try {
+    const configPath = require('path').join(process.env.HOME || '/root', '.config', 'opencode', 'opencode.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const modelId = config.model; // e.g. "volcengine-plan/glm-5.1"
+    if (!modelId) return 0;
+    const [providerId, modelKey] = modelId.split('/');
+    const provider = config.provider?.[providerId];
+    const model = provider?.models?.[modelKey];
+    return model?.limit?.context || 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
 class OpenCodeAgent extends Agent {
   constructor(workdir, options = {}) {
     super('opencode', workdir);
@@ -281,8 +297,12 @@ class OpenCodeAgent extends Agent {
           content: {
             inputTokens: t.input || 0,
             outputTokens: t.output || 0,
+            cacheReadTokens: t.cache?.read || 0,
+            cacheWriteTokens: t.cache?.write || 0,
+            totalTokens: t.total || 0,
+            contextWindow: getOpenCodeContextWindow(),
             cost: t.cost || 0,
-            model: 'opencode'
+            model: this.options.model || 'opencode'
           }
         });
       }

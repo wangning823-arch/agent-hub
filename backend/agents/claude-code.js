@@ -232,6 +232,8 @@ class ClaudeCodeAgent extends Agent {
       
       // 发送Token使用统计
       if (msg.usage) {
+        // 不从 modelUsage 获取 contextWindow（该值不可靠，可能是默认值）
+        // contextWindow 由前端从模型配置（contextLimit）获取
         this.emit('message', {
           type: 'token_usage',
           content: {

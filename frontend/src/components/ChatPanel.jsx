@@ -46,6 +46,9 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   const [currentModel, setCurrentModel] = useState(options?.model || '')
   const [currentEffort, setCurrentEffort] = useState(options?.effort || 'medium')
 
+  // 上下文使用情况
+  const [contextUsage, setContextUsage] = useState({ inputTokens: 0, contextWindow: 0, percentage: 0 })
+
   // 当 options prop 变化时（切换session），同步更新内部状态
   useEffect(() => {
     if (options?.mode) setCurrentMode(options.mode)
@@ -416,6 +419,12 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ usage: msg.content })
             }).catch(err => console.error('记录Token失败:', err))
+
+            // 更新上下文使用情况（仅 opencode，claude-code 的累计数据不可靠）
+            if (msg.content.totalTokens > 0 && msg.content.contextWindow > 0) {
+              const percentage = Math.round((msg.content.totalTokens / msg.content.contextWindow) * 100);
+              setContextUsage({ inputTokens: msg.content.totalTokens, contextWindow: msg.content.contextWindow, percentage });
+            }
           }
           
           // Agent回复时发送通知（如果页面不在前台）
@@ -742,6 +751,22 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
     setQuoteReply(null) // 清除引用
   }
 
+  // 点击上下文百分比
+  const handleContextClick = async () => {
+    if (contextUsage.percentage < 50) return;
+
+    // 超过50%时提示压缩
+    if (confirm(`上下文已使用 ${contextUsage.percentage}%，是否压缩以释放空间？`)) {
+      try {
+        await fetch(`${API_BASE}/sessions/${sessionId}/compact`, { method: 'POST' });
+        // 重置上下文使用量，保留contextWindow（模型窗口大小不变）
+        setContextUsage(prev => ({ inputTokens: 0, contextWindow: prev.contextWindow, percentage: 0 }));
+      } catch (err) {
+        console.error('压缩失败:', err);
+      }
+    }
+  };
+
   // 按Enter发送
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -910,7 +935,22 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
         <div className="p-3">
           <div className="rounded-2xl border overflow-hidden" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-primary)' }}>
             {/* Textarea */}
-            <div className="px-3 pt-2">
+            <div className="px-3 pt-2 relative">
+              {/* 上下文使用百分比 */}
+              {contextUsage.contextWindow > 0 && (
+                <div
+                  className="absolute top-1 right-3 text-xs px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                  style={{
+                    background: contextUsage.percentage > 80 ? 'var(--error-soft)' : contextUsage.percentage > 50 ? 'var(--warning-soft)' : 'var(--success-soft)',
+                    color: contextUsage.percentage > 80 ? 'var(--error)' : contextUsage.percentage > 50 ? 'var(--warning)' : 'var(--success)'
+                  }}
+                  title={`上下文使用: ${contextUsage.inputTokens.toLocaleString()} / ${contextUsage.contextWindow.toLocaleString()}`}
+                  onClick={() => handleContextClick()}
+                >
+                  {contextUsage.percentage}%
+                  {contextUsage.percentage > 50 && ' ⚠️'}
+                </div>
+              )}
               <input
                 ref={fileInputRef}
                 type="file"
