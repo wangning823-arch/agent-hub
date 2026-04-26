@@ -46,8 +46,13 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   const [currentModel, setCurrentModel] = useState(options?.model || '')
   const [currentEffort, setCurrentEffort] = useState(options?.effort || 'medium')
 
-  // 上下文使用情况
-  const [contextUsage, setContextUsage] = useState({ inputTokens: 0, contextWindow: 0, percentage: 0 })
+  // 上下文使用情况（从 localStorage 恢复）
+  const [contextUsage, setContextUsage] = useState(() => {
+    try {
+      const cached = sessionStorage.getItem(`contextUsage_${sessionId}`)
+      return cached ? JSON.parse(cached) : { inputTokens: 0, contextWindow: 0, percentage: 0 }
+    } catch { return { inputTokens: 0, contextWindow: 0, percentage: 0 } }
+  })
 
   // 当 options prop 变化时（切换session），同步更新内部状态
   useEffect(() => {
@@ -423,7 +428,9 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
             // 更新上下文使用情况（仅 opencode，claude-code 的累计数据不可靠）
             if (msg.content.totalTokens > 0 && msg.content.contextWindow > 0) {
               const percentage = Math.round((msg.content.totalTokens / msg.content.contextWindow) * 100);
-              setContextUsage({ inputTokens: msg.content.totalTokens, contextWindow: msg.content.contextWindow, percentage });
+              const usage = { inputTokens: msg.content.totalTokens, contextWindow: msg.content.contextWindow, percentage };
+              setContextUsage(usage);
+              sessionStorage.setItem(`contextUsage_${sessionId}`, JSON.stringify(usage));
             }
           }
           
@@ -760,7 +767,9 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
       try {
         await fetch(`${API_BASE}/sessions/${sessionId}/compact`, { method: 'POST' });
         // 重置上下文使用量，保留contextWindow（模型窗口大小不变）
-        setContextUsage(prev => ({ inputTokens: 0, contextWindow: prev.contextWindow, percentage: 0 }));
+        const reset = { inputTokens: 0, contextWindow: contextUsage.contextWindow, percentage: 0 };
+        setContextUsage(reset);
+        sessionStorage.setItem(`contextUsage_${sessionId}`, JSON.stringify(reset));
       } catch (err) {
         console.error('压缩失败:', err);
       }
