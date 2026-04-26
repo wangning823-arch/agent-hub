@@ -267,7 +267,7 @@ router.post('/:id/stop', async (req, res) => {
         return res.status(404).json({ error: '会话不存在' });
       }
 
-      const { summarizeSession } = require('../claude-service');
+      const { summarizeSession } = require('../summary-service');
       const result = await summarizeSession(session.messages, session.agentType || 'claude-code', session.workdir);
 
       if (req.body.compact) {
@@ -319,7 +319,7 @@ router.post('/:id/stop', async (req, res) => {
         return res.json({ success: true, message: '已有摘要，已注入到当前对话', summary: null });
       }
 
-      const { summarizeSession } = require('../claude-service');
+      const { summarizeSession } = require('../summary-service');
       const result = await summarizeSession(session.messages, session.agentType || 'claude-code', session.workdir);
 
       const summaryContent = `[之前对话的摘要]\n${result.summary}`;
@@ -343,38 +343,6 @@ router.post('/:id/stop', async (req, res) => {
       res.json({ success: true, summary: result.summary });
     } catch (error) {
       console.error('恢复记忆失败:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  router.post('/:id/review', async (req, res) => {
-    try {
-      const session = sessionManager.getSession(req.params.id);
-      if (!session) {
-        return res.status(404).json({ error: '会话不存在' });
-      }
-
-      const { execFileSync } = require('child_process');
-      let diff;
-      try {
-        diff = execFileSync('git', ['diff'], {
-          cwd: session.workdir,
-          encoding: 'utf8',
-          maxBuffer: 5 * 1024 * 1024
-        });
-      } catch (e) {
-        return res.json({ review: '无法获取 git diff，可能不在 git 仓库中或没有未提交的更改。' });
-      }
-
-      if (!diff || !diff.trim()) {
-        return res.json({ review: '没有检测到代码变更，无需审查。' });
-      }
-
-      const { reviewCode } = require('../claude-service');
-      const result = await reviewCode(diff, session.workdir);
-      res.json(result);
-    } catch (error) {
-      console.error('代码审查失败:', error);
       res.status(500).json({ error: error.message });
     }
   });

@@ -521,26 +521,6 @@ class SessionManager {
         });
       }
 
-      const assistantMessages = session.messages.filter(m => m.role === 'assistant' && m.content && m.content.type !== 'status' && m.content.type !== 'token_usage' && m.content.type !== 'conversation_id');
-      if (assistantMessages.length === 1 && !session.title && message.type === 'text') {
-        const userMsg = session.messages.find(m => m.role === 'user');
-        if (userMsg) {
-          const { generateTitle } = require('./claude-service');
-          const userContent = typeof userMsg.content === 'string' ? userMsg.content : JSON.stringify(userMsg.content);
-          const asstContent = typeof message.content === 'string' ? message.content : '';
-          generateTitle(userContent, asstContent)
-            .then(result => {
-              if (!session.title) {
-                session.title = result.title;
-                session.updatedAt = new Date();
-                this.saveSession(session);
-                this.broadcast(sessionId, { type: 'title_update', content: result.title });
-              }
-            })
-            .catch(err => console.error('[AutoTitle] 生成失败:', err.message));
-        }
-      }
-      
       if (session.messages.length % 10 === 0) {
         this.saveSession(session);
       }

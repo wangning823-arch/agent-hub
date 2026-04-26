@@ -707,7 +707,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
 
   // 发送消息
   const sendMessage = () => {
-    if (isWorking || isStarting) return
+    if (isWorking || isStarting || isRestoringMemory) return
     if ((!input.trim() && attachments.length === 0) || !wsRef.current || wsRef.current.readyState !== 1) {
       return
     }
@@ -746,7 +746,9 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      sendMessage()
+      if (!isWorking && !isStarting && !isRestoringMemory) {
+        sendMessage()
+      }
     }
   }
 
