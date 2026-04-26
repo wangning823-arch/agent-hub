@@ -433,6 +433,23 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
               sessionStorage.setItem(`contextUsage_${sessionId}`, JSON.stringify(usage));
             }
           }
+
+          // 处理 /context 命令返回的上下文使用信息（claude-code）
+          if (msg.type === 'context_usage' && msg.content) {
+            const parseTokenStr = (s) => {
+              if (typeof s === 'number') return s;
+              const m = String(s).match(/([\d.]+)\s*([kKmM]?)/);
+              if (!m) return 0;
+              const n = parseFloat(m[1]);
+              const u = m[2].toUpperCase();
+              return u === 'K' ? Math.round(n * 1000) : u === 'M' ? Math.round(n * 1000000) : Math.round(n);
+            };
+            const used = parseTokenStr(msg.content.usedTokens);
+            const total = parseTokenStr(msg.content.totalTokens);
+            const usage = { inputTokens: used, contextWindow: total, percentage: msg.content.percentage };
+            setContextUsage(usage);
+            sessionStorage.setItem(`contextUsage_${sessionId}`, JSON.stringify(usage));
+          }
           
           // Agent回复时发送通知（如果页面不在前台）
           if (msg.type === 'assistant' && document.hidden) {

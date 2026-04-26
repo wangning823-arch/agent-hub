@@ -39,11 +39,84 @@ class ClaudeCodeAgent extends Agent {
   }
 
   /**
+   * 拦截 /context 命令，获取准确的上下文使用信息
+   */
+  async sendContextCommand() {
+    return new Promise((resolve, reject) => {
+      const claudePath = process.env.CLAUDE_CLI_PATH || 'claude'
+      const args = [
+        '--print',
+        '--verbose',
+        '--dangerously-skip-permissions',
+        '--output-format', 'stream-json'
+      ]
+      if (this.options.model) args.push('--model', this.options.model)
+      if (this.options.sessionId) args.push('--resume', this.options.sessionId)
+      args.push('-p', '/context')
+
+      const proc = spawn(claudePath, args, {
+        cwd: this.workdir,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env }
+      })
+
+      let buffer = ''
+      proc.stdout.on('data', (data) => {
+        buffer += data.toString()
+        const lines = buffer.split('\n')
+        buffer = lines.pop()
+        for (const line of lines) {
+          if (line.trim()) {
+            try {
+              const msg = JSON.parse(line)
+              if (msg.type === 'result' && msg.result) {
+                const info = this._parseContextInfo(msg.result)
+                if (info) {
+                  this.emit('message', { type: 'context_usage', content: info })
+                }
+              }
+            } catch (_) {}
+          }
+        }
+      })
+      proc.on('close', () => resolve())
+      proc.on('error', () => resolve()) // 静默失败
+    })
+  }
+
+  /**
+   * 解析 /context 命令返回的 markdown，提取上下文使用信息
+   * 格式: **Tokens:** 29.8k / 200k (15%)
+   */
+  _parseContextInfo(text) {
+    try {
+      const modelMatch = text.match(/\*\*Model:\*\*\s*(.+?)[\s\\]/)
+      const tokensMatch = text.match(/\*\*Tokens:\*\*\s*([\d.]+[kKmM]?)\s*\/\s*([\d.]+[kKmM]?)\s*\((\d+)%\)/)
+      if (!tokensMatch) return null
+      return {
+        model: modelMatch ? modelMatch[1].trim() : 'unknown',
+        usedTokens: tokensMatch[1],
+        totalTokens: tokensMatch[2],
+        percentage: parseInt(tokensMatch[3])
+      }
+    } catch (e) {
+      return null
+    }
+  }
+
+  /**
    * 发送消息给Claude Code
    */
   async send(message) {
     if (!this.isRunning) {
       throw new Error('Agent未运行')
+    }
+
+    // 拦截 /context 命令
+    if (message.trim() === '/context') {
+      this.emit('message', { type: 'status', content: '📊 获取上下文信息...' })
+      await this.sendContextCommand()
+      return
     }
 
     // 通知前端正在处理
@@ -159,7 +232,7 @@ class ClaudeCodeAgent extends Agent {
         }
       })
 
-      proc.on('close', (code) => {
+      proc.on('close', async (code) => {
         // 取消超时定时器
         try { clearTimeout(timeoutId) } catch {}
         // 处理剩余buffer
@@ -171,16 +244,20 @@ class ClaudeCodeAgent extends Agent {
             this.emit('message', { type: 'text', content: buffer })
           }
         }
-        
+
         if (!hasOutput) {
-          this.emit('message', { 
-            type: 'error', 
-            content: 'Claude Code 没有返回输出，请检查配置' 
+          this.emit('message', {
+            type: 'error',
+            content: 'Claude Code 没有返回输出，请检查配置'
           })
         }
-        
+
         // 清理活跃进程引用
         this.activeProc = null
+
+        // 每次回答后自动获取上下文使用情况
+        try { await this.sendContextCommand() } catch (_) {}
+
         resolve()
       })
 
