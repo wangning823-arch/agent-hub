@@ -164,23 +164,15 @@ class OpenCodeAgent extends Agent {
 
       console.log('[OpenCode] spawn:', OPENCODE_PATH, args.slice(0, 6).join(' '), '...');
 
-      // 使用 spawn + shell 模式实现流式输出
-      // 对于包含换行符的消息，使用 $'...' 语法（支持转义序列）
-      const shellArgs = args.map(a => {
-        // 如果消息包含换行符，使用 $'...' 语法
-        if (a.includes('\n')) {
-          // 转义反斜杠、单引号和换行符
-          const escaped = a.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
-          return `$'${escaped}'`;
-        }
-        return `'${a.replace(/'/g, "'\\''")}'`;
-      }).join(' ');
-      const proc = spawn('sh', ['-c', `${OPENCODE_PATH} ${shellArgs} < /dev/null`], {
+      // 直接用 spawn 传递参数数组，避免 shell 转义问题
+      const proc = spawn(OPENCODE_PATH, args, {
         cwd: this.workdir,
         env,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        detached: true
+        stdio: ['pipe', 'pipe', 'pipe']
       });
+
+      // 关闭 stdin，防止 opencode 等待输入
+      proc.stdin.end();
 
       // 记录当前活跃进程，方便后续中止/清理
       this.activeProc = proc;
