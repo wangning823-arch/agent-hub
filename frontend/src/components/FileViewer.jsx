@@ -151,62 +151,62 @@ export default function FileViewer({ file, content, onClose, onSave }) {
         }
       `}</style>
       {/* 标题栏 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b"
+      <div className="flex items-center justify-between px-2 md:px-4 py-2 md:py-3 border-b gap-2"
         style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}>
-        <div className="flex items-center gap-3">
-          <span className="text-xl">{getFileIcon(filename)}</span>
-          <div>
-            <div className="flex items-center gap-2">
-              <span style={{ color: 'var(--text-primary)' }} className="font-medium">{filename}</span>
+        <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+          <span className="text-lg md:text-xl flex-shrink-0">{getFileIcon(filename)}</span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span style={{ color: 'var(--text-primary)' }} className="font-medium truncate">{filename}</span>
               {hasChanges && (
-                <span className="px-1.5 py-0.5 text-xs bg-yellow-600/30 text-yellow-400 rounded">
+                <span className="px-1 py-0.5 text-xs bg-yellow-600/30 text-yellow-400 rounded flex-shrink-0">
                   未保存
                 </span>
               )}
             </div>
-            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{file}</div>
+            <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{file}</div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="px-2 py-1 text-xs rounded"
+        <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
+          <span className="hidden md:inline-block px-2 py-1 text-xs rounded"
             style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>
             {getLanguage(filename)}
           </span>
-          <span className="px-2 py-1 text-xs rounded"
+          <span className="hidden md:inline-block px-2 py-1 text-xs rounded"
             style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>
             {lines.length} 行
           </span>
-          
+
           {/* 编辑/保存按钮 */}
           {isEditing ? (
             <>
               <button
                 onClick={handleSave}
                 disabled={saving || !hasChanges}
-                className="px-3 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {saving ? '保存中...' : '💾 保存'}
+                {saving ? '...' : '💾 保存'}
               </button>
               <button
                 onClick={handleCancel}
-                className="px-3 py-1.5 text-sm rounded"
+                className="px-2 md:px-3 py-1.5 text-xs md:text-sm rounded"
                 style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}
               >
-                ✕ 取消
+                ✕
               </button>
             </>
           ) : (
             <button
               onClick={() => setIsEditing(true)}
-              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
             >
               ✏️ 编辑
             </button>
           )}
-          
+
           <button
             onClick={onClose}
-            className="p-2 rounded-lg transition-colors"
+            className="p-1.5 md:p-2 rounded-lg transition-colors flex-shrink-0"
             style={{ color: 'var(--text-muted)' }}
             title="关闭"
           >

@@ -366,6 +366,7 @@ export default function App() {
     try {
       const data = await fetch(`${API_BASE}/files/content?path=${encodeURIComponent(filePath)}`).then(r => r.json())
       setViewingFile({ path: filePath, content: data.content || '' })
+      if (isMobile) scrollToPanel('main')
     } catch (error) {
       toast.error('加载文件失败: ' + error.message)
     }

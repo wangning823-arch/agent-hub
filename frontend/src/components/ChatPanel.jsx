@@ -407,8 +407,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
               // 错误消息显示在状态栏
               setStatusMessage(msg.content)
             } else if (msg.type === 'token_usage' || msg.type === 'context_usage') {
-              // token 用量信息不显示在聊天中
-              return
+              // token 用量信息不显示在聊天中，但继续处理后续逻辑更新状态
             } else {
               // 非工具调用消息正常添加
               setMessages(prev => [...prev, msg])
@@ -792,20 +791,13 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
     setInput('')
   }
 
-  // 点击上下文百分比
-  const handleContextClick = async () => {
+  // 点击上下文百分比 - 通过 WebSocket 发送 /compact，与手动输入一致
+  const handleContextClick = () => {
     if (contextUsage.percentage < 50) return;
 
-    // 超过50%时提示压缩
     if (confirm(`上下文已使用 ${contextUsage.percentage}%，是否压缩以释放空间？`)) {
-      try {
-        await fetch(`${API_BASE}/sessions/${sessionId}/compact`, { method: 'POST' });
-        // 重置上下文使用量，保留contextWindow（模型窗口大小不变）
-        const reset = { inputTokens: 0, contextWindow: contextUsage.contextWindow, percentage: 0 };
-        setContextUsage(reset);
-        sessionStorage.setItem(`contextUsage_${sessionId}`, JSON.stringify(reset));
-      } catch (err) {
-        console.error('压缩失败:', err);
+      if (wsRef.current && wsRef.current.readyState === 1) {
+        wsRef.current.send(JSON.stringify({ type: 'user_input', content: '/compact' }))
       }
     }
   };

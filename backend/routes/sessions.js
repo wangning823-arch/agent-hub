@@ -230,7 +230,27 @@ router.post('/:id/stop', async (req, res) => {
 
       if (session.agent && session.agent.send) {
         await session.agent.send('/compact');
-        res.json({ success: true, message: '已发送压缩命令' });
+        // 压缩完成后，发送 /context 获取最新的上下文使用量
+        let contextUsage = null;
+        try {
+          const contextPromise = new Promise((resolve) => {
+            const handler = (msg) => {
+              if (msg.type === 'context_usage') {
+                session.agent.removeListener('message', handler);
+                resolve(msg.content);
+              }
+            };
+            session.agent.on('message', handler);
+            // 超时 10 秒
+            setTimeout(() => {
+              session.agent.removeListener('message', handler);
+              resolve(null);
+            }, 10000);
+          });
+          await session.agent.send('/context');
+          contextUsage = await contextPromise;
+        } catch (_) {}
+        res.json({ success: true, message: '压缩完成', contextUsage });
       } else {
         res.status(400).json({ error: 'Agent不支持此操作' });
       }
