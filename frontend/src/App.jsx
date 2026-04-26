@@ -48,6 +48,8 @@ export default function App() {
   
   const [viewingFile, setViewingFile] = useState(null)
   const [showSearch, setShowSearch] = useState(false)
+  const [subtaskInfo, setSubtaskInfo] = useState({ total: 0, running: 0, completed: 0 })
+  const [showSubtaskFromHeader, setShowSubtaskFromHeader] = useState(false)
   
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false)
@@ -95,6 +97,12 @@ export default function App() {
   useEffect(() => {
     isMobileRef.current = isMobile
   }, [isMobile])
+
+  // 切换会话时重置子任务面板状态
+  useEffect(() => {
+    setShowSubtaskFromHeader(false)
+    setSubtaskInfo({ total: 0, running: 0, completed: 0 })
+  }, [activeSession])
 
   useEffect(() => {
     const handleResize = () => {
@@ -485,6 +493,25 @@ export default function App() {
             <button onClick={() => setShowContextManager(true)} disabled={!activeSession} className="btn-icon" title="上下文与Token">
               <IconChart />
             </button>
+            {subtaskInfo.total > 0 && (
+              <button
+                onClick={() => setShowSubtaskFromHeader(prev => !prev)}
+                className="btn-icon"
+                title={`并行任务: ${subtaskInfo.completed}/${subtaskInfo.total} 完成${subtaskInfo.running > 0 ? ` (${subtaskInfo.running} 执行中)` : ''}`}
+                style={{ position: 'relative' }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1"/>
+                  <rect x="14" y="3" width="7" height="7" rx="1"/>
+                  <rect x="3" y="14" width="7" height="7" rx="1"/>
+                  <rect x="14" y="14" width="7" height="7" rx="1"/>
+                </svg>
+                {subtaskInfo.running > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full animate-pulse"
+                        style={{ background: 'var(--warning)' }}></span>
+                )}
+              </button>
+            )}
             <button onClick={() => setShowSettings(true)} className="btn-icon" title="设置">
               <IconSettings />
             </button>
@@ -527,6 +554,9 @@ export default function App() {
                 setLoadingSessionId(null);
                 if (isMobile) scrollToPanel('main');
               }}
+              onSubtaskCountChange={setSubtaskInfo}
+              onSubtaskPanelClose={() => setShowSubtaskFromHeader(false)}
+              externalShowPanel={showSubtaskFromHeader}
             />
           ) : (
             <div className="h-full flex items-center justify-center p-4">

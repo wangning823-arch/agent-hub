@@ -11,7 +11,7 @@ const statusIcon = (status) => {
 }
 
 export default function SubtaskPanel({ subtasks, show, onToggle, onExecute, onExecuteAll, onCancel, onViewResult, onClose }) {
-  if (subtasks.length === 0) return null
+  if (subtasks.length === 0 || !show) return null
 
   const completed = subtasks.filter(s => s.status === 'done').length
   const running = subtasks.filter(s => s.status === 'running').length
@@ -28,7 +28,7 @@ export default function SubtaskPanel({ subtasks, show, onToggle, onExecute, onEx
           {running > 0 && <span className="ml-2 text-xs" style={{ color: 'var(--warning)' }}>执行中...</span>}
         </span>
         <div className="flex items-center gap-1">
-          {allDone && onClose && (
+          {onClose && (
             <button onClick={(e) => { e.stopPropagation(); onClose(); }}
                     className="px-1 rounded text-xs hover:opacity-80"
                     style={{ color: 'var(--text-muted)' }}
@@ -39,8 +39,7 @@ export default function SubtaskPanel({ subtasks, show, onToggle, onExecute, onEx
       </div>
 
       {/* 任务列表 */}
-      {show && (
-        <div className="px-3 pb-2 space-y-1">
+      <div className="px-3 pb-2 space-y-1">
           {subtasks.map(task => (
             <div key={task.id}
                  className="flex items-center justify-between px-2 py-1.5 rounded text-xs"
@@ -94,7 +93,6 @@ export default function SubtaskPanel({ subtasks, show, onToggle, onExecute, onEx
             )}
           </div>
         </div>
-      )}
     </div>
   )
 }

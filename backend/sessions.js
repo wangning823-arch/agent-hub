@@ -503,12 +503,12 @@ class SessionManager {
     const session = this.sessions.get(sessionId);
     if (session) {
       const metaTypes = ['status', 'token_usage', 'conversation_id', 'title_update', 'context_usage', 'subtask_status'];
-      if (!metaTypes.includes(message.type)) {
+      if (!metaTypes.includes(message.type) && !message.subtask_id) {
         session.messages.push({ role: 'assistant', content: message, time: Date.now() });
         this.saveSession(session);
       }
       
-      if (message.conversationId) {
+      if (message.conversationId && !message.subtask_id) {
         session.conversationId = message.conversationId;
         this.saveSession(session);
       }

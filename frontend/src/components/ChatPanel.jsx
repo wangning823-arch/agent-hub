@@ -7,7 +7,7 @@ import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
 import { API_BASE, getWebSocketUrl } from '../config'
 
-export default function ChatPanel({ sessionId, agentType = 'claude-code', workdir = '', options = {}, onOptionsChange, onWorkingChange, onStartingChange, onSessionLoaded, isWorking = false, isStarting = false, isRestoringMemory = false }) {
+export default function ChatPanel({ sessionId, agentType = 'claude-code', workdir = '', options = {}, onOptionsChange, onWorkingChange, onStartingChange, onSessionLoaded, onSubtaskCountChange, onSubtaskPanelClose, externalShowPanel, isWorking = false, isStarting = false, isRestoringMemory = false }) {
   const toast = useToast()
   const notification = useNotification()
   const [messages, setMessages] = useState([])
@@ -155,6 +155,24 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
     }
   }, [subtasks, activeTab, viewingSubtaskId])
 
+  // 通知 App.jsx 子任务数量变化
+  useEffect(() => {
+    if (onSubtaskCountChange) {
+      const running = subtasks.filter(s => s.status === 'running').length
+      const total = subtasks.length
+      const completed = subtasks.filter(s => s.status === 'done').length
+      onSubtaskCountChange({ total, running, completed, showPanel: showSubtaskPanel })
+    }
+  }, [subtasks, showSubtaskPanel])
+
+  // 外部（头部图标）控制面板显示/隐藏
+  useEffect(() => {
+    if (externalShowPanel && subtasks.length > 0) {
+      setShowSubtaskPanel(true)
+      sessionStorage.removeItem(`subtaskClosed_${sessionId}`)
+    }
+  }, [externalShowPanel])
+
   // 加载更多历史消息
   const loadMoreMessages = async () => {
     if (loadingMore || !hasMore) return
@@ -295,7 +313,11 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
             messages: s.messages || (s.result ? [{ type: 'assistant', content: s.result, time: s.createdAt || Date.now() }] : [])
           }))
           setSubtasks(restored)
-          setShowSubtaskPanel(true)
+          // 如果用户之前关闭过面板，则不自动打开
+          const wasClosed = sessionStorage.getItem(`subtaskClosed_${sessionId}`)
+          if (!wasClosed) {
+            setShowSubtaskPanel(true)
+          }
         }
       })
       .catch(() => {})
@@ -839,6 +861,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
           // 使用后端生成的子任务 ID（确保 WebSocket 消息能正确匹配）
           setSubtasks(data.subtasks.map(s => ({ ...s, messages: s.messages || [] })))
           setShowSubtaskPanel(true)
+          sessionStorage.removeItem(`subtaskClosed_${sessionId}`)
           // 将用户消息显示在聊天中
           setMessages(prev => [...prev, { type: 'user', content: messageContent }])
         } else {
@@ -920,9 +943,39 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
     setActiveTab('subtasks')
   }
 
+  // 合并连续的 tool_use 消息（与主聊天窗口一致）
+  const mergeToolMessages = (messages) => {
+    if (!messages || messages.length === 0) return []
+    const merged = []
+    let totalToolCalls = 0
+    for (const msg of messages) {
+      if (msg.type === 'tool_use') {
+        totalToolCalls++
+        // 从后往前找最近的 tool_use
+        let toolSlotIdx = -1
+        for (let i = merged.length - 1; i >= 0; i--) {
+          if (merged[i].type === 'tool_use') { toolSlotIdx = i; break }
+          if (merged[i].type === 'user' || merged[i].type === 'error') break
+        }
+        if (toolSlotIdx >= 0) {
+          merged[toolSlotIdx] = { ...msg, toolCount: totalToolCalls }
+        } else {
+          merged.push({ ...msg, toolCount: totalToolCalls })
+        }
+      } else if (msg.type === 'tool_result') {
+        // 跳过 tool_result，不显示
+      } else {
+        totalToolCalls = 0
+        merged.push(msg)
+      }
+    }
+    return merged
+  }
+
   const handleCloseSubtaskPanel = () => {
-    setSubtasks([])
     setShowSubtaskPanel(false)
+    sessionStorage.setItem(`subtaskClosed_${sessionId}`, '1')
+    if (onSubtaskPanelClose) onSubtaskPanelClose()
   }
 
   // 点击上下文百分比 - 通过 WebSocket 发送 /compact，与手动输入一致
@@ -1140,7 +1193,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
 
               {/* Subtask messages */}
               {task.messages && task.messages.length > 0 ? (
-                task.messages.map((msg, idx) => (
+                mergeToolMessages(task.messages).map((msg, idx) => (
                   <Message
                     key={msg.time || idx}
                     message={msg}
