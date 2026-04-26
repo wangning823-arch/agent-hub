@@ -348,13 +348,9 @@ class OpenCodeAgent extends Agent {
    */
   async stop() {
     if (this.activeProc) {
-      const pid = this.activeProc.pid;
       try {
-        // 杀整个进程组（负PID），确保sh子进程里的opencode也被杀掉
-        process.kill(-pid, 'SIGKILL');
-      } catch (e) {
-        try { this.activeProc.kill('SIGKILL'); } catch (e2) { /* ignore */ }
-      }
+        this.activeProc.kill('SIGKILL');
+      } catch (e) { /* ignore */ }
       this.activeProc = null;
     }
     this.isRunning = false;
@@ -367,12 +363,9 @@ class OpenCodeAgent extends Agent {
    */
   async interrupt() {
     if (this.activeProc) {
-      const pid = this.activeProc.pid;
       try {
-        process.kill(-pid, 'SIGKILL');
-      } catch (e) {
-        try { this.activeProc.kill('SIGKILL'); } catch (e2) { /* ignore */ }
-      }
+        this.activeProc.kill('SIGKILL');
+      } catch (e) { /* ignore */ }
       this.activeProc = null;
       this.emit('message', { type: 'status', content: '⏹️ 任务已中断' });
     }
