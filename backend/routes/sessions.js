@@ -394,6 +394,7 @@ router.post('/:id/stop', async (req, res) => {
           description: t.description,
           status: 'pending',
           result: null,
+          messages: [],
           model: null,
           complexity: t.complexity || 'medium',
           error: null,

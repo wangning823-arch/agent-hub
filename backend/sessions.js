@@ -839,18 +839,23 @@ class SessionManager {
     try {
       await agent.start();
 
-      // 监听 agent 事件，带 subtask_id 广播，同时实时捕获文本结果到 subtask.result
+      // 监听 agent 事件，带 subtask_id 广播，同时累积结构化消息
       handler = (msg) => {
         this.broadcast(sessionId, { ...msg, subtask_id: subtaskId });
+        subtask.messages = subtask.messages || [];
         if (msg.type === 'text') {
-          subtask.result = (subtask.result || '') + msg.content;
+          subtask.messages.push({ type: 'text', content: msg.content, time: Date.now() });
         } else if (msg.type === 'assistant') {
           const texts = (msg.message?.content || [])
             .filter(c => c.type === 'text').map(c => c.text);
           if (texts.length > 0) {
-            subtask.result = (subtask.result || '') + texts.join('\n');
+            subtask.messages.push({ type: 'assistant', content: texts.join('\n'), time: Date.now() });
           }
+        } else if (msg.type === 'tool_use' || msg.type === 'tool_result') {
+          subtask.messages.push({ type: msg.type, content: msg.content || '', time: Date.now() });
         }
+        // 派生 result 字符串（向后兼容）
+        subtask.result = subtask.messages.map(m => m.content || '').filter(Boolean).join('\n');
       };
       agent.on('message', handler);
 

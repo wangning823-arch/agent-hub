@@ -52,6 +52,9 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
   const [subtasks, setSubtasks] = useState([])
   const [showSubtaskPanel, setShowSubtaskPanel] = useState(false)
   const [splitAnalyzing, setSplitAnalyzing] = useState(false)
+  const [activeTab, setActiveTab] = useState('main') // 'main' | 'subtasks'
+  const [viewingSubtaskId, setViewingSubtaskId] = useState(null)
+  const subtaskScrollRef = useRef(null)
 
   // 上下文使用情况（从 localStorage 恢复）
   const [contextUsage, setContextUsage] = useState(() => {
@@ -140,7 +143,17 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
     initialLoadRef.current = true
     setSubtasks([])
     setShowSubtaskPanel(false)
+    setActiveTab('main')
+    setViewingSubtaskId(null)
   }, [sessionId])
+
+  // 子任务 tab 自动滚动到底部
+  useEffect(() => {
+    if (activeTab === 'subtasks' && viewingSubtaskId && subtaskScrollRef.current) {
+      const el = subtaskScrollRef.current
+      setTimeout(() => el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }), 100)
+    }
+  }, [subtasks, activeTab, viewingSubtaskId])
 
   // 加载更多历史消息
   const loadMoreMessages = async () => {
@@ -276,7 +289,12 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
       .then(r => r.json())
       .then(data => {
         if (data.subtasks && data.subtasks.length > 0) {
-          setSubtasks(data.subtasks)
+          // 向后兼容：确保每个子任务都有 messages 数组
+          const restored = data.subtasks.map(s => ({
+            ...s,
+            messages: s.messages || (s.result ? [{ type: 'assistant', content: s.result, time: s.createdAt || Date.now() }] : [])
+          }))
+          setSubtasks(restored)
           setShowSubtaskPanel(true)
         }
       })
@@ -351,11 +369,18 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
            // 子任务消息：不进入主 messages，更新对应子任务
            if (msg.subtask_id) {
              if (msg.type === 'text' || msg.type === 'assistant') {
-               setSubtasks(prev => prev.map(s =>
-                 s.id === msg.subtask_id
-                   ? { ...s, result: (s.result || '') + (msg.content || '') }
-                   : s
-               ))
+               setSubtasks(prev => prev.map(s => {
+                 if (s.id !== msg.subtask_id) return s
+                 const newMsg = { type: msg.type, content: msg.content || '', time: Date.now() }
+                 const updated = [...(s.messages || []), newMsg]
+                 return { ...s, messages: updated, result: updated.map(m => m.content).filter(Boolean).join('\n') }
+               }))
+             } else if (msg.type === 'tool_use' || msg.type === 'tool_result') {
+               setSubtasks(prev => prev.map(s => {
+                 if (s.id !== msg.subtask_id) return s
+                 const newMsg = { type: msg.type, content: msg.content || '', time: Date.now() }
+                 return { ...s, messages: [...(s.messages || []), newMsg] }
+               }))
              } else if (msg.type === 'subtask_status') {
                setSubtasks(prev => prev.map(s =>
                  s.id === msg.subtask_id
@@ -812,7 +837,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
         const data = await res.json()
         if (data.shouldSplit && data.subtasks?.length > 0) {
           // 使用后端生成的子任务 ID（确保 WebSocket 消息能正确匹配）
-          setSubtasks(data.subtasks)
+          setSubtasks(data.subtasks.map(s => ({ ...s, messages: s.messages || [] })))
           setShowSubtaskPanel(true)
           // 将用户消息显示在聊天中
           setMessages(prev => [...prev, { type: 'user', content: messageContent }])
@@ -890,15 +915,9 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
     }
   }
 
-  const handleViewSubtaskResult = (subtaskId) => {
-    const task = subtasks.find(s => s.id === subtaskId)
-    if (!task?.result) return
-    // 将子任务结果作为 assistant 消息添加到 messages
-    setMessages(prev => [...prev, {
-      type: 'assistant',
-      content: `**[子任务] ${task.description}**\n\n${task.result}`,
-      time: Date.now()
-    }])
+  const handleViewSubtask = (subtaskId) => {
+    setViewingSubtaskId(subtaskId)
+    setActiveTab('subtasks')
   }
 
   const handleCloseSubtaskPanel = () => {
@@ -965,11 +984,38 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
         onExecute={handleExecuteSubtask}
         onExecuteAll={handleExecuteAllSubtasks}
         onCancel={handleCancelSubtask}
-        onViewResult={handleViewSubtaskResult}
+        onViewResult={handleViewSubtask}
         onClose={handleCloseSubtaskPanel}
       />
 
-      {/* Messages */}
+      {/* Tab Bar - only when subtasks exist */}
+      {subtasks.length > 0 && (
+        <div className="flex border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+          <button
+            onClick={() => setActiveTab('main')}
+            className={`tab-btn ${activeTab === 'main' ? 'active' : ''}`}
+            style={{ flex: 'none', padding: '8px 16px' }}
+          >
+            主任务
+          </button>
+          <button
+            onClick={() => setActiveTab('subtasks')}
+            className={`tab-btn ${activeTab === 'subtasks' ? 'active' : ''}`}
+            style={{ flex: 'none', padding: '8px 16px' }}
+          >
+            子任务
+            {subtasks.filter(s => s.status === 'running').length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs"
+                    style={{ background: 'var(--warning)', color: 'white', fontSize: '0.65rem' }}>
+                {subtasks.filter(s => s.status === 'running').length}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Main Chat Tab */}
+      {activeTab === 'main' && (
       <div
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto p-3 space-y-4 message-list"
@@ -1054,6 +1100,74 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
         )}
 
       </div>
+      )}
+
+      {/* Subtask Chat Tab */}
+      {activeTab === 'subtasks' && (
+      <div
+        ref={subtaskScrollRef}
+        className="flex-1 overflow-y-auto p-3 space-y-4 message-list"
+        style={{
+          overscrollBehaviorY: 'contain',
+          WebkitOverflowScrolling: 'touch'
+        }}
+      >
+        {viewingSubtaskId ? (() => {
+          const task = subtasks.find(s => s.id === viewingSubtaskId)
+          if (!task) {
+            return (
+              <div className="text-center mt-20" style={{ color: 'var(--text-muted)' }}>
+                <p>子任务不存在或已删除</p>
+              </div>
+            )
+          }
+          return (
+            <>
+              {/* Subtask header */}
+              <div className="rounded-lg p-3 mb-4" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span>{task.status === 'pending' ? '⏳' : task.status === 'running' ? '🔄' : task.status === 'done' ? '✅' : '❌'}</span>
+                  <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                    {task.description}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--text-muted)' }}>
+                  <span>复杂度: {task.complexity}</span>
+                  <span>状态: {task.status}</span>
+                  {task.error && <span style={{ color: 'var(--error)' }}>错误: {task.error}</span>}
+                </div>
+              </div>
+
+              {/* Subtask messages */}
+              {task.messages && task.messages.length > 0 ? (
+                task.messages.map((msg, idx) => (
+                  <Message
+                    key={msg.time || idx}
+                    message={msg}
+                    index={idx}
+                  />
+                ))
+              ) : task.result ? (
+                <Message
+                  message={{ type: 'assistant', content: task.result, time: task.createdAt }}
+                  index={0}
+                />
+              ) : (
+                <div className="text-center mt-12" style={{ color: 'var(--text-muted)' }}>
+                  <p className="text-sm">暂无消息</p>
+                </div>
+              )}
+            </>
+          )
+        })() : (
+          <div className="text-center mt-20" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-4xl mb-3">📋</p>
+            <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>选择一个子任务查看</p>
+            <p className="text-sm mt-2">点击上方子任务列表中的"查看"按钮</p>
+          </div>
+        )}
+      </div>
+      )}
 
       {/* Bottom input area */}
       <div style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-secondary)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>

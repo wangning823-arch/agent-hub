@@ -63,11 +63,9 @@ export default function SubtaskPanel({ subtasks, show, onToggle, onExecute, onEx
                 )}
                 {task.status === 'running' && (
                   <>
-                    {task.result && (
-                      <button onClick={() => onViewResult(task.id)}
-                              className="px-1.5 py-0.5 rounded text-xs hover:opacity-80"
-                              style={{ color: 'var(--accent-primary)' }}>查看</button>
-                    )}
+                    <button onClick={() => onViewResult(task.id)}
+                            className="px-1.5 py-0.5 rounded text-xs hover:opacity-80"
+                            style={{ color: 'var(--accent-primary)' }}>查看</button>
                     <button onClick={() => onCancel(task.id)}
                             className="px-1.5 py-0.5 rounded text-xs hover:opacity-80"
                             style={{ color: 'var(--error)' }}>⏹</button>
