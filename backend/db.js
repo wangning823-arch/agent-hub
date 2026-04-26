@@ -96,6 +96,18 @@ async function initDb() {
     }
   } catch (e) { }
 
+  // 增量迁移：给 sessions 表添加 subtasks 列
+  try {
+    const cols = db.exec("PRAGMA table_info(sessions)");
+    if (cols.length > 0) {
+      const colNames = cols[0].values.map(row => row[1]);
+      if (!colNames.includes('subtasks')) {
+        db.run('ALTER TABLE sessions ADD COLUMN subtasks TEXT DEFAULT "[]"');
+        console.log('[数据库迁移] sessions 表添加 subtasks 列');
+      }
+    }
+  } catch (e) { }
+
   // 增量迁移：清理从 Claude Code 自动迁移的 claude-custom provider（仅保留 base_url_anthropic 到已有 provider）
   try {
     const ccResult = db.exec("SELECT id FROM providers WHERE id = 'claude-custom'");

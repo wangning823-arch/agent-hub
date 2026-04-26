@@ -159,8 +159,8 @@ class SessionManager {
   loadData() {
     const db = getDb();
     const rows = db.exec(`
-      SELECT id, workdir, agent_type, agent_name, conversation_id, title, options, 
-             is_pinned, is_archived, tags, created_at, updated_at
+      SELECT id, workdir, agent_type, agent_name, conversation_id, title, options,
+             is_pinned, is_archived, tags, created_at, updated_at, subtasks
       FROM sessions ORDER BY updated_at DESC
     `);
     
@@ -204,6 +204,7 @@ class SessionManager {
         isActive: false,
         messages: messages,
         lastSavedMessageCount: messages.length,
+        subtasks: JSON.parse(sessionData.subtasks || '[]'),
   toJSON() {
           return {
             id: this.id,
@@ -240,8 +241,8 @@ class SessionManager {
     
     try {
       db.run(`
-        INSERT OR REPLACE INTO sessions (id, workdir, agent_type, agent_name, conversation_id, title, options, is_pinned, is_archived, tags, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO sessions (id, workdir, agent_type, agent_name, conversation_id, title, options, is_pinned, is_archived, tags, created_at, updated_at, subtasks)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         session.id,
         session.workdir,
@@ -254,7 +255,8 @@ class SessionManager {
         session.isArchived ? 1 : 0,
         JSON.stringify(session.tags || []),
         session.createdAt instanceof Date ? session.createdAt.toISOString() : session.createdAt,
-        session.updatedAt instanceof Date ? session.updatedAt.toISOString() : new Date().toISOString()
+        session.updatedAt instanceof Date ? session.updatedAt.toISOString() : new Date().toISOString(),
+        JSON.stringify(session.subtasks || [])
       ]);
 
       const messagesToSave = session.messages.slice(-200);
@@ -500,7 +502,7 @@ class SessionManager {
   broadcast(sessionId, message) {
     const session = this.sessions.get(sessionId);
     if (session) {
-      const metaTypes = ['status', 'token_usage', 'conversation_id', 'title_update', 'context_usage'];
+      const metaTypes = ['status', 'token_usage', 'conversation_id', 'title_update', 'context_usage', 'subtask_status'];
       if (!metaTypes.includes(message.type)) {
         session.messages.push({ role: 'assistant', content: message, time: Date.now() });
         this.saveSession(session);
@@ -709,6 +711,231 @@ class SessionManager {
    */
   _generateSummaryIfNeeded(session) {
     // 不再自动生成，由用户手动触发恢复记忆
+  }
+
+  // ==================== 子任务相关方法 ====================
+
+  /**
+   * 捕获 agent 返回文本
+   */
+  _captureAgentResponse(agent, message) {
+    return new Promise((resolve) => {
+      let responseText = '';
+      const handler = (msg) => {
+        if (msg.type === 'text') {
+          responseText += msg.content;
+        } else if (msg.type === 'assistant') {
+          const texts = (msg.message?.content || [])
+            .filter(c => c.type === 'text').map(c => c.text);
+          responseText += texts.join('\n');
+        }
+      };
+      agent.on('message', handler);
+      agent.send(message).then(() => {
+        agent.removeListener('message', handler);
+        resolve(responseText);
+      }).catch(() => {
+        agent.removeListener('message', handler);
+        resolve(responseText);
+      });
+    });
+  }
+
+  /**
+   * 解析分析结果 JSON
+   */
+  _parseSplitResult(text) {
+    if (!text) return null;
+    // 策略1: 从 markdown 代码块提取
+    const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      try {
+        const data = JSON.parse(codeBlockMatch[1].trim());
+        if (typeof data.shouldSplit === 'boolean') return data;
+      } catch {}
+    }
+    // 策略2: 找第一个完整的 JSON 对象（非贪婪匹配最近的 }）
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
+    if (jsonMatch) {
+      try {
+        const data = JSON.parse(jsonMatch[0]);
+        if (typeof data.shouldSplit === 'boolean') return data;
+      } catch {}
+    }
+    // 策略3: 逐字符找匹配的 {}（处理嵌套数组）
+    const firstBrace = text.indexOf('{');
+    if (firstBrace >= 0) {
+      let depth = 0;
+      for (let i = firstBrace; i < text.length; i++) {
+        if (text[i] === '{') depth++;
+        else if (text[i] === '}') {
+          depth--;
+          if (depth === 0) {
+            try {
+              const data = JSON.parse(text.substring(firstBrace, i + 1));
+              if (typeof data.shouldSplit === 'boolean') return data;
+            } catch {}
+            break;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 执行任务拆分分析
+   */
+  async executeSplitAnalysis(sessionId, message) {
+    const { SPLIT_ANALYZER_PROMPT } = require('./prompts/split-analyzer');
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+
+    const analysisPrompt = SPLIT_ANALYZER_PROMPT.replace('{message}', message);
+
+    // 创建临时分析 agent（不复用当前 session 的 agent，避免干扰）
+    const tempAgent = createAgent(session.workdir, session.agentType, {
+      ...session.options,
+      sessionId: uuidv4()
+    });
+
+    try {
+      await tempAgent.start();
+      const responseText = await this._captureAgentResponse(tempAgent, analysisPrompt);
+      console.log('[拆分分析] Agent 原始回复:', responseText?.substring(0, 500));
+      const result = this._parseSplitResult(responseText);
+      console.log('[拆分分析] 解析结果:', JSON.stringify(result));
+      await tempAgent.stop();
+      return result;
+    } catch (err) {
+      console.error('任务拆分分析失败:', err.message);
+      await tempAgent.stop().catch(() => {});
+      return null;
+    }
+  }
+
+  /**
+   * 执行单个子任务
+   */
+  async executeSubtask(sessionId, subtaskId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error('会话不存在');
+
+    const subtask = session.subtasks.find(s => s.id === subtaskId);
+    if (!subtask || subtask.status === 'running') return;
+
+    subtask.status = 'running';
+    this.broadcast(sessionId, { type: 'subtask_status', subtask_id: subtaskId, status: 'running' });
+
+    // 创建临时 agent（使用合法 UUID 作为 sessionId）
+    const agent = createAgent(session.workdir, session.agentType, {
+      ...session.options,
+      sessionId: uuidv4(),
+      model: subtask.model || session.options?.model
+    });
+
+    let handler = null;
+    let saveTimer = null;
+    try {
+      await agent.start();
+
+      // 监听 agent 事件，带 subtask_id 广播，同时实时捕获文本结果到 subtask.result
+      handler = (msg) => {
+        this.broadcast(sessionId, { ...msg, subtask_id: subtaskId });
+        if (msg.type === 'text') {
+          subtask.result = (subtask.result || '') + msg.content;
+        } else if (msg.type === 'assistant') {
+          const texts = (msg.message?.content || [])
+            .filter(c => c.type === 'text').map(c => c.text);
+          if (texts.length > 0) {
+            subtask.result = (subtask.result || '') + texts.join('\n');
+          }
+        }
+      };
+      agent.on('message', handler);
+
+      // 每 5 秒自动保存一次，防止异常终止时结果丢失
+      saveTimer = setInterval(() => this.saveSession(session), 5000);
+
+      await agent.send(subtask.description);
+
+      // 标记完成
+      subtask.status = 'done';
+      subtask.completedAt = Date.now();
+      this.broadcast(sessionId, { type: 'subtask_status', subtask_id: subtaskId, status: 'done' });
+    } catch (err) {
+      subtask.status = 'error';
+      subtask.error = err.message;
+      this.broadcast(sessionId, { type: 'subtask_status', subtask_id: subtaskId, status: 'error', error: err.message });
+    } finally {
+      if (saveTimer) clearInterval(saveTimer);
+      if (handler) agent.removeListener('message', handler);
+      await agent.stop().catch(() => {});
+    }
+
+    this.saveSession(session);
+  }
+
+  /**
+   * 并行执行所有 pending 子任务
+   */
+  async executeAllSubtasks(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error('会话不存在');
+
+    const pending = session.subtasks.filter(s => s.status === 'pending');
+    await Promise.allSettled(pending.map(s => this.executeSubtask(sessionId, s.id)));
+  }
+
+  /**
+   * 取消子任务
+   */
+  cancelSubtask(sessionId, subtaskId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error('会话不存在');
+
+    const subtask = session.subtasks.find(s => s.id === subtaskId);
+    if (!subtask) throw new Error('子任务不存在');
+
+    subtask.status = 'error';
+    subtask.error = '用户取消';
+    this.broadcast(sessionId, { type: 'subtask_status', subtask_id: subtaskId, status: 'error', error: '用户取消' });
+    this.saveSession(session);
+  }
+
+  /**
+   * 更新子任务
+   */
+  updateSubtask(sessionId, subtaskId, updates) {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error('会话不存在');
+
+    const subtask = session.subtasks.find(s => s.id === subtaskId);
+    if (!subtask) throw new Error('子任务不存在');
+
+    Object.assign(subtask, updates);
+    this.saveSession(session);
+    return subtask;
+  }
+
+  /**
+   * 删除子任务
+   */
+  deleteSubtask(sessionId, subtaskId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error('会话不存在');
+
+    session.subtasks = session.subtasks.filter(s => s.id !== subtaskId);
+    this.saveSession(session);
+  }
+
+  /**
+   * 获取子任务列表
+   */
+  getSubtasks(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error('会话不存在');
+    return session.subtasks || [];
   }
 }
 

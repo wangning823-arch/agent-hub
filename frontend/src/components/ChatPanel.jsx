@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import Message from './Message'
 import QuoteReply from './QuoteReply'
+import SubtaskPanel from './SubtaskPanel'
 import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
 import { API_BASE, getWebSocketUrl } from '../config'
@@ -45,6 +46,12 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
   const [currentMode, setCurrentMode] = useState(options?.mode || 'auto')
   const [currentModel, setCurrentModel] = useState(options?.model || '')
   const [currentEffort, setCurrentEffort] = useState(options?.effort || 'medium')
+  const [sendMode, setSendMode] = useState('normal') // 'normal' | 'split'
+
+  // 子任务状态
+  const [subtasks, setSubtasks] = useState([])
+  const [showSubtaskPanel, setShowSubtaskPanel] = useState(false)
+  const [splitAnalyzing, setSplitAnalyzing] = useState(false)
 
   // 上下文使用情况（从 localStorage 恢复）
   const [contextUsage, setContextUsage] = useState(() => {
@@ -131,6 +138,8 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
   useEffect(() => {
     isNearBottomRef.current = true
     initialLoadRef.current = true
+    setSubtasks([])
+    setShowSubtaskPanel(false)
   }, [sessionId])
 
   // 加载更多历史消息
@@ -262,6 +271,17 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
 
     loadHistory()
 
+    // 加载子任务状态
+    fetch(`${API_BASE}/sessions/${sessionId}/subtasks`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.subtasks && data.subtasks.length > 0) {
+          setSubtasks(data.subtasks)
+          setShowSubtaskPanel(true)
+        }
+      })
+      .catch(() => {})
+
      let reconnectAttempts = 0
      const maxReconnectAttempts = 5
      let reconnectTimeout = null
@@ -321,11 +341,29 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
        ws.onmessage = (event) => {
          try {
            const msg = JSON.parse(event.data)
-           
+
            // 处理心跳响应
            if (msg.type === 'pong') {
              if (pongTimeout) clearTimeout(pongTimeout)
              return
+           }
+
+           // 子任务消息：不进入主 messages，更新对应子任务
+           if (msg.subtask_id) {
+             if (msg.type === 'text' || msg.type === 'assistant') {
+               setSubtasks(prev => prev.map(s =>
+                 s.id === msg.subtask_id
+                   ? { ...s, result: (s.result || '') + (msg.content || '') }
+                   : s
+               ))
+             } else if (msg.type === 'subtask_status') {
+               setSubtasks(prev => prev.map(s =>
+                 s.id === msg.subtask_id
+                   ? { ...s, status: msg.status, error: msg.error || s.error }
+                   : s
+               ))
+             }
+             return // 不继续处理主消息流
            }
           
           // 处理工具调用消息的合并逻辑
@@ -745,8 +783,8 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
   }
 
   // 发送消息
-  const sendMessage = () => {
-    if (isWorking || isStarting || isRestoringMemory) return
+  const sendMessage = async () => {
+    if (isWorking || isStarting || isRestoringMemory || splitAnalyzing) return
     if ((!input.trim() && attachments.length === 0) || !wsRef.current || wsRef.current.readyState !== 1) {
       return
     }
@@ -762,6 +800,42 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
       messageContent = input ? `${input}\n\n${attachmentText}` : attachmentText
     }
 
+    // 拆分模式：先分析任务
+    if (sendMode === 'split') {
+      setSplitAnalyzing(true)
+      try {
+        const res = await fetch(`${API_BASE}/sessions/${sessionId}/split`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: messageContent })
+        })
+        const data = await res.json()
+        if (data.shouldSplit && data.subtasks?.length > 0) {
+          // 使用后端生成的子任务 ID（确保 WebSocket 消息能正确匹配）
+          setSubtasks(data.subtasks)
+          setShowSubtaskPanel(true)
+          // 将用户消息显示在聊天中
+          setMessages(prev => [...prev, { type: 'user', content: messageContent }])
+        } else {
+          // 不需要拆分，当作普通消息发送
+          toast.info('该任务不需要拆分，以普通模式执行')
+          // 继续普通发送
+          setMessages(prev => [...prev, { type: 'user', content: messageContent }])
+          wsRef.current.send(JSON.stringify({ type: 'user_input', content: messageContent }))
+        }
+      } catch (err) {
+        toast.error('任务分析失败: ' + err.message)
+      } finally {
+        setSplitAnalyzing(false)
+      }
+      setSendMode('normal') // 发送后自动切回普通模式，防止重复拆分
+      setInput('')
+      setAttachments([])
+      setQuoteReply(null)
+      return
+    }
+
+    // 普通模式：现有逻辑
     setMessages(prev => [...prev, {
       type: 'user',
       content: messageContent,
@@ -791,6 +865,47 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
     setInput('')
   }
 
+  // 子任务处理函数
+  const handleExecuteSubtask = async (subtaskId) => {
+    try {
+      await fetch(`${API_BASE}/sessions/${sessionId}/subtasks/${subtaskId}/execute`, { method: 'POST' })
+    } catch (err) {
+      toast.error('执行子任务失败: ' + err.message)
+    }
+  }
+
+  const handleExecuteAllSubtasks = async () => {
+    try {
+      await fetch(`${API_BASE}/sessions/${sessionId}/subtasks/execute-all`, { method: 'POST' })
+    } catch (err) {
+      toast.error('执行子任务失败: ' + err.message)
+    }
+  }
+
+  const handleCancelSubtask = async (subtaskId) => {
+    try {
+      await fetch(`${API_BASE}/sessions/${sessionId}/subtasks/${subtaskId}/cancel`, { method: 'POST' })
+    } catch (err) {
+      toast.error('取消子任务失败: ' + err.message)
+    }
+  }
+
+  const handleViewSubtaskResult = (subtaskId) => {
+    const task = subtasks.find(s => s.id === subtaskId)
+    if (!task?.result) return
+    // 将子任务结果作为 assistant 消息添加到 messages
+    setMessages(prev => [...prev, {
+      type: 'assistant',
+      content: `**[子任务] ${task.description}**\n\n${task.result}`,
+      time: Date.now()
+    }])
+  }
+
+  const handleCloseSubtaskPanel = () => {
+    setSubtasks([])
+    setShowSubtaskPanel(false)
+  }
+
   // 点击上下文百分比 - 通过 WebSocket 发送 /compact，与手动输入一致
   const handleContextClick = () => {
     if (contextUsage.percentage < 50) return;
@@ -806,7 +921,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (!isWorking && !isStarting && !isRestoringMemory) {
+      if (!isWorking && !isStarting && !isRestoringMemory && !splitAnalyzing) {
         sendMessage()
       }
     }
@@ -841,6 +956,18 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
           </div>
         </div>
       )}
+
+      {/* Subtask Panel */}
+      <SubtaskPanel
+        subtasks={subtasks}
+        show={showSubtaskPanel}
+        onToggle={() => setShowSubtaskPanel(!showSubtaskPanel)}
+        onExecute={handleExecuteSubtask}
+        onExecuteAll={handleExecuteAllSubtasks}
+        onCancel={handleCancelSubtask}
+        onViewResult={handleViewSubtaskResult}
+        onClose={handleCloseSubtaskPanel}
+      />
 
       {/* Messages */}
       <div
@@ -1004,10 +1131,10 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
                 onFocus={() => {
                   setTimeout(() => scrollToBottom('auto'), 300)
                 }}
-                placeholder={isStarting ? 'Agent启动中，请稍候...' : isWorking ? '任务进行中，请等待完成...' : isRestoringMemory ? '正在恢复记忆，请稍等...' : '输入消息...'}
-                disabled={isWorking || isStarting || isRestoringMemory}
+                placeholder={splitAnalyzing ? '正在分析任务，请稍候...' : isStarting ? 'Agent启动中，请稍候...' : isWorking ? '任务进行中，请等待完成...' : isRestoringMemory ? '正在恢复记忆，请稍等...' : sendMode === 'split' ? '描述需要拆分的任务，系统将自动分析并行执行...' : '输入消息...'}
+                disabled={isWorking || isStarting || isRestoringMemory || splitAnalyzing}
                 className="w-full bg-transparent text-sm resize-none focus:outline-none"
-                style={{ color: 'var(--text-primary)', minHeight: 40, maxHeight: 120, opacity: (isWorking || isStarting || isRestoringMemory) ? 0.5 : 1, touchAction: 'manipulation' }}
+                style={{ color: 'var(--text-primary)', minHeight: 40, maxHeight: 120, opacity: (isWorking || isStarting || isRestoringMemory || splitAnalyzing) ? 0.5 : 1, touchAction: 'manipulation' }}
                 rows={1}
               />
             </div>
@@ -1015,9 +1142,9 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
             <div className="flex items-center gap-1 px-2 pb-2">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                disabled={uploading || isWorking || isStarting}
+                disabled={uploading || isWorking || isStarting || splitAnalyzing}
                 className="p-1.5 rounded-lg transition-colors text-xs"
-                style={{ color: 'var(--text-muted)', opacity: (isWorking || isStarting) ? 0.4 : 1 }}
+                style={{ color: 'var(--text-muted)', opacity: (isWorking || isStarting || splitAnalyzing) ? 0.4 : 1 }}
                 title="上传文件"
               >{uploading ? '⏳' : '📎'}</button>
               <select
@@ -1075,9 +1202,9 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
               )}
               <button
                 onClick={sendMessage}
-                disabled={!connected || isWorking || isStarting || (input.trim() === '' && attachments.length === 0)}
+                disabled={!connected || isWorking || isStarting || splitAnalyzing || (input.trim() === '' && attachments.length === 0)}
                 className="p-1.5 rounded-lg transition-colors"
-                style={{ background: 'var(--accent-primary)', color: 'white', opacity: (!connected || isWorking || isStarting || (input.trim() === '' && attachments.length === 0)) ? 0.4 : 1 }}
+                style={{ background: 'var(--accent-primary)', color: 'white', opacity: (!connected || isWorking || isStarting || splitAnalyzing || (input.trim() === '' && attachments.length === 0)) ? 0.4 : 1 }}
                 title="发送"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -1102,7 +1229,19 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', workdi
                 <span style={{ color: 'var(--text-muted)' }}>📎{attachments.length}</span>
               )}
             </div>
-            <span>Enter 发送 · Shift+Enter 换行</span>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-1 cursor-pointer select-none" title="拆分模式：将复杂任务拆分为多个并行子任务">
+                <input
+                  type="checkbox"
+                  checked={sendMode === 'split'}
+                  onChange={(e) => setSendMode(e.target.checked ? 'split' : 'normal')}
+                  className="rounded"
+                  style={{ accentColor: 'var(--accent-primary)' }}
+                />
+                <span>拆分</span>
+              </label>
+              <span className="hidden md:inline">Enter 发送 · Shift+Enter 换行</span>
+            </div>
           </div>
         </div>
       </div>

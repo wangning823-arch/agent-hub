@@ -367,5 +367,115 @@ router.post('/:id/stop', async (req, res) => {
     }
   });
 
+  // ==================== 子任务 API ====================
+
+  // 分析任务并返回子任务列表
+  router.post('/:id/split', async (req, res) => {
+    try {
+      const session = sessionManager.getSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: '会话不存在' });
+      }
+
+      const { message } = req.body;
+      if (!message) {
+        return res.status(400).json({ error: '消息内容是必需的' });
+      }
+
+      const result = await sessionManager.executeSplitAnalysis(req.params.id, message);
+      if (!result) {
+        return res.status(500).json({ error: '任务分析失败，请重试' });
+      }
+
+      // 生成子任务列表并存入 session
+      if (result.shouldSplit && result.tasks && result.tasks.length > 0) {
+        const subtasks = result.tasks.map((t, i) => ({
+          id: `st_${Date.now()}_${i}`,
+          description: t.description,
+          status: 'pending',
+          result: null,
+          model: null,
+          complexity: t.complexity || 'medium',
+          error: null,
+          createdAt: Date.now(),
+          completedAt: null
+        }));
+        session.subtasks = subtasks;
+        sessionManager.saveSession(session);
+        // 返回完整的子任务列表（含 ID），前端直接使用
+        result.subtasks = subtasks;
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error('任务拆分分析失败:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 获取子任务列表
+  router.get('/:id/subtasks', (req, res) => {
+    try {
+      const subtasks = sessionManager.getSubtasks(req.params.id);
+      res.json({ subtasks });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 并行执行所有 pending 子任务
+  router.post('/:id/subtasks/execute-all', async (req, res) => {
+    try {
+      sessionManager.executeAllSubtasks(req.params.id).catch(err => {
+        console.error('执行子任务失败:', err);
+      });
+      res.json({ success: true, message: '子任务开始执行' });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 执行单个子任务
+  router.post('/:id/subtasks/:subtaskId/execute', async (req, res) => {
+    try {
+      sessionManager.executeSubtask(req.params.id, req.params.subtaskId).catch(err => {
+        console.error('执行子任务失败:', err);
+      });
+      res.json({ success: true, message: '子任务开始执行' });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 取消子任务
+  router.post('/:id/subtasks/:subtaskId/cancel', (req, res) => {
+    try {
+      sessionManager.cancelSubtask(req.params.id, req.params.subtaskId);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 更新子任务
+  router.put('/:id/subtasks/:subtaskId', (req, res) => {
+    try {
+      const subtask = sessionManager.updateSubtask(req.params.id, req.params.subtaskId, req.body);
+      res.json({ success: true, subtask });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 删除子任务
+  router.delete('/:id/subtasks/:subtaskId', (req, res) => {
+    try {
+      sessionManager.deleteSubtask(req.params.id, req.params.subtaskId);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 };

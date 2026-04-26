@@ -9,6 +9,7 @@ class Session {
     this.isActive = true;
     this.conversationId = null;
     this.lastSavedMessageCount = 0;
+    this.subtasks = [];
   }
 
   toJSON() {
@@ -29,7 +30,8 @@ class Session {
       title: this.title || null,
       isPinned: this.isPinned || false,
       isArchived: this.isArchived || false,
-      tags: this.tags || []
+      tags: this.tags || [],
+      subtasks: this.subtasks || []
     };
   }
 }
