@@ -1,11 +1,9 @@
 const ClaudeCodeAgent = require('./claude-code');
-const ClaudeApiAgent = require('./claude-api');
 const OpenCodeAgent = require('./opencode');
 const CodexAgent = require('./codex');
 
 const AGENT_CLASSES = {
   'claude-code': ClaudeCodeAgent,
-  'claude-api': ClaudeApiAgent,
   'opencode': OpenCodeAgent,
   'codex': CodexAgent
 };

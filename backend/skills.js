@@ -292,7 +292,6 @@ function getSkillsForAgent(agentType) {
   let skills;
   switch (agentType) {
     case 'claude-code':
-    case 'claude-api':
       skills = loadClaudeCodeSkills();
       break;
     case 'opencode':
@@ -368,7 +367,6 @@ async function installOpenCodePlugin(pluginName) {
 async function installSkill(agentType, source, options = {}) {
   switch (agentType) {
     case 'claude-code':
-    case 'claude-api':
       return installClaudeSkill(source, options);
     case 'opencode':
       return installOpenCodePlugin(source);

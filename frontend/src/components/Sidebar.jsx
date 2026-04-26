@@ -232,7 +232,6 @@ export default function Sidebar({
   const getAgentLabel = (agentType) => {
     const labels = {
       'claude-code': { text: 'CC', color: '#e8a838' },
-      'claude-api': { text: 'CC', color: '#e8a838' },
       'opencode': { text: 'OC', color: '#4ade80' },
       'codex': { text: 'CX', color: '#60a5fa' },
     }
@@ -483,6 +482,31 @@ export default function Sidebar({
                     {currentOptions.model && <div>🧠 模型: {currentOptions.model}</div>}
                     {currentOptions.effort && <div>💪 努力: {currentOptions.effort}</div>}
                   </div>
+
+                  {/* 恢复记忆按钮 */}
+                  <button
+                    onClick={async () => {
+                      if (!activeSession) return
+                      try {
+                        const res = await fetch(`${API_BASE}/sessions/${activeSession}/restore-memory`, { method: 'POST' })
+                        const data = await res.json()
+                        if (data.success) {
+                          if (data.summary) {
+                            toast.success('记忆已恢复！')
+                          } else {
+                            toast.info(data.message || '无需恢复')
+                          }
+                        } else {
+                          toast.error(data.error || '恢复失败')
+                        }
+                      } catch (e) {
+                        toast.error('恢复记忆失败: ' + e.message)
+                      }
+                    }}
+                    className="btn-secondary w-full text-sm py-2 flex items-center justify-center gap-2"
+                  >
+                    🧠 恢复记忆
+                  </button>
 
                   {/* Permission modes */}
                   <div>

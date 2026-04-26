@@ -374,7 +374,7 @@ export default function ChatPanel({ sessionId, agentType = 'claude-code', option
               if (onStartingChange) {
                 onStartingChange(false)
               }
-              const agentNames = { 'claude-code': 'Claude', 'claude-api': 'Claude', 'opencode': 'OpenCode', 'codex': 'Codex' }
+              const agentNames = { 'claude-code': 'Claude', 'opencode': 'OpenCode', 'codex': 'Codex' }
               setStatusMessage(`${agentNames[agentType] || 'Agent'} 已就绪`)
               setTimeout(() => setStatusMessage(''), 3000)
             } else if (msg.type === 'status' && msg.content === 'agent_stopped') {

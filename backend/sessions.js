@@ -311,7 +311,7 @@ class SessionManager {
     // 为工作目录配置Git凭证（如果能检测到远程主机且有凭证的话）
     this._setupGitForWorkdir(absoluteWorkdir);
     
-    const agent = createAgent(absoluteWorkdir, agentType, options);
+    const agent = createAgent(absoluteWorkdir, agentType, { ...options, sessionId: id });
     const session = new Session(id, agent, absoluteWorkdir, options);
     session.agentType = agentType;
 
@@ -321,6 +321,7 @@ class SessionManager {
       session.isActive = false;
       this.broadcast(id, { type: 'status', content: 'agent_stopped' });
       this.saveSession(session);
+      this._generateSummaryIfNeeded(session);
     });
 
     try {
@@ -424,7 +425,7 @@ class SessionManager {
 
   async _resumeAgent(session) {
     const agentType = session.agentType || 'claude-code';
-    const options = { ...session.options, conversationId: session.conversationId };
+    const options = { ...session.options, conversationId: session.conversationId, sessionId: session.id };
 
     // 检查工作目录是否存在
     const fs = require('fs');
@@ -437,8 +438,33 @@ class SessionManager {
 
     const agent = createAgent(session.workdir, agentType, options);
 
-    if (agentType === 'claude-api') {
-      resumeAgentMessages(agent, session.messages);
+    // 如果没有 conversationId，说明 agent 无法从本地存储恢复历史，需要注入消息
+    if (!session.conversationId && session.messages.length > 0) {
+      // 构建历史上下文：摘要（如有）+ 最近10条对话
+      const historyLines = [];
+      // 查找是否已有摘要消息
+      const summaryMsg = session.messages.find(m =>
+        m.role === 'user' && typeof m.content === 'string' && m.content.startsWith('[之前对话的摘要]')
+      );
+      if (summaryMsg) {
+        historyLines.push(summaryMsg.content);
+      }
+      // 取最近10条对话（排除摘要本身）
+      const recentMessages = session.messages
+        .filter(m => m !== summaryMsg && (m.role === 'user' || m.role === 'assistant'))
+        .slice(-10);
+      for (const msg of recentMessages) {
+        const role = msg.role === 'user' ? '用户' : '助手';
+        const content = typeof msg.content === 'string'
+          ? msg.content
+          : (msg.content?.content || JSON.stringify(msg.content));
+        if (content && content.trim()) {
+          historyLines.push(`[${role}]: ${content.slice(0, 500)}`);
+        }
+      }
+      if (historyLines.length > 0) {
+        agent.pendingHistory = historyLines.join('\n\n');
+      }
     }
 
     agent.on('message', (msg) => this.broadcast(session.id, msg));
@@ -447,6 +473,7 @@ class SessionManager {
       session.isActive = false;
       this.broadcast(session.id, { type: 'status', content: 'agent_stopped' });
       this.saveSession(session);
+      this._generateSummaryIfNeeded(session);
     });
 
     try {
@@ -480,6 +507,7 @@ class SessionManager {
       
       if (message.conversationId) {
         session.conversationId = message.conversationId;
+        this.saveSession(session);
       }
       
       if (message.type === 'token_usage' && message.content && this.tokenTracker) {
@@ -692,6 +720,14 @@ class SessionManager {
       }
     }
     return sessions;
+  }
+
+  /**
+   * 自动生成会话摘要（已废弃，改为按需生成）
+   * 保留方法签名避免报错，实际由前端调用 /restore-memory 接口触发
+   */
+  _generateSummaryIfNeeded(session) {
+    // 不再自动生成，由用户手动触发恢复记忆
   }
 }
 

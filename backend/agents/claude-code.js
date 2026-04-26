@@ -5,6 +5,8 @@
 const Agent = require('./base')
 const { spawn } = require('child_process')
 const path = require('path')
+const fs = require('fs')
+const os = require('os')
 
 class ClaudeCodeAgent extends Agent {
   constructor(workdir, options = {}) {
@@ -73,16 +75,31 @@ class ClaudeCodeAgent extends Agent {
       if (this.options.effort) {
         args.push('--effort', this.options.effort)
       }
-      
-      // 如果有之前的对话，使用 --resume 保持上下文
+
+      // 对话隔离：有 conversationId 用 --resume，没有则检查会话文件是否存在
+      // 如果会话文件存在，用 --resume 恢复；如果不存在，用 --session-id 创建新会话
       if (this.conversationId) {
         args.push('--resume', this.conversationId)
+      } else if (this.options.sessionId) {
+        if (this._conversationFileExists(this.options.sessionId)) {
+          // 会话文件存在，恢复已有会话
+          args.push('--resume', this.options.sessionId)
+        } else {
+          // 会话文件不存在，创建新会话
+          args.push('--session-id', this.options.sessionId)
+        }
       } else {
         args.push('--continue')
       }
-      
+
       // 添加用户消息（长度截断，防止超大输入导致崩溃）
       let userMessage = message
+
+      // 如果有待注入的历史上下文， prepend 到消息中
+      if (this.pendingHistory) {
+        userMessage = `[之前的对话上下文]\n${this.pendingHistory}\n\n[当前消息]\n${userMessage}`
+        this.pendingHistory = null
+      }
       const MAX_INPUT_SIZE = 8000
       if (typeof userMessage === 'string' && userMessage.length > MAX_INPUT_SIZE) {
         userMessage = userMessage.substring(0, MAX_INPUT_SIZE)
@@ -296,6 +313,23 @@ class ClaudeCodeAgent extends Agent {
       return { ok: true, info: 'Claude Code CLI available' }
     } catch (e) {
       return { ok: false, error: e.message }
+    }
+  }
+
+  /**
+   * 检查Claude Code会话文件是否存在
+   * 用于判断是否可以使用 --resume 恢复会话
+   */
+  _conversationFileExists(sessionId) {
+    try {
+      // Claude Code存储路径: ~/.claude/projects/<project-dir>/<sessionId>.jsonl
+      // project-dir是工作目录路径，/替换为-
+      const projectDir = this.workdir.replace(/\//g, '-')
+      const claudeDir = path.join(os.homedir(), '.claude', 'projects', projectDir)
+      const filePath = path.join(claudeDir, `${sessionId}.jsonl`)
+      return fs.existsSync(filePath)
+    } catch (e) {
+      return false
     }
   }
 }

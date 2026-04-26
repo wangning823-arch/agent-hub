@@ -10,7 +10,7 @@ module.exports = (sessionManager) => {
         return res.status(400).json({ error: 'workdir是必需的' });
       }
 
-      const validAgentTypes = ['claude-code', 'claude-api', 'opencode', 'codex'];
+      const validAgentTypes = ['claude-code', 'opencode', 'codex'];
       if (!validAgentTypes.includes(agentType)) {
         return res.status(400).json({ error: `不支持的Agent类型: ${agentType}` });
       }
@@ -268,7 +268,7 @@ router.post('/:id/stop', async (req, res) => {
       }
 
       const { summarizeSession } = require('../claude-service');
-      const result = await summarizeSession(session.messages);
+      const result = await summarizeSession(session.messages, session.agentType || 'claude-code', session.workdir);
 
       if (req.body.compact) {
         const keepLast = Math.min(10, session.messages.length);
@@ -286,6 +286,63 @@ router.post('/:id/stop', async (req, res) => {
       res.json(result);
     } catch (error) {
       console.error('总结会话失败:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 按需恢复记忆：生成摘要并注入到会话历史
+  router.post('/:id/restore-memory', async (req, res) => {
+    try {
+      const session = sessionManager.getSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: '会话不存在' });
+      }
+
+      if (session.messages.length < 5) {
+        return res.json({ success: true, message: '消息太少，无需恢复', summary: null });
+      }
+
+      // 检查是否已有摘要
+      const hasSummary = session.messages.some(m =>
+        m.role === 'user' && typeof m.content === 'string' && m.content.startsWith('[之前对话的摘要]')
+      );
+      if (hasSummary) {
+        // 已有摘要，但如果 agent 在运行，仍然注入到 pendingHistory
+        if (session.agent && session.agent.isRunning) {
+          const summaryMsg = session.messages.find(m =>
+            m.role === 'user' && typeof m.content === 'string' && m.content.startsWith('[之前对话的摘要]')
+          );
+          if (summaryMsg) {
+            session.agent.pendingHistory = summaryMsg.content;
+          }
+        }
+        return res.json({ success: true, message: '已有摘要，已注入到当前对话', summary: null });
+      }
+
+      const { summarizeSession } = require('../claude-service');
+      const result = await summarizeSession(session.messages, session.agentType || 'claude-code', session.workdir);
+
+      const summaryContent = `[之前对话的摘要]\n${result.summary}`;
+
+      // 保留最近10条，其余用摘要替代
+      const keepLast = Math.min(10, session.messages.length);
+      const recentMessages = session.messages.slice(-keepLast);
+      session.messages = [
+        { role: 'user', content: summaryContent, time: Date.now() },
+        { role: 'assistant', content: '已了解之前的对话内容，可以继续交流。', time: Date.now() },
+        ...recentMessages
+      ];
+      session.updatedAt = new Date();
+      sessionManager.saveSession(session);
+
+      // 如果 agent 正在运行，直接注入到 pendingHistory，下一条消息就会带上摘要上下文
+      if (session.agent && session.agent.isRunning) {
+        session.agent.pendingHistory = summaryContent;
+      }
+
+      res.json({ success: true, summary: result.summary });
+    } catch (error) {
+      console.error('恢复记忆失败:', error);
       res.status(500).json({ error: error.message });
     }
   });

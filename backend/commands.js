@@ -80,14 +80,7 @@ const CLAUDE_COMMANDS = [
     usage: '/loop'
   },
 
-  // API 和配置
-  {
-    id: 'claude-api',
-    name: '/claude-api',
-    description: 'Claude API 相关操作',
-    category: '配置',
-    usage: '/claude-api'
-  },
+  // 配置
   {
     id: 'update-config',
     name: '/update-config',
@@ -164,7 +157,6 @@ const CODEX_MODES = [
 function getModesForAgent(agentType) {
   switch (agentType) {
     case 'claude-code':
-    case 'claude-api':
       return PERMISSION_MODES;
     case 'opencode':
       return OPENCODE_MODES;
@@ -391,7 +383,6 @@ function loadCodexModels() {
 function getModelsForAgent(agentType) {
   switch (agentType) {
     case 'claude-code':
-    case 'claude-api':
       return loadClaudeModels();
     case 'opencode':
       return loadOpenCodeModels();
@@ -424,7 +415,6 @@ const OPENCODE_VARIANTS = [
 function getEffortsForAgent(agentType) {
   switch (agentType) {
     case 'claude-code':
-    case 'claude-api':
       return EFFORT_LEVELS;
     case 'opencode':
       return OPENCODE_VARIANTS;
@@ -461,7 +451,6 @@ const CODEX_COMMANDS = [
 function getCommandsForAgent(agentType) {
   switch (agentType) {
     case 'claude-code':
-    case 'claude-api':
       return CLAUDE_COMMANDS;
     case 'opencode':
       return OPENCODE_COMMANDS;
