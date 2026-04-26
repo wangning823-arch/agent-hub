@@ -62,10 +62,15 @@ function execAsync(cmd, options) {
 class OpenCodeAgent extends Agent {
   constructor(workdir, options = {}) {
     super('opencode', workdir);
-    this.sessionId = options.sessionId || null;
+    // opencode自己的session ID（格式为 ses_xxx），从opencode返回的消息中获取
+    this.opencodeSessionId = null;
+    // agent-hub的sessionId，用于内部标识
+    this.hubSessionId = options.sessionId || options.conversationId || null;
     this.options = options;
     // 当前正在运行的子进程引用，用于优雅地中断/退出
     this.activeProc = null;
+    // 待注入的历史上下文
+    this.pendingHistory = null;
     // 最近的一条命令行输出（用于替换成单行状态提示）
     this._lastStatusLine = null;
   }
@@ -114,6 +119,13 @@ class OpenCodeAgent extends Agent {
     // 通知前端正在处理
     this.emit('message', { type: 'status', content: '🤔 思考中...' });
 
+    // 如果有待注入的历史上下文， prepend 到消息中
+    let finalMessage = trimmed;
+    if (this.pendingHistory) {
+      finalMessage = `[之前的对话上下文]\n${this.pendingHistory}\n\n[当前消息]\n${trimmed}`;
+      this.pendingHistory = null;
+    }
+
     return new Promise((resolve, reject) => {
       // 构建命令参数
       const args = ['run'];
@@ -121,9 +133,9 @@ class OpenCodeAgent extends Agent {
       // 使用 --pure 避免 plugins 导致进程挂起
       args.push('--pure');
 
-      // 恢复会话
-      if (this.sessionId) {
-        args.push('--session', this.sessionId);
+      // 恢复会话 - 只在有opencode自己的session ID时使用
+      if (this.opencodeSessionId) {
+        args.push('--session', this.opencodeSessionId);
       }
 
       // 指定模型
@@ -145,7 +157,7 @@ class OpenCodeAgent extends Agent {
       args.push('--format', 'json');
 
       // 添加用户消息
-      args.push(trimmed);
+      args.push(finalMessage);
 
       // 确保 PATH 包含 npm 全局目录
       const env = getEnvWithPath();
@@ -153,7 +165,14 @@ class OpenCodeAgent extends Agent {
       console.log('[OpenCode] spawn:', OPENCODE_PATH, args.slice(0, 6).join(' '), '...');
 
       // 使用 spawn + shell 模式实现流式输出
-      const shellArgs = args.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ');
+      // 对于包含换行符的消息，使用双引号包裹并转义内部特殊字符
+      const shellArgs = args.map(a => {
+        // 如果消息包含换行符，使用双引号包裹
+        if (a.includes('\n')) {
+          return `"${a.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+        }
+        return `'${a.replace(/'/g, "'\\''")}'`;
+      }).join(' ');
       const proc = spawn('sh', ['-c', `${OPENCODE_PATH} ${shellArgs} < /dev/null`], {
         cwd: this.workdir,
         env,
@@ -273,13 +292,13 @@ class OpenCodeAgent extends Agent {
           }
         });
       }
-      // 保存 sessionID
+      // 保存 opencode自己的sessionID
       if (msg.sessionID) {
-        this.sessionId = msg.sessionID;
+        this.opencodeSessionId = msg.sessionID;
         this.emit('message', {
           type: 'conversation_id',
-          content: this.sessionId,
-          conversationId: this.sessionId
+          content: this.opencodeSessionId,
+          conversationId: this.opencodeSessionId
         });
       }
     } else if (msg.type === 'tool_use' || msg.type === 'tool') {
@@ -345,7 +364,7 @@ class OpenCodeAgent extends Agent {
       this.activeProc = null;
     }
     this.isRunning = false;
-    this.sessionId = null;
+    // 保留 opencodeSessionId 以便恢复会话时可以继续对话
     this.emit('stopped', { code: 0 });
   }
 
