@@ -230,3 +230,70 @@ export interface Skill {
   createdAt: Date;
   updatedAt: Date;
 }
+
+// ==================== Workflow Types ====================
+
+export interface WorkflowStepDef {
+  id: string;
+  name: string;
+  prompt: string;
+  agentType: AgentType;
+  dependsOn: string[];
+  timeout: number;
+}
+
+export interface WorkflowDefinition {
+  id: string;
+  name: string;
+  description: string;
+  steps: WorkflowStepDef[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type WorkflowStatus = 'idle' | 'running' | 'paused' | 'done' | 'error' | 'cancelled';
+export type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped' | 'cancelled';
+
+export interface WorkflowStepRun {
+  id: string;
+  name: string;
+  prompt: string;
+  agentType: AgentType;
+  dependsOn: string[];
+  timeout: number;
+  status: StepStatus;
+  result: string | null;
+  messages: StepMessage[];
+  error: string | null;
+  startedAt: number | null;
+  completedAt: number | null;
+}
+
+export interface StepMessage {
+  type: string;
+  content: string;
+  time: number;
+}
+
+export interface WorkflowInstance {
+  id: string;
+  defId: string;
+  name: string;
+  description: string;
+  steps: WorkflowStepRun[];
+  status: WorkflowStatus;
+  startedAt: number | null;
+  completedAt: number | null;
+  createdAt: number;
+}
+
+// ==================== Workflow Template Types ====================
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description: string;
+  steps: WorkflowStepDef[];
+  createdAt: number;
+  usageCount: number;
+}

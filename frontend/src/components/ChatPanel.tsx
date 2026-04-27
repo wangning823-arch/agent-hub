@@ -3,6 +3,8 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import Message from './Message'
 import QuoteReply from './QuoteReply'
 import SubtaskPanel from './SubtaskPanel'
+import WorkflowPanel from './WorkflowPanel'
+import WorkflowEditor from './WorkflowEditor'
 import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
 import { API_BASE, getWebSocketUrl } from '../config'
@@ -167,9 +169,33 @@ export default function ChatPanel({
   const [subtasks, setSubtasks] = useState<SubtaskData[]>([])
   const [showSubtaskPanel, setShowSubtaskPanel] = useState(false)
   const [splitAnalyzing, setSplitAnalyzing] = useState(false)
-  const [activeTab, setActiveTab] = useState<'main' | 'subtasks'>('main')
+  const [activeTab, setActiveTab] = useState<'main' | 'subtasks' | 'workflow'>('main')
   const [viewingSubtaskId, setViewingSubtaskId] = useState<string | null>(null)
   const subtaskScrollRef = useRef<HTMLDivElement>(null)
+  const workflowDropdownRef = useRef<HTMLDivElement>(null)
+
+  // 工作流状态
+  interface WorkflowStepRun {
+    id: string; name: string; prompt: string; agentType: string; dependsOn: string[];
+    status: 'pending' | 'running' | 'done' | 'error' | 'skipped' | 'cancelled';
+    result: string | null; error: string | null; messages: any[];
+    startedAt: number | null; completedAt: number | null;
+  }
+  interface WorkflowInstance {
+    id: string; defId: string; name: string; description: string;
+    steps: WorkflowStepRun[]; status: string;
+    startedAt: number | null; completedAt: number | null; createdAt: number;
+  }
+  interface WorkflowStepDef {
+    id: string; name: string; prompt: string; agentType: string;
+    dependsOn: string[]; timeout: number;
+  }
+  const [workflows, setWorkflows] = useState<WorkflowInstance[]>([])
+  const [activeWorkflow, setActiveWorkflow] = useState<WorkflowInstance | null>(null)
+  const [showWorkflowEditor, setShowWorkflowEditor] = useState(false)
+  const [editingWorkflowDef, setEditingWorkflowDef] = useState<any>(null)
+  const [workflowDefs, setWorkflowDefs] = useState<any[]>([])
+  const [showWorkflowDropdown, setShowWorkflowDropdown] = useState(false)
 
   // 上下文使用情况（从 localStorage 恢复）
   const [contextUsage, setContextUsage] = useState<ContextUsage>(() => {
@@ -437,6 +463,21 @@ export default function ChatPanel({
       })
       .catch(() => {})
 
+    // 加载工作流定义和实例
+    fetch(`${API_BASE}/sessions/${sessionId}/workflow-defs`)
+      .then(r => r.json())
+      .then(data => setWorkflowDefs(data.defs || []))
+      .catch(() => {})
+    fetch(`${API_BASE}/sessions/${sessionId}/workflows`)
+      .then(r => r.json())
+      .then(data => {
+        const list = data.workflows || []
+        setWorkflows(list)
+        const running = list.find((w: WorkflowInstance) => w.status === 'running')
+        if (running) setActiveWorkflow(running)
+      })
+      .catch(() => {})
+
      let reconnectAttempts = 0
      const maxReconnectAttempts = 5
      let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
@@ -526,6 +567,52 @@ export default function ChatPanel({
                ))
              }
              return // 不继续处理主消息流
+           }
+
+           // 工作流消息处理
+           if (msg.workflow_id) {
+             if (msg.type === 'workflow_status') {
+               setWorkflows(prev => prev.map(w =>
+                 w.id === msg.workflow_id
+                   ? { ...w, status: msg.status || w.status }
+                   : w
+               ))
+               setActiveWorkflow(prev => {
+                 if (prev && prev.id === msg.workflow_id) {
+                   return { ...prev, status: msg.status || prev.status }
+                 }
+                 return prev
+               })
+             } else if (msg.type === 'workflow_step_status') {
+               const updateStep = (w: WorkflowInstance) => {
+                 if (w.id !== msg.workflow_id) return w
+                 return {
+                   ...w,
+                   steps: w.steps.map(s =>
+                     s.id === msg.step_id
+                       ? { ...s, status: (msg.status || s.status) as any, result: msg.result || s.result, error: msg.error || s.error }
+                       : s
+                   )
+                 }
+               }
+               setWorkflows(prev => prev.map(updateStep))
+               setActiveWorkflow(prev => prev ? updateStep(prev) : null)
+             } else if (msg.type === 'workflow_step_message') {
+               const updateStepMsg = (w: WorkflowInstance) => {
+                 if (w.id !== msg.workflow_id) return w
+                 return {
+                   ...w,
+                   steps: w.steps.map(s => {
+                     if (s.id !== msg.step_id) return s
+                     const newMsg = { type: msg.content_type || msg.type, content: msg.content || '', time: Date.now() }
+                     return { ...s, messages: [...s.messages, newMsg].slice(-100) }
+                   })
+                 }
+               }
+               setWorkflows(prev => prev.map(updateStepMsg))
+               setActiveWorkflow(prev => prev ? updateStepMsg(prev) : null)
+             }
+             return
            }
 
           // 处理工具调用消息的合并逻辑
@@ -717,6 +804,18 @@ export default function ChatPanel({
        }
     }
   }, [sessionId])
+
+  // 点击外部关闭工作流下拉菜单
+  useEffect(() => {
+    if (!showWorkflowDropdown) return
+    const handler = (e: MouseEvent) => {
+      if (workflowDropdownRef.current && !workflowDropdownRef.current.contains(e.target as Node)) {
+        setShowWorkflowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showWorkflowDropdown])
 
   // 更新选项
   const updateOption = (type: string, value: string) => {
@@ -1058,6 +1157,115 @@ export default function ChatPanel({
     setActiveTab('subtasks')
   }
 
+  // 工作流处理函数
+  const handleWorkflowSave = async (def: { name: string; description: string; steps: WorkflowStepDef[] }) => {
+    try {
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/workflow-defs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(def)
+      })
+      const data = await res.json()
+      if (data.def) setWorkflowDefs(prev => [...prev, data.def])
+      setShowWorkflowEditor(false)
+      toast.success('工作流已保存')
+    } catch (err: any) {
+      toast.error('保存失败: ' + err.message)
+    }
+  }
+
+  const handleWorkflowSaveAndRun = async (def: { name: string; description: string; steps: WorkflowStepDef[] }) => {
+    try {
+      // 先保存定义
+      const defRes = await fetch(`${API_BASE}/sessions/${sessionId}/workflow-defs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(def)
+      })
+      const defData = await defRes.json()
+      if (defData.def) setWorkflowDefs(prev => [...prev, defData.def])
+      // 创建实例并启动
+      const runRes = await fetch(`${API_BASE}/sessions/${sessionId}/workflows`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defId: defData.def?.id, name: def.name, description: def.description, steps: def.steps })
+      })
+      const runData = await runRes.json()
+      if (runData.workflow) {
+        setWorkflows(prev => [...prev, runData.workflow])
+        setActiveWorkflow(runData.workflow)
+        setActiveTab('workflow')
+      }
+      setShowWorkflowEditor(false)
+      toast.success('工作流已启动')
+    } catch (err: any) {
+      toast.error('启动失败: ' + err.message)
+    }
+  }
+
+  const handleWorkflowSaveAsTemplate = async (def: { name: string; description: string; steps: WorkflowStepDef[] }) => {
+    try {
+      await fetch(`${API_BASE}/workflow-templates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(def)
+      })
+      toast.success('已保存为模板')
+    } catch (err: any) {
+      toast.error('保存模板失败: ' + err.message)
+    }
+  }
+
+  const handlePauseWorkflow = async (workflowId: string) => {
+    try {
+      await fetch(`${API_BASE}/sessions/${sessionId}/workflows/${workflowId}/pause`, { method: 'POST' })
+      setWorkflows(prev => prev.map(w => w.id === workflowId ? { ...w, status: 'paused' } : w))
+      if (activeWorkflow?.id === workflowId) setActiveWorkflow(prev => prev ? { ...prev, status: 'paused' } : null)
+    } catch (err: any) {
+      toast.error('暂停失败: ' + err.message)
+    }
+  }
+
+  const handleCancelWorkflow = async (workflowId: string) => {
+    try {
+      await fetch(`${API_BASE}/sessions/${sessionId}/workflows/${workflowId}/cancel`, { method: 'POST' })
+      setWorkflows(prev => prev.map(w => w.id === workflowId ? { ...w, status: 'cancelled' } : w))
+      if (activeWorkflow?.id === workflowId) setActiveWorkflow(prev => prev ? { ...prev, status: 'cancelled' } : null)
+    } catch (err: any) {
+      toast.error('取消失败: ' + err.message)
+    }
+  }
+
+  const handleRetryWorkflowStep = async (workflowId: string, stepId: string) => {
+    try {
+      await fetch(`${API_BASE}/sessions/${sessionId}/workflows/${workflowId}/retry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stepId })
+      })
+    } catch (err: any) {
+      toast.error('重试失败: ' + err.message)
+    }
+  }
+
+  const handleLoadWorkflowFromTemplate = async (templateId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/workflow-templates/${templateId}/use`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId })
+      })
+      const data = await res.json()
+      if (data.def) {
+        setEditingWorkflowDef(data.def)
+        setShowWorkflowEditor(true)
+      }
+      setShowWorkflowDropdown(false)
+    } catch (err: any) {
+      toast.error('加载模板失败: ' + err.message)
+    }
+  }
+
   // 合并连续的 tool_use 消息（与主聊天窗口一致）
   const mergeToolMessages = (msgs: ChatMessage[]): ChatMessage[] => {
     if (!msgs || msgs.length === 0) return []
@@ -1156,8 +1364,8 @@ export default function ChatPanel({
         onClose={handleCloseSubtaskPanel}
       />
 
-      {/* Tab Bar - only when subtasks exist */}
-      {subtasks.length > 0 && (
+      {/* Tab Bar - when subtasks or workflows exist */}
+      {(subtasks.length > 0 || workflows.length > 0) && (
         <div className="flex border-b" style={{ borderColor: 'var(--border-subtle)' }}>
           <button
             onClick={() => setActiveTab('main')}
@@ -1166,19 +1374,36 @@ export default function ChatPanel({
           >
             主任务
           </button>
-          <button
-            onClick={() => setActiveTab('subtasks')}
-            className={`tab-btn ${activeTab === 'subtasks' ? 'active' : ''}`}
-            style={{ flex: 'none', padding: '8px 16px' }}
-          >
-            子任务
-            {subtasks.filter(s => s.status === 'running').length > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs"
-                    style={{ background: 'var(--warning)', color: 'white', fontSize: '0.65rem' }}>
-                {subtasks.filter(s => s.status === 'running').length}
-              </span>
-            )}
-          </button>
+          {subtasks.length > 0 && (
+            <button
+              onClick={() => setActiveTab('subtasks')}
+              className={`tab-btn ${activeTab === 'subtasks' ? 'active' : ''}`}
+              style={{ flex: 'none', padding: '8px 16px' }}
+            >
+              子任务
+              {subtasks.filter(s => s.status === 'running').length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs"
+                      style={{ background: 'var(--warning)', color: 'white', fontSize: '0.65rem' }}>
+                  {subtasks.filter(s => s.status === 'running').length}
+                </span>
+              )}
+            </button>
+          )}
+          {workflows.length > 0 && (
+            <button
+              onClick={() => setActiveTab('workflow')}
+              className={`tab-btn ${activeTab === 'workflow' ? 'active' : ''}`}
+              style={{ flex: 'none', padding: '8px 16px' }}
+            >
+              工作流
+              {workflows.filter(w => w.status === 'running').length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs"
+                      style={{ background: 'var(--accent-primary)', color: 'white', fontSize: '0.65rem' }}>
+                  {workflows.filter(w => w.status === 'running').length}
+                </span>
+              )}
+            </button>
+          )}
         </div>
       )}
 
@@ -1335,6 +1560,66 @@ export default function ChatPanel({
           </div>
         )}
       </div>
+      )}
+
+      {/* Workflow Tab */}
+      {activeTab === 'workflow' && (
+      <div className="flex-1 overflow-y-auto p-3" style={{ overscrollBehaviorY: 'contain' }}>
+        {activeWorkflow ? (
+          <WorkflowPanel
+            workflow={activeWorkflow}
+            onPause={handlePauseWorkflow}
+            onCancel={handleCancelWorkflow}
+            onRetryStep={handleRetryWorkflowStep}
+            onClose={() => setActiveWorkflow(null)}
+          />
+        ) : (
+          <div className="space-y-3">
+            {workflows.map(w => (
+              <div key={w.id} className="rounded-lg p-3 cursor-pointer hover:opacity-80"
+                   style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}
+                   onClick={() => setActiveWorkflow(w)}>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{w.name}</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full"
+                        style={{ background: w.status === 'running' ? 'var(--accent-primary)' : w.status === 'done' ? 'var(--success)' : 'var(--bg-hover)', color: 'var(--text-primary)' }}>
+                    {w.status === 'running' ? '执行中' : w.status === 'done' ? '完成' : w.status === 'error' ? '出错' : w.status}
+                  </span>
+                </div>
+                <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                  {w.steps.filter(s => s.status === 'done').length}/{w.steps.length} 步骤完成
+                </div>
+              </div>
+            ))}
+            {workflows.length === 0 && (
+              <div className="text-center mt-20" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-4xl mb-3">🔄</p>
+                <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>暂无工作流</p>
+                <p className="text-sm mt-2">点击下方"工作流"按钮创建工作流</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      )}
+
+      {/* Workflow Editor Modal */}
+      {showWorkflowEditor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}
+             onClick={(e) => { if (e.target === e.currentTarget) setShowWorkflowEditor(false) }}>
+          <div className="rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto"
+               style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-subtle)' }}
+               onClick={e => e.stopPropagation()}>
+            <WorkflowEditor
+              initialDef={editingWorkflowDef}
+              agentTypes={['claude-code', 'opencode', 'codex']}
+              onSave={handleWorkflowSave}
+              onSaveAndRun={handleWorkflowSaveAndRun}
+              onSaveAsTemplate={handleWorkflowSaveAsTemplate}
+              onCancel={() => { setShowWorkflowEditor(false); setEditingWorkflowDef(null) }}
+            />
+          </div>
+        </div>
       )}
 
       {/* Bottom input area */}
@@ -1522,6 +1807,42 @@ export default function ChatPanel({
                 />
                 <span>拆分</span>
               </label>
+              <div className="relative" ref={workflowDropdownRef}>
+                <button
+                  onClick={() => setShowWorkflowDropdown(!showWorkflowDropdown)}
+                  className="flex items-center gap-1 text-xs cursor-pointer select-none px-1.5 py-0.5 rounded"
+                  style={{ color: 'var(--text-secondary)' }}
+                  title="工作流：创建多步骤编排任务"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="5" cy="6" r="3"/><circle cx="19" cy="6" r="3"/><circle cx="12" cy="18" r="3"/>
+                    <line x1="7" y1="8" x2="10" y2="16"/><line x1="17" y1="8" x2="14" y2="16"/>
+                  </svg>
+                  工作流
+                </button>
+                {showWorkflowDropdown && (
+                  <div className="absolute bottom-full right-0 mb-1 rounded-lg shadow-lg py-1 min-w-[160px] z-50"
+                       style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-subtle)' }}>
+                    <button className="w-full text-left px-3 py-1.5 text-xs hover:opacity-80"
+                            style={{ color: 'var(--text-primary)' }}
+                            onClick={() => { setEditingWorkflowDef(null); setShowWorkflowEditor(true); setShowWorkflowDropdown(false) }}>
+                      + 新建工作流
+                    </button>
+                    {workflowDefs.length > 0 && (
+                      <>
+                        <div className="border-t my-1" style={{ borderColor: 'var(--border-subtle)' }} />
+                        {workflowDefs.map((def: any) => (
+                          <button key={def.id} className="w-full text-left px-3 py-1.5 text-xs hover:opacity-80"
+                                  style={{ color: 'var(--text-primary)' }}
+                                  onClick={() => { setEditingWorkflowDef(def); setShowWorkflowEditor(true); setShowWorkflowDropdown(false) }}>
+                            {def.name}
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
               <span className="hidden md:inline">Enter 发送 · Shift+Enter 换行</span>
             </div>
           </div>

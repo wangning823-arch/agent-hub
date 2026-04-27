@@ -25,6 +25,8 @@ import optionsRouter from './routes/options';
 import credentialsRouter from './routes/credentials';
 import skillsRouter from './routes/skills';
 import modelsRouter from './routes/models';
+import workflowsRouter from './routes/workflows';
+import WorkflowEngine from './workflow-engine';
 import wsHandler from './websocket/handler';
 import { initDb } from './db';
 import { UPLOAD_DIR } from './upload';
@@ -121,6 +123,7 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
 
   const permissionManager = new PermissionManager();
   const projectManager = new ProjectManager();
+  const workflowEngine = new WorkflowEngine(sessionManager);
   const wsConnectionHandler = wsHandler(sessionManager, TOKEN_FILE);
 
   // Register route factories
@@ -139,6 +142,7 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   app.use('/api/credentials', credentialsRouter(credentialManager));
   app.use('/api/skills', skillsRouter);
   app.use('/api/models', modelsRouter());
+  app.use('/api', workflowsRouter(sessionManager, workflowEngine));
 
   wsConnectionHandler(wss);
 

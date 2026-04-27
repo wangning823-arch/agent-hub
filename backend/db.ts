@@ -112,6 +112,34 @@ async function initDb(): Promise<SqlJsDatabase> {
     }
   } catch (e) { }
 
+  // 增量迁移：给 sessions 表添加 workflow_defs 和 workflows 列
+  try {
+    const cols = db.exec("PRAGMA table_info(sessions)");
+    if (cols.length > 0) {
+      const colNames = cols[0].values.map((row: any[]) => row[1]);
+      if (!colNames.includes('workflow_defs')) {
+        db.run('ALTER TABLE sessions ADD COLUMN workflow_defs TEXT DEFAULT "[]"');
+        console.log('[数据库迁移] sessions 表添加 workflow_defs 列');
+      }
+      if (!colNames.includes('workflows')) {
+        db.run('ALTER TABLE sessions ADD COLUMN workflows TEXT DEFAULT "[]"');
+        console.log('[数据库迁移] sessions 表添加 workflows 列');
+      }
+    }
+  } catch (e) { }
+
+  // 工作流模板表
+  db.run(`
+    CREATE TABLE IF NOT EXISTS workflow_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      steps TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL,
+      usage_count INTEGER DEFAULT 0
+    )
+  `);
+
   // 增量迁移：清理从 Claude Code 自动迁移的 claude-custom provider
   try {
     const ccResult = db.exec("SELECT id FROM providers WHERE id = 'claude-custom'");

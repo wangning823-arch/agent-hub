@@ -13,6 +13,8 @@ import type {
   TokenRecord,
   SessionJSON,
   Credential,
+  WorkflowDefinition,
+  WorkflowInstance,
 } from './types';
 import { WebSocket } from 'ws';
 
@@ -76,6 +78,8 @@ interface SessionInstance {
   messages: SessionMessage[];
   lastSavedMessageCount: number;
   subtasks: Subtask[];
+  workflowDefs: WorkflowDefinition[];
+  workflows: WorkflowInstance[];
   toJSON(): SessionJSON;
 }
 
@@ -266,7 +270,8 @@ class SessionManager {
     const db = _getDb!();
     const rows = db.exec(`
       SELECT id, workdir, agent_type, agent_name, conversation_id, title, options,
-             is_pinned, is_archived, tags, created_at, updated_at, subtasks
+             is_pinned, is_archived, tags, created_at, updated_at, subtasks,
+             workflow_defs, workflows
       FROM sessions ORDER BY updated_at DESC
     `);
 
@@ -326,6 +331,8 @@ class SessionManager {
         messages,
         lastSavedMessageCount: messages.length,
         subtasks: JSON.parse((sessionData.subtasks as string) || '[]') as Subtask[],
+        workflowDefs: JSON.parse((sessionData.workflow_defs as string) || '[]') as WorkflowDefinition[],
+        workflows: JSON.parse((sessionData.workflows as string) || '[]') as WorkflowInstance[],
         toJSON(): SessionJSON {
           return {
             id: this.id,
@@ -364,8 +371,8 @@ class SessionManager {
     try {
       db.run(
         `
-        INSERT OR REPLACE INTO sessions (id, workdir, agent_type, agent_name, conversation_id, title, options, is_pinned, is_archived, tags, created_at, updated_at, subtasks)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO sessions (id, workdir, agent_type, agent_name, conversation_id, title, options, is_pinned, is_archived, tags, created_at, updated_at, subtasks, workflow_defs, workflows)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
         [
           session.id,
@@ -385,6 +392,8 @@ class SessionManager {
             ? session.updatedAt.toISOString()
             : new Date().toISOString(),
           JSON.stringify(session.subtasks || []),
+          JSON.stringify(session.workflowDefs || []),
+          JSON.stringify(session.workflows || []),
         ],
       );
 
@@ -471,6 +480,8 @@ class SessionManager {
       messages: [],
       lastSavedMessageCount: 0,
       subtasks: [],
+      workflowDefs: [],
+      workflows: [],
       toJSON(): SessionJSON {
         return {
           id: this.id,
@@ -906,6 +917,79 @@ class SessionManager {
       }
     }
     return sessions;
+  }
+
+  // ==================== Workflow Definition CRUD ====================
+
+  getWorkflowDefs(sessionId: string): WorkflowDefinition[] {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`会话不存在: ${sessionId}`);
+    return session.workflowDefs || [];
+  }
+
+  saveWorkflowDef(sessionId: string, def: WorkflowDefinition): WorkflowDefinition {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`会话不存在: ${sessionId}`);
+    if (!session.workflowDefs) session.workflowDefs = [];
+    session.workflowDefs.push(def);
+    this.saveSession(session);
+    return def;
+  }
+
+  updateWorkflowDef(sessionId: string, defId: string, updates: Partial<WorkflowDefinition>): WorkflowDefinition {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`会话不存在: ${sessionId}`);
+    const def = (session.workflowDefs || []).find(d => d.id === defId);
+    if (!def) throw new Error(`工作流定义不存在: ${defId}`);
+    Object.assign(def, updates, { updatedAt: Date.now() });
+    this.saveSession(session);
+    return def;
+  }
+
+  deleteWorkflowDef(sessionId: string, defId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`会话不存在: ${sessionId}`);
+    const before = (session.workflowDefs || []).length;
+    session.workflowDefs = (session.workflowDefs || []).filter(d => d.id !== defId);
+    this.saveSession(session);
+    return (session.workflowDefs || []).length < before;
+  }
+
+  // ==================== Workflow Instance CRUD ====================
+
+  getWorkflows(sessionId: string): WorkflowInstance[] {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`会话不存在: ${sessionId}`);
+    return session.workflows || [];
+  }
+
+  getWorkflow(sessionId: string, workflowId: string): WorkflowInstance | null {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`会话不存在: ${sessionId}`);
+    return (session.workflows || []).find(w => w.id === workflowId) || null;
+  }
+
+  saveWorkflow(sessionId: string, instance: WorkflowInstance): WorkflowInstance {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`会话不存在: ${sessionId}`);
+    if (!session.workflows) session.workflows = [];
+    const idx = session.workflows.findIndex(w => w.id === instance.id);
+    if (idx >= 0) {
+      session.workflows[idx] = instance;
+    } else {
+      session.workflows.push(instance);
+    }
+    this.saveSession(session);
+    return instance;
+  }
+
+  deleteWorkflow(sessionId: string, workflowId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`会话不存在: ${sessionId}`);
+    const before = (session.workflows || []).length;
+    session.workflows = (session.workflows || []).filter(w => w.id !== workflowId);
+    this.saveSession(session);
+    return (session.workflows || []).length < before;
   }
 
   /**
