@@ -54,7 +54,7 @@ const DIST_PATH: string = path.join(__dirname, '..', '..', 'frontend', 'dist');
 
 // ==================== Init ====================
 
-let sessionManager: SessionManager;
+let sessionManager!: SessionManager;
 
 async function initApp(): Promise<void> {
   await initDb();

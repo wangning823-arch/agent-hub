@@ -365,7 +365,7 @@ class OpenCodeAgent extends Agent {
           const t = msg.part.tokens;
           this.emit('message', {
             type: 'token_usage',
-            content: JSON.stringify({
+            content: {
               inputTokens: t.input || 0,
               outputTokens: t.output || 0,
               cacheReadTokens: t.cache?.read || 0,
@@ -374,7 +374,7 @@ class OpenCodeAgent extends Agent {
               contextWindow: getOpenCodeContextWindow(),
               cost: t.cost || 0,
               model: this.options.model || 'opencode'
-            })
+            }
           });
         }
         // 保存 opencode自己的sessionID

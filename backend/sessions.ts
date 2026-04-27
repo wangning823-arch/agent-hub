@@ -640,12 +640,11 @@ class SessionManager {
         .slice(-10);
       for (const msg of recentMessages) {
         const role = msg.role === 'user' ? '用户' : '助手';
-        let content: string | AgentMessage = typeof msg.content === 'string'
+        const content: string = typeof msg.content === 'string'
           ? msg.content
-          : (msg.content as AgentMessage)?.content || JSON.stringify(msg.content);
-        if (typeof content !== 'string') content = JSON.stringify(content);
-        if (content && (content as string).trim()) {
-          historyLines.push(`[${role}]: ${(content as string).slice(0, 500)}`);
+          : JSON.stringify(msg.content);
+        if (content.trim()) {
+          historyLines.push(`[${role}]: ${content.slice(0, 500)}`);
         }
       }
       if (historyLines.length > 0) {
@@ -710,13 +709,13 @@ class SessionManager {
       }
 
       if (msg.type === 'token_usage' && msg.content && this.tokenTracker) {
-        const usage = JSON.parse(msg.content) as Partial<TokenRecord>;
+        const raw: Record<string, any> = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content as Record<string, any>;
         this.tokenTracker.recordUsage(sessionId, {
-          input_tokens: usage.input_tokens || 0,
-          output_tokens: usage.output_tokens || 0,
-          cache_read_input_tokens: usage.cache_read_input_tokens || 0,
-          cache_creation_input_tokens: usage.cache_creation_input_tokens || 0,
-          cost_usd: usage.cost_usd || 0,
+          input_tokens: raw.input_tokens || raw.inputTokens || 0,
+          output_tokens: raw.output_tokens || raw.outputTokens || 0,
+          cache_read_input_tokens: raw.cache_read_input_tokens || raw.cacheReadTokens || 0,
+          cache_creation_input_tokens: raw.cache_creation_input_tokens || raw.cacheWriteTokens || 0,
+          cost_usd: raw.cost_usd || raw.cost || 0,
         });
       }
 
@@ -1058,7 +1057,7 @@ class SessionManager {
         this.broadcast(sessionId, { ...msg, subtask_id: subtaskId });
         subtask.messages = subtask.messages || [];
         if (msg.type === 'text') {
-          subtask.messages.push({ type: 'text', content: msg.content, time: Date.now() });
+          subtask.messages.push({ type: 'text', content: String(msg.content), time: Date.now() });
         } else if (msg.type === 'assistant') {
           const texts = (msg.message?.content || [])
             .filter((c: { type: string; text: string }) => c.type === 'text')
@@ -1073,7 +1072,7 @@ class SessionManager {
         } else if (msg.type === 'tool_use' || msg.type === 'tool_result') {
           subtask.messages.push({
             type: msg.type,
-            content: msg.content || '',
+            content: String(msg.content || ''),
             time: Date.now(),
           });
         }
