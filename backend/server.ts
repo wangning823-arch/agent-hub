@@ -5,11 +5,32 @@ import * as http from 'http';
 import WebSocket from 'ws';
 import * as path from 'path';
 import * as fs from 'fs';
-
-// Lazy-loaded modules (initialized in initApp)
-let tokenTracker: any;
-let sessionManager: any;
-let wsConnectionHandler: ((wss: WebSocket.Server) => void) | null = null;
+import SessionManager from './sessions';
+import PermissionManager from './permissions';
+import ProjectManager from './projects';
+import TokenTracker from './token-tracker';
+import credentialManager from './credentialManager';
+import sessionsRouter from './routes/sessions';
+import tagsRouter from './routes/tags';
+import projectsRouter from './routes/projects';
+import filesRouter from './routes/files';
+import gitRouter from './routes/git';
+import searchRouter from './routes/search';
+import permissionsRouter from './routes/permissions';
+import tokensRouter from './routes/tokens';
+import exportRouter from './routes/export';
+import healthRouter from './routes/health';
+import uploadRouter from './routes/upload';
+import optionsRouter from './routes/options';
+import credentialsRouter from './routes/credentials';
+import skillsRouter from './routes/skills';
+import modelsRouter from './routes/models';
+import wsHandler from './websocket/handler';
+import { initDb } from './db';
+import { UPLOAD_DIR } from './upload';
+import authMiddleware from './middleware/auth';
+import corsMiddleware from './middleware/cors';
+import errorHandlerMiddleware from './middleware/errorHandler';
 
 // ==================== Global Error Handlers ====================
 
@@ -33,53 +54,25 @@ const DIST_PATH: string = path.join(__dirname, '..', '..', 'frontend', 'dist');
 
 // ==================== Init ====================
 
+let sessionManager: SessionManager;
+
 async function initApp(): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { initDb } = require('./db') as { initDb: () => Promise<void> };
   await initDb();
 
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const TokenTracker = require('./token-tracker').default as new () => any;
-  tokenTracker = new TokenTracker();
-
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const SessionManager = require('./sessions').default as new (tokenTracker: any) => any;
+  const tokenTracker = new TokenTracker();
   sessionManager = new SessionManager(tokenTracker);
   await sessionManager.init();
-
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const wsHandler = require('./websocket/handler').default as (
-    sessionManager: any,
-    TOKEN_FILE: string,
-  ) => (wss: WebSocket.Server) => void;
-  wsConnectionHandler = wsHandler(sessionManager, TOKEN_FILE);
 }
 
 // ==================== Static Middleware ====================
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(DIST_PATH));
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { UPLOAD_DIR } = require('./upload') as { UPLOAD_DIR: string };
 app.use('/uploads', express.static(UPLOAD_DIR));
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const authMiddleware = require('./middleware/auth').default as (TOKEN_FILE: string) => (req: Request, res: Response, next: NextFunction) => void;
 app.use(authMiddleware(TOKEN_FILE));
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const corsMiddleware = require('./middleware/cors').default as () => (req: Request, res: Response, next: NextFunction) => void;
 app.use(corsMiddleware());
 
 // Error handler — Express requires exactly 4 parameters to recognize it as an error handler
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const errorHandlerMiddleware = require('./middleware/errorHandler').default as () => (
-  err: Error,
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => void;
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   errorHandlerMiddleware()(err, req, res, next);
 });
@@ -104,7 +97,7 @@ app.get('/api/auth/check', (req: Request, res: Response) => {
   let ACCESS_TOKEN = '';
   try {
     ACCESS_TOKEN = fs.readFileSync(TOKEN_FILE, 'utf-8').trim();
-  } catch (e) { /* token file not found */ }
+  } catch (_e) { /* token file not found */ }
   const token = req.headers['x-access-token'] || req.query.token;
   res.json({ valid: !ACCESS_TOKEN || token === ACCESS_TOKEN });
 });
@@ -126,50 +119,11 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
 (async () => {
   await initApp();
 
-  // Dynamic imports for route factories (must be after initApp so sessionManager is ready)
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const sessionsRouter = require('./routes/sessions').default as (sm: any) => express.Router;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const tagsRouter = require('./routes/tags').default as (sm: any) => express.Router;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const projectsRouter = require('./routes/projects').default as (pm: any, sm: any) => express.Router;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const filesRouter = require('./routes/files').default as (root: string) => express.Router;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const gitRouter = require('./routes/git').default as (root: string, pm: any) => express.Router;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const searchRouter = require('./routes/search').default as (sm: any) => express.Router;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const permissionsRouter = require('./routes/permissions').default as (pm: any) => express.Router;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const tokensRouter = require('./routes/tokens').default as (tt: any) => express.Router;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const exportRouter = require('./routes/export').default as (sm: any) => express.Router;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const healthRouter = require('./routes/health').default as () => express.Router;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const uploadRouter = require('./routes/upload').default as () => express.Router;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const optionsRouter = require('./routes/options').default as () => express.Router;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const credentialsRouter = require('./routes/credentials').default as (cm: any) => express.Router;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const skillsRouter = require('./routes/skills').default as express.Router;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const modelsRouter = require('./routes/models').default as () => express.Router;
-
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const PermissionManager = require('./permissions').default as new () => any;
   const permissionManager = new PermissionManager();
-
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const ProjectManager = require('./projects').default as new () => any;
   const projectManager = new ProjectManager();
+  const wsConnectionHandler = wsHandler(sessionManager, TOKEN_FILE);
 
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const credentialManager = require('./credentialManager') as any;
-
-  // Register route factories (must be after initApp)
+  // Register route factories
   app.use('/api/sessions', sessionsRouter(sessionManager));
   app.use('/api/tags', tagsRouter(sessionManager));
   app.use('/api/projects', projectsRouter(projectManager, sessionManager));
@@ -177,7 +131,7 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   app.use('/api/git', gitRouter(ALLOWED_ROOT, permissionManager));
   app.use('/api/search', searchRouter(sessionManager));
   app.use('/api/permissions', permissionsRouter(permissionManager));
-  app.use('/api/tokens', tokensRouter(tokenTracker));
+  app.use('/api/tokens', tokensRouter(new TokenTracker()));
   app.use('/api/export', exportRouter(sessionManager));
   app.use('/api/health', healthRouter());
   app.use('/api/upload', uploadRouter());
@@ -186,7 +140,7 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   app.use('/api/skills', skillsRouter);
   app.use('/api/models', modelsRouter());
 
-  wsConnectionHandler!(wss);
+  wsConnectionHandler(wss);
 
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`

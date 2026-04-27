@@ -9,9 +9,10 @@ export type AgentType = 'claude-code' | 'opencode' | 'codex';
 
 export interface AgentMessage {
   type: 'text' | 'status' | 'error' | 'token_usage' | 'tool_use' | 'tool_result' | 'conversation_id' | 'title_update' | 'context_usage' | 'subtask_status' | 'assistant';
-  content: string;
+  content: string | Record<string, unknown>;
   conversationId?: string;
   subtask_id?: string;
+  replace?: boolean;
   message?: {
     content: Array<{ type: string; text: string }>;
   };

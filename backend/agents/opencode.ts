@@ -326,7 +326,7 @@ class OpenCodeAgent extends Agent {
     } catch (e) {
       // 非JSON作为单行状态提示，待前端替换显示，避免多行占位
       this._lastStatusLine = line;
-      this.emit('message', { type: 'status', content: line, replace: true } as any);
+      this.emit('message', { type: 'status', content: line, replace: true });
     }
   }
 

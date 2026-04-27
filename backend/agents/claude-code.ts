@@ -118,7 +118,7 @@ class ClaudeCodeAgent extends Agent {
               if (msg.type === 'result' && msg.result) {
                 const info: ContextInfo | null = this._parseContextInfo(msg.result);
                 if (info) {
-                  this.emit('message', { type: 'context_usage', content: JSON.stringify(info) });
+                  this.emit('message', { type: 'context_usage', content: info } as any);
                 }
               }
             } catch (_) {}
