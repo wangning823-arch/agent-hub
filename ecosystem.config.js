@@ -1,7 +1,7 @@
 module.exports = {
   apps: [{
     name: 'agent-hub',
-    script: 'server.js',
+    script: 'dist/server.js',
     cwd: '/home/root1/agent-hub/backend',
     env: {
       NODE_ENV: 'production',

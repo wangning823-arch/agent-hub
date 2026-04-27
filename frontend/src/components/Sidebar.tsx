@@ -1,0 +1,826 @@
+import React, { useState, useEffect } from 'react'
+import { useToast } from './Toast'
+import { Tag, TagFilter } from './Tag'
+import { API_BASE, getWebSocketUrl } from '../config'
+
+// ---- Type Definitions ----
+
+interface OptionItem {
+  id: string
+  name: string
+  description?: string
+}
+
+interface CommandItem {
+  id: string
+  name: string
+  description: string
+  usage: string
+  category?: string
+}
+
+interface SkillItem {
+  id: string
+  name: string
+  description?: string
+  plugin?: string
+  source?: string
+}
+
+interface Session {
+  id: string
+  title?: string
+  workdir: string
+  agentType?: string
+  isActive?: boolean
+  isPinned?: boolean
+  isArchived?: boolean
+  isWorking?: boolean
+  tags?: string[]
+  createdAt?: string
+  updatedAt?: string
+}
+
+interface SessionOptions {
+  [sessionId: string]: {
+    mode?: string
+    model?: string
+    effort?: string
+  }
+}
+
+interface Options {
+  modes: OptionItem[]
+  models: OptionItem[]
+  efforts: OptionItem[]
+}
+
+interface AgentLabel {
+  text: string
+  color: string
+}
+
+interface SectionHeaderProps {
+  icon: React.ReactNode
+  label: string
+  count?: number
+  section: string
+}
+
+interface IconChevronProps {
+  open: boolean
+}
+
+interface SidebarProps {
+  sessions: Session[]
+  activeSession: string | null
+  agentType?: string
+  workdir?: string
+  sessionOptions: SessionOptions
+  loadingSessionId: string | null
+  onSelectSession: (id: string) => void
+  onCloseSession: (id: string) => void
+  onResumeSession: (id: string) => void
+  onNewSession: () => void
+  onOpenProject: () => void
+  onUpdateOptions: (sessionId: string, options: Record<string, unknown>) => void
+  onRenameSession: (id: string, title: string) => void
+  onPinSession: (id: string) => void
+  onArchiveSession: (id: string) => void
+  onUpdateTags: (id: string, tags: string[]) => void
+  onSetLoading: (id: string | null) => void
+  onRestoringMemoryChange?: (id: string, restoring: boolean) => void
+}
+
+// SVG icons
+const IconPlus = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+const IconPin = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 2v8m-4-4h8"/><circle cx="12" cy="14" r="4"/></svg>
+const IconEdit = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+const IconArchive = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+const IconTag = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+const IconTrash = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+const IconChevron: React.FC<IconChevronProps> = ({ open }) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+    style={{ transform: open ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s ease' }}>
+    <polyline points="6 9 12 15 18 9"/>
+  </svg>
+)
+const IconPause = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+const IconRunning = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="animate-spin" style={{ animationDuration: '1s' }}>
+    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeDasharray="31.4" strokeDashoffset="10" opacity="0.3" />
+    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+)
+const IconCheck = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+const IconExternal = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+
+export default function Sidebar({
+  sessions,
+  activeSession,
+  agentType = 'claude-code',
+  workdir = '',
+  sessionOptions,
+  loadingSessionId,
+  onSelectSession,
+  onCloseSession,
+  onResumeSession,
+  onNewSession,
+  onOpenProject,
+  onUpdateOptions,
+  onRenameSession,
+  onPinSession,
+  onArchiveSession,
+  onUpdateTags,
+  onSetLoading,
+  onRestoringMemoryChange
+}: SidebarProps) {
+  const toast = useToast()
+  const [expandedSection, setExpandedSection] = useState<string>('sessions')
+  const [options, setOptions] = useState<Options>({ modes: [], models: [], efforts: [] })
+  const [commands, setCommands] = useState<CommandItem[]>([])
+  const [showArchived, setShowArchived] = useState(false)
+  const [editingSession, setEditingSession] = useState<string | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [allTags, setAllTags] = useState<string[]>([])
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [editingTags, setEditingTags] = useState<string | null>(null)
+  const [skills, setSkills] = useState<SkillItem[]>([])
+  const [showInstallModal, setShowInstallModal] = useState(false)
+  const [installSource, setInstallSource] = useState('')
+  const [installing, setInstalling] = useState(false)
+
+  const skillDescriptionTranslations: Record<string, string> = {
+    // 通用命令
+    'code-review': '审查代码变更，提供改进建议',
+    'debug': '帮助调试代码问题',
+    'explain': '解释代码逻辑和功能',
+    'refactor': '重构代码，改善可读性和性能',
+    'test': '编写测试用例',
+    'docs': '编写项目文档',
+    'security': '安全审查代码',
+    'deploy': '部署应用到生产环境',
+    'migrate': '迁移数据库或代码库',
+    'optimize': '优化代码性能和资源使用',
+    // Claude 官方插件
+    'agent-sdk-dev': '开发 AI Agent SDK 应用',
+    'clangd-lsp': 'C/C++ 语言服务支持',
+    'claude-automation-recommender': '分析代码库并推荐 Claude Code 自动化配置',
+    'claude-code-setup': '快速配置 Claude Code 项目',
+    'claude-md-improver': '审查和改进 CLAUDE.md 文件',
+    'claude-md-management': '管理 CLAUDE.md 项目配置文档',
+    'code-simplifier': '简化复杂代码，提升可读性',
+    'commit-commands': '生成规范的 Git 提交信息',
+    'csharp-lsp': 'C# 语言服务支持',
+    'explanatory-output-style': '提供详细解释的输出风格',
+    'feature-dev': '开发新功能和特性',
+    'frontend-design': '设计前端界面和组件',
+    'gopls-lsp': 'Go 语言服务支持',
+    'hookify': '配置 Claude Code 钩子脚本',
+    'jdtls-lsp': 'Java 语言服务支持',
+    'kotlin-lsp': 'Kotlin 语言服务支持',
+    'learning-output-style': '适合学习理解的输出风格',
+    'lua-lsp': 'Lua 语言服务支持',
+    'math-olympiad': '解决数学竞赛问题',
+    'mcp-server-dev': '开发 MCP 服务器',
+    'php-lsp': 'PHP 语言服务支持',
+    'playground': '创建交互式 HTML 演示工具',
+    'plugin-dev': '开发 Claude Code 插件',
+    'pr-review-toolkit': '全面的 PR 审查工具集',
+    'pyright-lsp': 'Python 语言服务支持',
+    'ralph-loop': '自动化循环任务执行',
+    'ruby-lsp': 'Ruby 语言服务支持',
+    'rust-analyzer-lsp': 'Rust 语言服务支持',
+    'security-guidance': '安全编码指导和检查',
+    'session-report': '生成会话工作报告',
+    'skill-creator': '创建自定义 Skill 技能',
+    'swift-lsp': 'Swift 语言服务支持',
+    'typescript-lsp': 'TypeScript 语言服务支持',
+    // 外部插件 Skills
+    'access': '管理渠道访问权限，审批配对，编辑白名单',
+    'configure': '配置消息渠道，设置机器人令牌和访问策略',
+    // Plugin Dev 子技能
+    'agent-development': '开发 Claude Code 子代理，定义系统提示和触发条件',
+    'command-development': '创建自定义斜杠命令',
+    'hook-development': '开发 Claude Code 钩子脚本',
+    'mcp-integration': '集成 MCP 服务器到插件',
+    'plugin-settings': '管理插件配置和设置',
+    'plugin-structure': '创建和组织 Claude Code 插件结构',
+    'skill-development': '开发和优化技能',
+    'writing-rules': '编写 Hookify 规则',
+    // MCP Server Dev 子技能
+    'build-mcp-app': '构建带交互式 UI 的 MCP 应用',
+    'build-mcpb': '打包和分发 MCP 服务器',
+    'build-mcp-server': '创建 MCP 服务器和工具',
+    // 示例插件
+    'example-command': '示例用户调用技能，演示 frontmatter 选项',
+    'example-skill': '示例技能模板，用于演示技能格式',
+  }
+
+  const getSkillDescription = (skill: SkillItem): string => {
+    if (skill.description && skill.description.trim()) {
+      return skill.description
+    }
+    const key = skill.id?.toLowerCase() || skill.name?.toLowerCase() || ''
+    for (const [k, v] of Object.entries(skillDescriptionTranslations)) {
+      if (key.includes(k)) return v
+    }
+    return skill.plugin || skill.id || ''
+  }
+
+  useEffect(() => {
+    loadOptions()
+    loadCommands()
+    loadTags()
+    loadSkills()
+  }, [agentType, workdir])
+
+  useEffect(() => {
+    const handler = () => loadOptions()
+    window.addEventListener('models-changed', handler)
+    return () => window.removeEventListener('models-changed', handler)
+  }, [agentType, workdir])
+
+  const loadOptions = async () => {
+    try {
+      const params = new URLSearchParams({ agentType })
+      if (workdir) params.set('workdir', workdir)
+      const data = await fetch(`${API_BASE}/options?${params}`).then(r => r.json())
+      setOptions(data)
+    } catch (error) { console.error('加载选项失败:', error) }
+  }
+
+  const loadCommands = async () => {
+    try {
+      const data = await fetch(`${API_BASE}/options/commands?agentType=${agentType}`).then(r => r.json())
+      setCommands(data.commands || [])
+    } catch (error) { console.error('加载命令失败:', error) }
+  }
+
+  const loadTags = async () => {
+    try {
+      const data = await fetch(`${API_BASE}/tags`).then(r => r.json())
+      setAllTags(data.tags || [])
+    } catch (error) { console.error('加载标签失败:', error) }
+  }
+
+  const loadSkills = async () => {
+    try {
+      const data = await fetch(`${API_BASE}/skills/${agentType}`).then(r => r.json())
+      setSkills(data.skills || [])
+    } catch (error) { console.error('加载 Skills 失败:', error) }
+  }
+
+  const handleInstallSkill = async () => {
+    if (!installSource.trim()) return
+    setInstalling(true)
+    try {
+      const res = await fetch(`${API_BASE}/skills/install`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentType, source: installSource.trim() })
+      })
+      const result = await res.json()
+      if (result.success) {
+        setSkills(result.skills || [])
+        toast.success('安装成功！')
+        setShowInstallModal(false)
+        setInstallSource('')
+      } else {
+        toast.error(result.error || '安装失败')
+      }
+    } catch (error: any) { toast.error('安装失败: ' + error.message) }
+    setInstalling(false)
+  }
+
+  const handleSkillClick = (skill: SkillItem) => {
+    const msg = skill.id.includes(':') ? `/${skill.id}` : `/${skill.name.replace(/\s+/g, '-').toLowerCase()}`
+    const event = new CustomEvent('send-message', { detail: { message: msg } })
+    window.dispatchEvent(event)
+  }
+
+  const currentOptions = activeSession ? sessionOptions[activeSession] || {} : {}
+
+  const handleOptionChange = async (type: string, value: string) => {
+    if (!activeSession) return
+    const newOptions = { ...currentOptions, [type]: value }
+    const ws = new WebSocket(getWebSocketUrl(activeSession))
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'command', command: `set_${type}`, params: { [type]: value } }))
+      setTimeout(() => ws.close(), 300)
+    }
+    onUpdateOptions(activeSession, newOptions)
+  }
+
+  const handleCommand = (cmd: CommandItem) => {
+    const event = new CustomEvent('send-message', { detail: { message: cmd.usage } })
+    window.dispatchEvent(event)
+  }
+
+  const getDisplayName = (workdirPath: string) => {
+    const parts = workdirPath.split('/').filter(Boolean)
+    return parts[parts.length - 1] || workdirPath
+  }
+
+  const getAgentLabel = (type: string): AgentLabel => {
+    const labels: Record<string, AgentLabel> = {
+      'claude-code': { text: 'CC', color: '#e8a838' },
+      'opencode': { text: 'OC', color: '#4ade80' },
+      'codex': { text: 'CX', color: '#60a5fa' },
+    }
+    return labels[type] || { text: type?.toUpperCase()?.slice(0, 2) || '??', color: '#888' }
+  }
+
+  const sortedSessions = [...sessions]
+    .filter((s): s is Session => {
+      if (!s) return false
+      if (showArchived ? !s.isArchived : s.isArchived) return false
+      if (selectedTags.length > 0) {
+        const sessionTags = s.tags || []
+        return selectedTags.some(tag => sessionTags.includes(tag))
+      }
+      return true
+    })
+    .sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1
+      if (!a.isPinned && b.isPinned) return 1
+      return new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime()
+    })
+
+  const handleRename = (sessionId: string) => {
+    if (editTitle.trim()) onRenameSession(sessionId, editTitle.trim())
+    setEditingSession(null)
+    setEditTitle('')
+  }
+
+  const groupedCommands: Record<string, CommandItem[]> = commands.reduce<Record<string, CommandItem[]>>((groups, cmd) => {
+    const category = cmd.category || '其他'
+    if (!groups[category]) groups[category] = []
+    groups[category].push(cmd)
+    return groups
+  }, {})
+
+  const SectionHeader: React.FC<SectionHeaderProps> = ({ icon, label, count, section }) => (
+    <button
+      onClick={() => setExpandedSection(expandedSection === section ? '' : section)}
+      className="w-full px-4 py-3 flex items-center justify-between"
+      style={{ color: 'var(--text-secondary)' }}
+    >
+      <span className="flex items-center gap-2 text-sm font-medium">
+        {icon} {label}
+        {count !== undefined && <span className="badge badge-count">{count}</span>}
+      </span>
+      <IconChevron open={expandedSection === section} />
+    </button>
+  )
+
+  return (
+    <div className="panel w-72 flex flex-col h-full overflow-hidden" style={{ width: 280 }}>
+      {/* Logo */}
+      <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+        <h1 className="text-lg font-bold flex items-center gap-2.5" style={{ color: 'var(--text-primary)' }}>
+          <span className="w-8 h-8 rounded-lg flex items-center justify-center text-base"
+            style={{ background: 'var(--gradient-btn-primary)' }}>
+            🤖
+          </span>
+          Agent Hub
+        </h1>
+      </div>
+
+      {/* Project button */}
+      <div className="p-3">
+        <button onClick={onOpenProject} className="btn-primary w-full flex items-center justify-center gap-2 py-2.5">
+          📁 项目管理
+        </button>
+      </div>
+
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Sessions */}
+        <div className="border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+          <SectionHeader icon="💬" label="会话列表" count={sortedSessions.length} section="sessions" />
+
+          {expandedSection === 'sessions' && (
+            <div className="pb-2">
+              {/* Tag filter */}
+              {allTags.length > 0 && (
+                <div className="px-4 py-2 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+                  <TagFilter
+                    tags={allTags}
+                    selectedTags={selectedTags}
+                    onToggleTag={(tag: string) => setSelectedTags(prev =>
+                      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+                    )}
+                    onClearTags={() => setSelectedTags([])}
+                  />
+                </div>
+              )}
+
+              {/* Archive toggle */}
+              <div className="px-4 py-2 flex items-center justify-between">
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  {showArchived ? '📦 已归档' : '📋 活跃会话'}
+                </span>
+                <button
+                  onClick={() => setShowArchived(!showArchived)}
+                  className="text-xs font-medium"
+                  style={{ color: 'var(--accent-primary)' }}
+                >
+                  {showArchived ? '查看活跃' : '查看归档'}
+                </button>
+              </div>
+
+              {sortedSessions.length === 0 ? (
+                <div className="px-4 py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+                  {showArchived ? '没有已归档的会话' : '还没有会话'}
+                </div>
+              ) : (
+                sortedSessions.map(session => (
+                  <div
+                    key={session.id}
+                    onClick={() => {
+                      if (session.isActive) {
+                        onSelectSession(session.id);
+                      } else {
+                        // 立即显示加载中，不等 API 返回
+                        if (onSetLoading) onSetLoading(session.id);
+                        onResumeSession(session.id);
+                      }
+                    }}
+                    className={`sidebar-item group ${activeSession === session.id ? 'active' : ''}`}
+                    style={{ flexDirection: 'column', alignItems: 'stretch' }}
+                  >
+                    <div className="flex items-center gap-2 min-w-0 w-full">
+                      {session.isPinned && <span className="text-xs flex-shrink-0" style={{ color: 'var(--warning)' }}>📌</span>}
+                      {session.isWorking ? <IconRunning /> : session.isActive ? <span className="text-xs" style={{ color: 'var(--success, #22c55e)' }}>●</span> : <IconPause />}
+                      {editingSession === session.id ? (
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditTitle(e.target.value)}
+                          onBlur={() => handleRename(session.id)}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                            if (e.key === 'Enter') handleRename(session.id)
+                            if (e.key === 'Escape') { setEditingSession(null); setEditTitle('') }
+                          }}
+                          onClick={(e: React.MouseEvent<HTMLInputElement>) => e.stopPropagation()}
+                          className="input-field text-sm py-1 px-2 flex-1 min-w-0"
+                          autoFocus
+                        />
+                      ) : (
+                        <span className="text-xs flex-1 min-w-0 truncate flex items-center gap-1" style={{ lineHeight: '1.4' }}>
+                          <span className="truncate">{session.title || getDisplayName(session.workdir)}</span>
+                          {session.agentType && (
+                            <span className="flex-shrink-0 text-[10px] font-bold px-1 rounded"
+                              style={{ color: getAgentLabel(session.agentType).color, background: getAgentLabel(session.agentType).color + '18', lineHeight: '1.4' }}>
+                              {getAgentLabel(session.agentType).text}
+                            </span>
+                          )}
+                          {loadingSessionId === session.id && (
+                            <span className="flex-shrink-0 text-[10px] flex items-center gap-1" style={{ color: 'var(--accent-primary)' }}>
+                              <span className="animate-spin inline-block" style={{ animationDuration: '1s' }}>⏳</span>
+                              <span>加载中...</span>
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                    {session.tags && session.tags.length > 0 && (
+                      <div className="flex gap-1 mt-0.5 flex-wrap">
+                        {session.tags.slice(0, 3).map(tag => (
+                          <Tag key={tag} name={tag} small />
+                        ))}
+                        {session.tags.length > 3 && (
+                          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>+{session.tags.length - 3}</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Action buttons - on new line, visible on hover/focus */}
+                    <div className="flex items-center gap-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ borderBottom: 'none' }}
+                    >
+                      <button
+                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); onPinSession(session.id) }}
+                        className="btn-icon text-xs"
+                        style={{ color: session.isPinned ? 'var(--warning)' : 'var(--text-muted)', width: 22, height: 22 }}
+                        title={session.isPinned ? '取消置顶' : '置顶'}
+                      >
+                        <IconPin />
+                      </button>
+                      <button
+                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); setEditingSession(session.id); setEditTitle(session.title || getDisplayName(session.workdir)) }}
+                        className="btn-icon text-xs"
+                        style={{ width: 22, height: 22 }}
+                        title="重命名"
+                      >
+                        <IconEdit />
+                      </button>
+                      <button
+                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); onArchiveSession(session.id) }}
+                        className="btn-icon text-xs"
+                        style={{ width: 22, height: 22 }}
+                        title={session.isArchived ? '取消归档' : '归档'}
+                      >
+                        <IconArchive />
+                      </button>
+                      <button
+                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); setEditingTags(editingTags === session.id ? null : session.id) }}
+                        className="btn-icon text-xs"
+                        style={{ color: (session.tags?.length ?? 0) > 0 ? 'var(--accent-primary)' : 'var(--text-muted)', width: 22, height: 22 }}
+                        title="标签"
+                      >
+                        <IconTag />
+                      </button>
+                      <button
+                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); onCloseSession(session.id) }}
+                        className="btn-icon text-xs"
+                        style={{ color: 'var(--text-muted)', width: 22, height: 22 }}
+                        title="删除"
+                        onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.color = 'var(--error)')}
+                        onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.color = 'var(--text-muted)')}
+                      >
+                        <IconTrash />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+
+              <button
+                onClick={onNewSession}
+                className="btn-secondary w-full text-sm py-2.5 flex items-center justify-center gap-2"
+              >
+                <IconPlus /> 新建会话
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Session Controls */}
+        <div className="border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+          <SectionHeader icon="⚙️" label="会话控制" section="controls" />
+
+          {expandedSection === 'controls' && (
+            <div className="px-4 py-3 space-y-4">
+              {!activeSession ? (
+                <div className="text-center py-4 text-sm" style={{ color: 'var(--text-muted)' }}>
+                  请先选择一个会话
+                </div>
+              ) : (
+                <>
+                  {/* Current config */}
+                  <div className="text-xs space-y-1" style={{ color: 'var(--text-muted)' }}>
+                    {currentOptions.mode && <div>🛡️ 模式: {currentOptions.mode}</div>}
+                    {currentOptions.model && <div>🧠 模型: {currentOptions.model}</div>}
+                    {currentOptions.effort && <div>💪 努力: {currentOptions.effort}</div>}
+                  </div>
+
+                  {/* 恢复记忆按钮 */}
+                  <button
+                    onClick={async () => {
+                      if (!activeSession) return
+                      try {
+                        if (onRestoringMemoryChange) onRestoringMemoryChange(activeSession, true)
+                        const res = await fetch(`${API_BASE}/sessions/${activeSession}/restore-memory`, { method: 'POST' })
+                        const data = await res.json()
+                        if (data.success) {
+                          if (data.summary) {
+                            toast.success('记忆已恢复！')
+                          } else {
+                            toast.info(data.message || '无需恢复')
+                          }
+                        } else {
+                          toast.error(data.error || '恢复失败')
+                        }
+                      } catch (e: any) {
+                        toast.error('恢复记忆失败: ' + e.message)
+                      } finally {
+                        if (onRestoringMemoryChange) onRestoringMemoryChange(activeSession, false)
+                      }
+                    }}
+                    className="btn-secondary w-full text-sm py-2 flex items-center justify-center gap-2"
+                  >
+                    🧠 恢复记忆
+                  </button>
+
+                  {/* Permission modes */}
+                  <div>
+                    <label className="block text-xs mb-2" style={{ color: 'var(--text-muted)' }}>🛡️ 权限模式</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {options.modes.slice(0, 4).map(mode => (
+                        <button
+                          key={mode.id}
+                          onClick={() => handleOptionChange('mode', mode.id)}
+                          className={`btn-segment ${currentOptions.mode === mode.id ? 'active' : ''}`}
+                          title={mode.description}
+                        >
+                          {mode.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Model select */}
+                  <div>
+                    <label className="block text-xs mb-2" style={{ color: 'var(--text-muted)' }}>🧠 模型</label>
+                    <select
+                      value={currentOptions.model || ''}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleOptionChange('model', e.target.value)}
+                      className="select-field w-full"
+                    >
+                      <option value="">默认模型</option>
+                      {options.models.map(model => (
+                        <option key={model.id} value={model.id}>{model.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Effort */}
+                  <div>
+                    <label className="block text-xs mb-2" style={{ color: 'var(--text-muted)' }}>💪 努力程度</label>
+                    <div className="flex gap-1.5">
+                      {options.efforts.map(effort => (
+                        <button
+                          key={effort.id}
+                          onClick={() => handleOptionChange('effort', effort.id)}
+                          className={`btn-segment flex-1 ${currentOptions.effort === effort.id ? 'active' : ''}`}
+                          title={effort.description}
+                        >
+                          {effort.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Commands */}
+        <div>
+          <SectionHeader icon="⌘" label="命令" count={commands.length} section="commands" />
+
+          {expandedSection === 'commands' && (
+            <div className="pb-2 max-h-80 overflow-y-auto">
+              {Object.entries(groupedCommands).map(([category, cmds]) => (
+                <div key={category}>
+                  <div className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider"
+                    style={{ color: 'var(--text-muted)', background: 'var(--bg-tertiary)' }}>
+                    {category}
+                  </div>
+                  {cmds.map(cmd => (
+                    <button
+                      key={cmd.id}
+                      onClick={() => handleCommand(cmd)}
+                      className="w-full px-4 py-2 text-left transition-colors"
+                      style={{ color: 'var(--text-secondary)' }}
+                      onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <div className="text-sm" style={{ color: 'var(--text-primary)' }}>{cmd.name}</div>
+                      <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{cmd.description}</div>
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {}
+        <div>
+          <SectionHeader icon="🎯" label="技能" count={skills.length} section="skills" />
+
+          {expandedSection === 'skills' && (
+            <div className="pb-2 max-h-80 overflow-y-auto">
+              {skills.length === 0 ? (
+                <div className="px-4 py-4 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+                  暂无可用技能
+                </div>
+              ) : (
+                skills.map((skill, idx) => (
+                  <button
+                    key={`${skill.id}-${idx}`}
+                    onClick={() => handleSkillClick(skill)}
+                    className="w-full px-4 py-2 text-left transition-colors"
+                    style={{ color: 'var(--text-secondary)' }}
+                    onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                    onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{skill.name}</span>
+                      {skill.source === 'official' && <span className="badge badge-official">官方</span>}
+                      {skill.source === 'local' && <span className="badge badge-local">本地</span>}
+                    </div>
+                    <div className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                      {getSkillDescription(skill)}
+                    </div>
+                  </button>
+                ))
+              )}
+              <div className="px-4 py-2 mt-1">
+                <button
+                  onClick={() => setShowInstallModal(true)}
+                  className="btn-secondary w-full text-sm py-2 flex items-center justify-center gap-2"
+                >
+                  <IconPlus /> 安装新技能
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom actions - icon only */}
+      <div className="p-2 border-t flex items-center justify-center gap-1" style={{ borderColor: 'var(--border-subtle)' }}>
+        <button
+          onClick={() => {
+            const token = localStorage.getItem('access_token') || ''
+            if (activeSession) window.open(`${API_BASE}/export/session/${activeSession}?token=${token}`, '_blank')
+          }}
+          disabled={!activeSession}
+          className="btn-icon text-sm"
+          style={{ width: 32, height: 32, opacity: activeSession ? 1 : 0.3 }}
+          title="导出当前会话"
+        >📋</button>
+        <button
+          onClick={() => {
+            const token = localStorage.getItem('access_token') || ''
+            window.open(`${API_BASE}/export/sessions?token=${token}`, '_blank')
+          }}
+          className="btn-icon text-sm"
+          style={{ width: 32, height: 32 }}
+          title="备份所有会话"
+        >💾</button>
+        <button
+          onClick={() => {
+            const input = document.createElement('input')
+            input.type = 'file'
+            input.accept = '.json'
+            input.onchange = async (e: Event) => {
+              const target = e.target as HTMLInputElement
+              const file = target.files?.[0]
+              if (!file) return
+              try {
+                const text = await file.text()
+                const data = JSON.parse(text)
+                if (!data.sessions) { toast.error('无效的备份文件'); return }
+                const res = await fetch(`${API_BASE}/import/sessions`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: text
+                })
+                const result = await res.json()
+                if (result.success) {
+                  toast.success(`导入成功: ${result.imported} 个会话`)
+                  window.location.reload()
+                }
+              } catch (error: any) { toast.error('导入失败: ' + error.message) }
+            }
+            input.click()
+          }}
+          className="btn-icon text-sm"
+          style={{ width: 32, height: 32 }}
+          title="导入备份"
+        >📂</button>
+      </div>
+
+      {showInstallModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-900 rounded-lg w-full max-w-md overflow-hidden shadow-2xl border border-gray-700">
+            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+              <h2 className="text-lg font-semibold text-white">安装新技能</h2>
+              <button onClick={() => setShowInstallModal(false)} className="text-gray-400 hover:text-white text-xl">✕</button>
+            </div>
+            <div className="p-4 space-y-4">
+              <p className="text-sm text-gray-400">输入 GitHub 地址、Git URL 或 Marketplace 名称</p>
+              <input
+                type="text"
+                value={installSource}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInstallSource(e.target.value)}
+                placeholder="e.g., anthropics/claude-code 或 https://..."
+                className="input-field w-full"
+                autoFocus
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && handleInstallSkill()}
+              />
+              <div className="text-xs text-gray-500 space-y-1">
+                <div>支持的格式：</div>
+                <div>• GitHub: owner/repo 或 owner/repo#branch</div>
+                <div>• Git URL: https://gitlab.com/... 或 git@github.com:...</div>
+                <div>• 远程 marketplace: https://example.com/marketplace.json</div>
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-700 flex justify-end gap-2">
+              <button onClick={() => setShowInstallModal(false)} className="px-4 py-2 text-gray-400 hover:text-white">取消</button>
+              <button onClick={handleInstallSkill} disabled={installing || !installSource.trim()} className="btn-primary px-4 py-2">
+                {installing ? '安装中...' : '安装'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
