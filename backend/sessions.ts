@@ -22,6 +22,12 @@ import { WebSocket } from 'ws';
 interface SqlDb {
   exec(sql: string): Array<{ columns: string[]; values: unknown[][] }>;
   run(sql: string, params?: unknown[]): void;
+  prepare(sql: string): {
+    bind(params: unknown[]): void;
+    step(): boolean;
+    get(): unknown[];
+    free(): void;
+  };
 }
 
 /** Minimal TokenTracker interface used by SessionManager */
@@ -275,10 +281,18 @@ class SessionManager {
         sessionData[col] = row[i];
       });
 
-      const msgRows = db.exec(`
-        SELECT role, content, time FROM messages
-        WHERE session_id = '${(sessionData.id as string).replace(/'/g, "''")}' ORDER BY time
-      `);
+      const stmt = db.prepare(
+        'SELECT role, content, time FROM messages WHERE session_id = ? ORDER BY time'
+      );
+      stmt.bind([sessionData.id as string]);
+      const msgValues: unknown[][] = [];
+      while (stmt.step()) {
+        msgValues.push(stmt.get());
+      }
+      stmt.free();
+      const msgRows = msgValues.length > 0
+        ? [{ columns: ['role', 'content', 'time'], values: msgValues }]
+        : [];
 
       const messages: SessionMessage[] =
         msgRows.length > 0

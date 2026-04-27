@@ -3,7 +3,7 @@ import { getDb, saveToFile } from '../db';
 import path from 'path';
 import fs from 'fs';
 
-const BACKUP_DIR = path.join(__dirname, '..', '..', 'data', 'backups', 'sync');
+const BACKUP_DIR = path.join(__dirname, '..', '..', '..', 'data', 'backups', 'sync');
 
 function ensureBackupDir(): void {
   if (!fs.existsSync(BACKUP_DIR)) {
