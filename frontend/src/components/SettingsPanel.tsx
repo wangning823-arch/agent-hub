@@ -93,8 +93,8 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   )
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+    <div className="modal-overlay" onMouseDown={onClose}>
+      <div className="modal-content" onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}>
         {/* Header */}
         <div className="modal-header">
           <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>设置</h2>

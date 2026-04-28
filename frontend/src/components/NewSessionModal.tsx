@@ -73,8 +73,8 @@ export default function NewSessionModal({ agents, onCreate, onClose, preselected
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" style={{ maxWidth: 480 }} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+    <div className="modal-overlay" onMouseDown={onClose}>
+      <div className="modal-content" style={{ maxWidth: 480 }} onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>创建新会话</h2>
           <button onClick={onClose} className="btn-icon">

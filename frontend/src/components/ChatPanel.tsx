@@ -1684,10 +1684,10 @@ export default function ChatPanel({
       {/* Workflow Editor Modal */}
       {showWorkflowEditor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}
-             onClick={(e) => { if (e.target === e.currentTarget) setShowWorkflowEditor(false) }}>
+             onMouseDown={(e) => { if (e.target === e.currentTarget) setShowWorkflowEditor(false) }}>
           <div className="rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto"
                style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-subtle)' }}
-               onClick={e => e.stopPropagation()}>
+               onMouseDown={e => e.stopPropagation()}>
             <WorkflowEditor
               initialDef={editingWorkflowDef}
               models={models}
