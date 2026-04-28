@@ -268,6 +268,7 @@ export default function CredentialManager() {
               <label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-secondary)' }}>Token *</label>
               <input
                 type="password"
+                autoComplete="off"
                 placeholder="***"
                 value={formData.secret}
                 onChange={e => setFormData(p => ({ ...p, secret: e.target.value }))}

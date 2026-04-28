@@ -97,42 +97,44 @@ export default function NewSessionModal({ agents, onCreate, onClose, preselected
           </div>
 
           <form onSubmit={handleSubmit}>
-            {/* 项目选择 */}
-            <div className="mb-4">
-              <label className="block text-sm mb-2" style={{ color: 'var(--text-muted)' }}>选择项目</label>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {projects.length === 0 ? (
-                  <div className="text-center py-6 text-sm" style={{ color: 'var(--text-muted)' }}>
-                    暂无项目，请先在项目管理中添加
-                  </div>
-                ) : (
-                  projects.map(project => (
-                    <button
-                      key={project.id}
-                      type="button"
-                      onClick={() => handleSelectProject(project)}
-                      className="w-full p-3 rounded-xl text-left transition-all text-sm flex items-center gap-3"
-                      style={{
-                        border: `2px solid ${selectedProject?.id === project.id ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
-                        background: selectedProject?.id === project.id ? 'var(--accent-primary-soft)' : 'var(--bg-tertiary)',
-                        color: 'var(--text-primary)',
-                      }}
-                    >
-                      <span className="text-lg">📂</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate">{project.name}</div>
-                        <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{project.workdir}</div>
-                      </div>
-                      {project.gitConfigured ? (
-                        <span className="text-xs" style={{ color: 'var(--success)' }}>🔑</span>
-                      ) : project.gitHost ? (
-                        <span className="text-xs" style={{ color: 'var(--warning)' }}>⚠️</span>
-                      ) : null}
-                    </button>
-                  ))
-                )}
+            {/* 项目选择 - 仅在未预选项目时显示 */}
+            {!preselectedProject && (
+              <div className="mb-4">
+                <label className="block text-sm mb-2" style={{ color: 'var(--text-muted)' }}>选择项目</label>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {projects.length === 0 ? (
+                    <div className="text-center py-6 text-sm" style={{ color: 'var(--text-muted)' }}>
+                      暂无项目，请先在项目管理中添加
+                    </div>
+                  ) : (
+                    projects.map(project => (
+                      <button
+                        key={project.id}
+                        type="button"
+                        onClick={() => handleSelectProject(project)}
+                        className="w-full p-3 rounded-xl text-left transition-all text-sm flex items-center gap-3"
+                        style={{
+                          border: `2px solid ${selectedProject?.id === project.id ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
+                          background: selectedProject?.id === project.id ? 'var(--accent-primary-soft)' : 'var(--bg-tertiary)',
+                          color: 'var(--text-primary)',
+                        }}
+                      >
+                        <span className="text-lg">📂</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{project.name}</div>
+                          <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{project.workdir}</div>
+                        </div>
+                        {project.gitConfigured ? (
+                          <span className="text-xs" style={{ color: 'var(--success)' }}>🔑</span>
+                        ) : project.gitHost ? (
+                          <span className="text-xs" style={{ color: 'var(--warning)' }}>⚠️</span>
+                        ) : null}
+                      </button>
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Agent 类型 */}
             <div className="mb-4">

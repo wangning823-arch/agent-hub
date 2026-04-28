@@ -2,10 +2,35 @@ import { Router, Request, Response } from 'express';
 import path from 'path';
 import { execFileSync } from 'child_process';
 
-export default (ALLOWED_ROOT: string, permissionManager: any) => { // TODO: type this
+export default (ALLOWED_ROOT: string, permissionManager: any, projectManager?: any) => { // TODO: type this
   const router = Router();
 
-  router.get('/status', async (req: Request, res: Response) => {
+  function requireProjectScope(req: Request, res: Response, next: Function) {
+    const workdir = (req.query.path || req.body?.workdir) as string;
+    const projectId = req.headers['x-project-id'] as string;
+
+    if (!projectId || !workdir || !projectManager) {
+      const resolved = path.resolve(workdir || '');
+      if (!resolved.startsWith(ALLOWED_ROOT)) {
+        return res.status(403).json({ error: '路径不在允许的范围内' });
+      }
+      return next();
+    }
+
+    const project = projectManager.getProject(projectId);
+    if (!project) {
+      return res.status(404).json({ error: '项目不存在' });
+    }
+
+    const resolved = path.resolve(workdir);
+    if (!resolved.startsWith(ALLOWED_ROOT) || !resolved.startsWith(project.workdir)) {
+      return res.status(403).json({ error: '无权访问此项目目录外的文件' });
+    }
+
+    next();
+  }
+
+  router.get('/status', requireProjectScope, async (req: Request, res: Response) => {
     const workdir = req.query.path as string;
     if (!workdir) {
       return res.status(400).json({ error: 'path参数是必需的' });
@@ -48,7 +73,7 @@ export default (ALLOWED_ROOT: string, permissionManager: any) => { // TODO: type
     }
   });
 
-  router.post('/command', async (req: Request, res: Response) => {
+  router.post('/command', requireProjectScope, async (req: Request, res: Response) => {
     const { workdir, command } = req.body;
     if (!workdir || !command) {
       return res.status(400).json({ error: 'workdir和command是必需的' });
@@ -84,7 +109,7 @@ export default (ALLOWED_ROOT: string, permissionManager: any) => { // TODO: type
     }
   });
 
-  router.post('/commit', async (req: Request, res: Response) => {
+  router.post('/commit', requireProjectScope, async (req: Request, res: Response) => {
     const { workdir, message, files } = req.body;
     if (!workdir || !message) {
       return res.status(400).json({ error: 'workdir和message是必需的' });

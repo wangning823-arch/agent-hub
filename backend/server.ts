@@ -130,8 +130,8 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   app.use('/api/sessions', sessionsRouter(sessionManager));
   app.use('/api/tags', tagsRouter(sessionManager));
   app.use('/api/projects', projectsRouter(projectManager, sessionManager));
-  app.use('/api/files', filesRouter(ALLOWED_ROOT));
-  app.use('/api/git', gitRouter(ALLOWED_ROOT, permissionManager));
+  app.use('/api/files', filesRouter(ALLOWED_ROOT, projectManager));
+  app.use('/api/git', gitRouter(ALLOWED_ROOT, permissionManager, projectManager));
   app.use('/api/search', searchRouter(sessionManager));
   app.use('/api/permissions', permissionsRouter(permissionManager));
   app.use('/api/tokens', tokensRouter(new TokenTracker()));

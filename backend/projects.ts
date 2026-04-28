@@ -8,6 +8,7 @@ import path from 'path';
 import { execSync } from 'child_process';
 import credentialManager from './credentialManager';
 import { getDb } from './db';
+import { hashPassword, verifyPassword, isPasswordProtected } from './crypto-utils';
 
 const PROJECTS_FILE = path.join(__dirname, '..', '..', 'data', 'projects.json');
 
@@ -20,6 +21,7 @@ interface ProjectObj {
   favorite: boolean;
   gitHost?: string | null;
   gitConfigured?: boolean;
+  passwordHash?: string;
 }
 
 interface ProjectData {
@@ -40,6 +42,24 @@ class ProjectManager {
     this.projects = new Map();
     this.recentProjects = [];
     this.loadData();
+  }
+
+  private sanitizeProject(project: ProjectObj): Omit<ProjectObj, 'passwordHash'> & { hasPassword: boolean } {
+    const { passwordHash, ...rest } = project;
+    return { ...rest, hasPassword: isPasswordProtected(passwordHash) };
+  }
+
+  verifyProjectPassword(id: string, password: string): boolean {
+    const project = this.projects.get(id);
+    if (!project) return false;
+    if (!project.passwordHash) return true;
+    return verifyPassword(password, project.passwordHash);
+  }
+
+  hasPassword(id: string): boolean {
+    const project = this.projects.get(id);
+    if (!project) return false;
+    return isPasswordProtected(project.passwordHash);
   }
 
   _getGitHostFromWorkdir(workdir: string): string | null {
@@ -178,6 +198,7 @@ class ProjectManager {
               createdAt: proj.createdAt || new Date().toISOString(),
               updatedAt: proj.updatedAt || new Date().toISOString(),
               favorite: !!proj.favorite,
+              passwordHash: proj.passwordHash || undefined,
             };
 
             const host = this._getGitHostFromWorkdir(migrated.workdir);
@@ -206,6 +227,7 @@ class ProjectManager {
               createdAt: proj.createdAt || new Date().toISOString(),
               updatedAt: proj.updatedAt || new Date().toISOString(),
               favorite: !!proj.favorite,
+              passwordHash: (proj as any).passwordHash || undefined,
             };
 
             const host = this._getGitHostFromWorkdir(migrated.workdir);
@@ -256,7 +278,7 @@ class ProjectManager {
     }
   }
 
-  addProject(name: string, workdir: string): ProjectObj {
+  addProject(name: string, workdir: string, password?: string): ProjectObj {
     const id = `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date().toISOString();
 
@@ -266,7 +288,8 @@ class ProjectManager {
       workdir,
       createdAt: now,
       updatedAt: now,
-      favorite: false
+      favorite: false,
+      passwordHash: password ? hashPassword(password) : undefined
     };
 
     const host = this._getGitHostFromWorkdir(workdir);
@@ -302,7 +325,7 @@ class ProjectManager {
   }
 
   updateProject(id: string, updates: Partial<ProjectObj>): ProjectObj {
-    const project = this.getProject(id);
+    const project = this.projects.get(id);
     if (!project) {
       throw new Error(`项目不存在: ${id}`);
     }
@@ -311,6 +334,7 @@ class ProjectManager {
     if ('name' in updates) allowedUpdates.name = updates.name;
     if ('workdir' in updates) allowedUpdates.workdir = updates.workdir;
     if ('favorite' in updates) allowedUpdates.favorite = updates.favorite;
+    if ('passwordHash' in updates) allowedUpdates.passwordHash = updates.passwordHash;
 
     Object.assign(project, allowedUpdates, {
       updatedAt: new Date().toISOString()
@@ -337,12 +361,13 @@ class ProjectManager {
     return project;
   }
 
-  getProject(id: string): ProjectObj | null {
-    return this.projects.get(id) || null;
+  getProject(id: string): (Omit<ProjectObj, 'passwordHash'> & { hasPassword: boolean }) | null {
+    const project = this.projects.get(id);
+    return project ? this.sanitizeProject(project) : null;
   }
 
-  listProjects(): ProjectObj[] {
-    return Array.from(this.projects.values());
+  listProjects(): (Omit<ProjectObj, 'passwordHash'> & { hasPassword: boolean })[] {
+    return Array.from(this.projects.values()).map(p => this.sanitizeProject(p));
   }
 
   deleteProject(id: string): boolean {
@@ -359,14 +384,15 @@ class ProjectManager {
     ].slice(0, 10);
   }
 
-  getRecentProjects(): ProjectObj[] {
+  getRecentProjects(): (Omit<ProjectObj, 'passwordHash'> & { hasPassword: boolean })[] {
     return this.recentProjects
       .map(id => this.projects.get(id))
-      .filter(Boolean) as ProjectObj[];
+      .filter(Boolean)
+      .map(p => this.sanitizeProject(p!));
   }
 
-  toggleFavorite(id: string): ProjectObj {
-    const project = this.getProject(id);
+  toggleFavorite(id: string): Omit<ProjectObj, 'passwordHash'> & { hasPassword: boolean } {
+    const project = this.projects.get(id);
     if (!project) {
       throw new Error(`项目不存在: ${id}`);
     }
@@ -375,21 +401,23 @@ class ProjectManager {
     project.updatedAt = new Date().toISOString();
     this.saveData();
 
-    return project;
+    return this.sanitizeProject(project);
   }
 
-  getFavoriteProjects(): ProjectObj[] {
+  getFavoriteProjects(): (Omit<ProjectObj, 'passwordHash'> & { hasPassword: boolean })[] {
     return Array.from(this.projects.values())
-      .filter(p => p.favorite);
+      .filter(p => p.favorite)
+      .map(p => this.sanitizeProject(p));
   }
 
-  searchProjects(query: string): ProjectObj[] {
+  searchProjects(query: string): (Omit<ProjectObj, 'passwordHash'> & { hasPassword: boolean })[] {
     const q = query.toLowerCase();
     return Array.from(this.projects.values())
       .filter(p =>
         p.name.toLowerCase().includes(q) ||
         p.workdir.toLowerCase().includes(q)
-      );
+      )
+      .map(p => this.sanitizeProject(p));
   }
 }
 

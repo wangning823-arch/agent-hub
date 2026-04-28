@@ -81,7 +81,7 @@ interface SidebarProps {
   onSelectSession: (id: string) => void
   onCloseSession: (id: string) => void
   onResumeSession: (id: string) => void
-  onNewSession: () => void
+  onNewSession: (project?: Project) => void
   onOpenProject: () => void
   onUpdateOptions: (sessionId: string, options: Record<string, unknown>) => void
   onRenameSession: (id: string, title: string) => void
@@ -90,6 +90,13 @@ interface SidebarProps {
   onUpdateTags: (id: string, tags: string[]) => void
   onSetLoading: (id: string | null) => void
   onRestoringMemoryChange?: (id: string, restoring: boolean) => void
+}
+
+interface Project {
+  id: string
+  name: string
+  workdir: string
+  hasPassword?: boolean
 }
 
 // SVG icons
@@ -149,6 +156,15 @@ export default function Sidebar({
   const [showInstallModal, setShowInstallModal] = useState(false)
   const [installSource, setInstallSource] = useState('')
   const [installing, setInstalling] = useState(false)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  const [projectPasswordPrompt, setProjectPasswordPrompt] = useState<{
+    project: Project
+    loading: boolean
+    error: string
+  } | null>(null)
+  const [projectPassword, setProjectPassword] = useState('')
+  const [verifiedProjectIds, setVerifiedProjectIds] = useState<Set<string>>(new Set())
 
   const skillDescriptionTranslations: Record<string, string> = {
     // 通用命令
@@ -233,7 +249,54 @@ export default function Sidebar({
     loadCommands()
     loadTags()
     loadSkills()
+    loadProjects()
   }, [agentType, workdir])
+
+  const loadProjects = async () => {
+    try {
+      const data = await fetch(`${API_BASE}/projects`).then(r => r.json())
+      setProjects(data || [])
+    } catch (error) { console.error('加载项目失败:', error) }
+  }
+
+  const handleProjectSelect = async (projectId: string) => {
+    if (!projectId) {
+      setSelectedProjectId('')
+      return
+    }
+    const project = projects.find(p => p.id === projectId)
+    if (!project) return
+
+    if (project.hasPassword && !verifiedProjectIds.has(projectId)) {
+      setProjectPasswordPrompt({ project, loading: false, error: '' })
+      setProjectPassword('')
+      return
+    }
+
+    setSelectedProjectId(projectId)
+  }
+
+  const verifyProjectPassword = async () => {
+    if (!projectPasswordPrompt) return
+    setProjectPasswordPrompt(prev => prev ? { ...prev, loading: true, error: '' } : null)
+    try {
+      const res = await fetch(`${API_BASE}/projects/${projectPasswordPrompt.project.id}/verify-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: projectPassword })
+      }).then(r => r.json())
+
+      if (res.valid) {
+        setVerifiedProjectIds(prev => new Set([...prev, projectPasswordPrompt.project.id]))
+        setSelectedProjectId(projectPasswordPrompt.project.id)
+        setProjectPasswordPrompt(null)
+      } else {
+        setProjectPasswordPrompt(prev => prev ? { ...prev, loading: false, error: '密码错误' } : null)
+      }
+    } catch (error: any) {
+      setProjectPasswordPrompt(prev => prev ? { ...prev, loading: false, error: error.message } : null)
+    }
+  }
 
   useEffect(() => {
     const handler = () => loadOptions()
@@ -331,21 +394,25 @@ export default function Sidebar({
     return labels[type] || { text: type?.toUpperCase()?.slice(0, 2) || '??', color: '#888' }
   }
 
-  const sortedSessions = [...sessions]
-    .filter((s): s is Session => {
-      if (!s) return false
-      if (showArchived ? !s.isArchived : s.isArchived) return false
-      if (selectedTags.length > 0) {
-        const sessionTags = s.tags || []
-        return selectedTags.some(tag => sessionTags.includes(tag))
-      }
-      return true
-    })
-    .sort((a, b) => {
-      if (a.isPinned && !b.isPinned) return -1
-      if (!a.isPinned && b.isPinned) return 1
-      return new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime()
-    })
+  const sortedSessions = (selectedProjectId
+    ? [...sessions]
+        .filter((s): s is Session => {
+          if (!s) return false
+          if (showArchived ? !s.isArchived : s.isArchived) return false
+          const project = projects.find(p => p.id === selectedProjectId)
+          if (project && !s.workdir.startsWith(project.workdir)) return false
+          if (selectedTags.length > 0) {
+            const sessionTags = s.tags || []
+            return selectedTags.some(tag => sessionTags.includes(tag))
+          }
+          return true
+        })
+    : []
+  ).sort((a, b) => {
+    if (a.isPinned && !b.isPinned) return -1
+    if (!a.isPinned && b.isPinned) return 1
+    return new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime()
+  })
 
   const handleRename = (sessionId: string) => {
     if (editTitle.trim()) onRenameSession(sessionId, editTitle.trim())
@@ -402,6 +469,29 @@ export default function Sidebar({
 
           {expandedSection === 'sessions' && (
             <div className="pb-2">
+              {/* Project filter */}
+              <div className="px-4 py-2 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+                {projects.length === 0 ? (
+                  <div className="text-xs py-1.5" style={{ color: 'var(--text-muted)' }}>
+                    请先创建项目
+                  </div>
+                ) : (
+                  <select
+                    value={selectedProjectId || ''}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleProjectSelect(e.target.value)}
+                    className="w-full text-xs px-2 py-1.5 rounded"
+                    style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
+                  >
+                    <option value="">请选择项目</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.hasPassword ? '🔒 ' : ''}{p.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
               {/* Tag filter */}
               {allTags.length > 0 && (
                 <div className="px-4 py-2 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
@@ -430,7 +520,11 @@ export default function Sidebar({
                 </button>
               </div>
 
-              {sortedSessions.length === 0 ? (
+              {!selectedProjectId ? (
+                <div className="px-4 py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+                  请先选择一个项目
+                </div>
+              ) : sortedSessions.length === 0 ? (
                 <div className="px-4 py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
                   {showArchived ? '没有已归档的会话' : '还没有会话'}
                 </div>
@@ -548,7 +642,10 @@ export default function Sidebar({
               )}
 
               <button
-                onClick={onNewSession}
+                onClick={() => {
+                  const project = selectedProjectId ? projects.find(p => p.id === selectedProjectId) : undefined
+                  onNewSession(project)
+                }}
                 className="btn-secondary w-full text-sm py-2.5 flex items-center justify-center gap-2"
               >
                 <IconPlus /> 新建会话
@@ -816,6 +913,53 @@ export default function Sidebar({
               <button onClick={() => setShowInstallModal(false)} className="px-4 py-2 text-gray-400 hover:text-white">取消</button>
               <button onClick={handleInstallSkill} disabled={installing || !installSource.trim()} className="btn-primary px-4 py-2">
                 {installing ? '安装中...' : '安装'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Project password prompt */}
+      {projectPasswordPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="rounded-lg p-6 w-full max-w-sm" style={{ background: 'var(--bg-secondary)' }}>
+            <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+              🔒 项目密码验证
+            </h3>
+            <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+              「{projectPasswordPrompt.project.name}」需要密码才能查看会话
+            </p>
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={projectPassword}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setProjectPassword(e.target.value)}
+              className="w-full px-3 py-2 rounded mb-2"
+              style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+              placeholder="请输入项目密码"
+              autoFocus
+              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                if (e.key === 'Enter' && projectPassword) verifyProjectPassword()
+              }}
+            />
+            {projectPasswordPrompt.error && (
+              <p className="text-sm mb-2" style={{ color: 'var(--error)' }}>{projectPasswordPrompt.error}</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setProjectPasswordPrompt(null)}
+                className="px-4 py-2"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                取消
+              </button>
+              <button
+                onClick={verifyProjectPassword}
+                disabled={!projectPassword || projectPasswordPrompt.loading}
+                className="px-4 py-2 rounded disabled:opacity-50"
+                style={{ background: 'var(--accent-primary)', color: '#fff' }}
+              >
+                {projectPasswordPrompt.loading ? '验证中...' : '确认'}
               </button>
             </div>
           </div>

@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import { exec, execSync } from 'child_process';
+import { hashPassword } from '../crypto-utils';
 
 export default (projectManager: any, sessionManager: any) => { // TODO: type this
   const router = Router();
@@ -21,13 +22,13 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
 
   router.post('/', (req: Request, res: Response) => {
     try {
-      const { name, workdir } = req.body;
+      const { name, workdir, password } = req.body;
 
       if (!name || !workdir) {
         return res.status(400).json({ error: 'name和workdir是必需的' });
       }
 
-      const project = projectManager.addProject(name, workdir);
+      const project = projectManager.addProject(name, workdir, password || undefined);
       res.json(project);
     } catch (error: any) {
       console.error('创建项目失败:', error);
@@ -37,7 +38,7 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
 
   router.post('/import-git', async (req: Request, res: Response) => {
     try {
-      const { gitUrl } = req.body;
+      const { gitUrl, password } = req.body;
 
       if (!gitUrl) {
         return res.status(400).json({ error: 'gitUrl 是必需的' });
@@ -90,7 +91,7 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
 
       if (fs.existsSync(workdir)) {
         console.log(`目录 ${workdir} 已存在，导入项目`);
-        const project = projectManager.addProject(repoName, workdir);
+        const project = projectManager.addProject(repoName, workdir, password || undefined);
         return res.json({
           project,
           status: 'imported',
@@ -127,7 +128,7 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
         });
       }
 
-      const project = projectManager.addProject(repoName, workdir);
+      const project = projectManager.addProject(repoName, workdir, password || undefined);
 
       res.json({
         project,
@@ -144,6 +145,10 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
   router.put('/:id', (req: Request, res: Response) => {
     try {
       const updates = req.body;
+      if (updates.password !== undefined) {
+        updates.passwordHash = updates.password ? hashPassword(updates.password) : null;
+        delete updates.password;
+      }
       const project = projectManager.updateProject(req.params.id, updates);
       res.json(project);
     } catch (error: any) {
@@ -181,6 +186,17 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
         return res.status(404).json({ error: '项目不存在' });
       }
 
+      if (projectManager.hasPassword(project.id)) {
+        const { password } = req.body;
+        if (!password) {
+          return res.status(401).json({ error: '需要项目密码', requiresPassword: true });
+        }
+        const valid = projectManager.verifyProjectPassword(project.id, password);
+        if (!valid) {
+          return res.status(403).json({ error: '密码错误' });
+        }
+      }
+
       const { agentType = 'claude-code', mode = 'auto', model = null, effort = 'medium' } = req.body;
 
       const session = await sessionManager.createSession(
@@ -210,6 +226,38 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
       });
     } catch (error: any) {
       console.error('启动项目会话失败:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post('/:id/verify-password', (req: Request, res: Response) => {
+    try {
+      const { password } = req.body;
+      const project = projectManager.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: '项目不存在' });
+      }
+
+      const hasPwd = projectManager.hasPassword(project.id);
+      if (!hasPwd) {
+        return res.json({ valid: true, hasPassword: false });
+      }
+
+      const valid = projectManager.verifyProjectPassword(project.id, password || '');
+      res.json({ valid, hasPassword: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.get('/:id/password-status', (req: Request, res: Response) => {
+    try {
+      const project = projectManager.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: '项目不存在' });
+      }
+      res.json({ hasPassword: projectManager.hasPassword(project.id) });
+    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });

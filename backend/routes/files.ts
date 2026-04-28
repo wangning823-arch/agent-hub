@@ -2,10 +2,39 @@ import { Router, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 
-export default (ALLOWED_ROOT: string) => {
+export default (ALLOWED_ROOT: string, projectManager?: any) => {
   const router = Router();
 
-  router.get('/', (req: Request, res: Response) => {
+  function requireProjectScope(req: Request, res: Response, next: Function) {
+    const projectId = req.headers['x-project-id'] as string || req.query.projectId as string;
+    const filePath = (req.query.path || req.body?.path) as string;
+
+    if (!projectId || !filePath || !projectManager) {
+      const resolved = path.resolve(filePath || '');
+      if (!resolved.startsWith(ALLOWED_ROOT)) {
+        return res.status(403).json({ error: '路径不在允许的范围内' });
+      }
+      return next();
+    }
+
+    const project = projectManager.getProject(projectId);
+    if (!project) {
+      return res.status(404).json({ error: '项目不存在' });
+    }
+
+    const resolved = path.resolve(filePath);
+
+    if (!resolved.startsWith(ALLOWED_ROOT)) {
+      return res.status(403).json({ error: '路径不在允许的范围内' });
+    }
+    if (!resolved.startsWith(project.workdir)) {
+      return res.status(403).json({ error: '无权访问此项目目录外的文件' });
+    }
+
+    next();
+  }
+
+  router.get('/', requireProjectScope, (req: Request, res: Response) => {
     const dirPath = req.query.path as string;
     if (!dirPath) {
       return res.status(400).json({ error: 'path参数是必需的' });
@@ -47,7 +76,7 @@ export default (ALLOWED_ROOT: string) => {
     }
   });
 
-  router.get('/content', (req: Request, res: Response) => {
+  router.get('/content', requireProjectScope, (req: Request, res: Response) => {
     const filePath = req.query.path as string;
     if (!filePath) {
       return res.status(400).json({ error: 'path参数是必需的' });
@@ -66,7 +95,7 @@ export default (ALLOWED_ROOT: string) => {
     }
   });
 
-  router.put('/content', (req: Request, res: Response) => {
+  router.put('/content', requireProjectScope, (req: Request, res: Response) => {
     const { path: filePath, content } = req.body;
 
     if (!filePath || content === undefined) {

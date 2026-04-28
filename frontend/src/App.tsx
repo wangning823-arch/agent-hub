@@ -121,18 +121,20 @@ export default function App() {
   const isMobileRef = useRef<boolean>(isMobile)
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
 
-  // 全局 fetch 拦截，自动加 token
+  // 全局 fetch 拦截，自动加 token 和项目 ID
   useEffect(() => {
     const origFetch = window.fetch
     window.fetch = (url: RequestInfo | URL, opts: RequestInit = {}) => {
       const headers = { ...opts.headers } as Record<string, string>
       const token = localStorage.getItem('access_token')
       if (token) headers['x-access-token'] = token
+      if (activeProjectId) headers['x-project-id'] = activeProjectId
       return origFetch(url, { ...opts, headers })
     }
     return () => { window.fetch = origFetch }
-  }, [])
+  }, [activeProjectId])
 
   // 检查 token 有效性
   useEffect(() => {
@@ -426,6 +428,7 @@ export default function App() {
       ...prev,
       [session.id]: { mode: project.mode, model: project.model, effort: project.effort }
     }))
+    if (project.id) setActiveProjectId(project.id)
     setShowProjectManager(false)
     if (isMobile) scrollToPanel('main')
   }
@@ -521,7 +524,7 @@ export default function App() {
           }}
           onCloseSession={removeSession}
           onResumeSession={resumeSession}
-          onNewSession={() => setShowNewModal(true)}
+          onNewSession={(project) => { setPreselectedProject(project || null); setShowNewModal(true) }}
           onOpenProject={() => setShowProjectManager(true)}
           onUpdateOptions={handleUpdateOptions}
           onRenameSession={renameSession}

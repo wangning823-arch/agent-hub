@@ -86,9 +86,15 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
     }
   }
 
-  const enterDirectory = (dirPath: string) => { setCurrentPath(dirPath); loadFiles(dirPath) }
+  const enterDirectory = (dirPath: string) => {
+    if (workdir && !dirPath.startsWith(workdir)) return
+    setCurrentPath(dirPath)
+    loadFiles(dirPath)
+  }
   const goUp = () => {
+    if (!workdir) return
     const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
+    if (parentPath.length < workdir.length) return
     enterDirectory(parentPath)
   }
 
@@ -167,6 +173,15 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
     return '...' + path.slice(-(maxLen - 3))
   }
 
+  const getRelativePath = (path: string) => {
+    if (!workdir) return path
+    if (path === workdir) return '/'
+    const rel = path.startsWith(workdir + '/') ? path.slice(workdir.length) : path
+    return rel || '/'
+  }
+
+  const isAtRoot = currentPath === workdir
+
   const SectionHeader: React.FC<SectionHeaderProps> = ({ icon, label, section }) => (
     <button
       onClick={() => setExpandedSection(expandedSection === section ? '' : section)}
@@ -188,11 +203,13 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
           <div className="max-h-[50vh] flex flex-col">
             {/* Path bar */}
             <div className="px-3 py-2 border-b flex items-center gap-2" style={{ borderColor: 'var(--border-subtle)' }}>
-              <button onClick={goUp} className="btn-icon w-7 h-7" title="上级目录">
-                <IconUp />
-              </button>
+              {!isAtRoot && (
+                <button onClick={goUp} className="btn-icon w-7 h-7" title="上级目录">
+                  <IconUp />
+                </button>
+              )}
               <span className="text-xs truncate flex-1" style={{ color: 'var(--text-muted)' }} title={currentPath}>
-                {truncatePath(currentPath, 22)}
+                {truncatePath(getRelativePath(currentPath), 22)}
               </span>
               <button onClick={() => loadFiles(currentPath)} className="btn-icon w-7 h-7" title="刷新">
                 <IconRefresh />

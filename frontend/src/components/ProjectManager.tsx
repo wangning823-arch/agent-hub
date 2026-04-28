@@ -12,6 +12,7 @@ interface Project {
   favorite?: boolean
   gitHost?: string
   gitConfigured?: boolean
+  hasPassword?: boolean
 }
 
 interface ProjectManagerProps {
@@ -22,9 +23,9 @@ interface ProjectManagerProps {
 
 interface ProjectCardProps {
   project: Project
-  onStart: () => void
   onToggleFavorite: () => void
   onDelete: () => void
+  onSetPassword: () => void
 }
 
 interface Credential {
@@ -37,6 +38,8 @@ interface Credential {
 interface NewProjectForm {
   name: string
   workdir: string
+  password: string
+  confirmPassword: string
 }
 
 export default function ProjectManager({ onSelectProject, onNewSession, onClose }: ProjectManagerProps) {
@@ -52,8 +55,23 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
   const [gitUrl, setGitUrl] = useState('')
   const [newProject, setNewProject] = useState<NewProjectForm>({
     name: '',
-    workdir: ''
+    workdir: '',
+    password: '',
+    confirmPassword: ''
   })
+  const [passwordPrompt, setPasswordPrompt] = useState<{
+    project: Project
+    loading: boolean
+    error: string
+  } | null>(null)
+  const [projectPassword, setProjectPassword] = useState('')
+  const [setPasswordModal, setSetPasswordModal] = useState<{
+    project: Project
+    loading: boolean
+    error: string
+  } | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmNewPassword, setConfirmNewPassword] = useState('')
 
   // 加载数据
   useEffect(() => {
@@ -90,16 +108,24 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
   }
 
    const createProject = async () => {
+     if (newProject.password && newProject.password !== newProject.confirmPassword) {
+       toast.error('两次输入的密码不一致')
+       return
+     }
      try {
        const project = await fetch(`${API_BASE}/projects`, {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify(newProject)
+         body: JSON.stringify({
+           name: newProject.name,
+           workdir: newProject.workdir,
+           password: newProject.password || undefined
+         })
        }).then(r => r.json())
 
        setProjects(prev => [...prev, project])
        setShowCreateForm(false)
-       setNewProject({ name: '', workdir: '' })
+       setNewProject({ name: '', workdir: '', password: '', confirmPassword: '' })
      } catch (error: any) {
        toast.error('创建项目失败: ' + error.message)
      }
@@ -116,7 +142,10 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
        const result = await fetch(`${API_BASE}/projects/import-git`, {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ gitUrl: gitUrl.trim() })
+         body: JSON.stringify({
+           gitUrl: gitUrl.trim(),
+           password: newProject.password || undefined
+         })
        }).then(r => r.json())
 
       if (result.error) {
@@ -179,18 +208,60 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
   }
 
   const startProject = async (project: Project) => {
-    if (onNewSession) {
-      onNewSession(project)
-    } else {
-      // fallback: 直接启动（兼容旧逻辑）
-      try {
-        const result = await fetch(`${API_BASE}/projects/${project.id}/start`, {
-          method: 'POST'
-        }).then(r => r.json())
-        onSelectProject(result)
-      } catch (error: any) {
-        toast.error('启动项目失败: ' + error.message)
+    if (project.hasPassword) {
+      setPasswordPrompt({ project, loading: false, error: '' })
+      setProjectPassword('')
+      return
+    }
+    doStartProject(project, '')
+  }
+
+  const doStartProject = async (project: Project, password: string) => {
+    setPasswordPrompt(prev => prev ? { ...prev, loading: true, error: '' } : null)
+    try {
+      const result = await fetch(`${API_BASE}/projects/${project.id}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      }).then(r => r.json())
+
+      if (result.requiresPassword) {
+        setPasswordPrompt(prev => prev ? { ...prev, loading: false, error: '请输入密码' } : null)
+        return
       }
+      if (result.error) {
+        setPasswordPrompt(prev => prev ? { ...prev, loading: false, error: result.error } : null)
+        return
+      }
+
+      setPasswordPrompt(null)
+      onSelectProject(result.session)
+    } catch (error: any) {
+      setPasswordPrompt(prev => prev ? { ...prev, loading: false, error: error.message } : null)
+    }
+  }
+
+  const handleSetPassword = async () => {
+    if (!setPasswordModal) return
+    if (newPassword !== confirmNewPassword) {
+      setSetPasswordModal(prev => prev ? { ...prev, error: '两次输入的密码不一致' } : null)
+      return
+    }
+    setSetPasswordModal(prev => prev ? { ...prev, loading: true, error: '' } : null)
+    try {
+      const res = await fetch(`${API_BASE}/projects/${setPasswordModal.project.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: newPassword || null })
+      })
+      if (!res.ok) throw new Error('更新失败')
+      toast.success(newPassword ? '密码已设置' : '密码已移除')
+      setSetPasswordModal(null)
+      setNewPassword('')
+      setConfirmNewPassword('')
+      loadProjects()
+    } catch (error: any) {
+      setSetPasswordModal(prev => prev ? { ...prev, loading: false, error: error.message } : null)
     }
   }
 
@@ -243,9 +314,10 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
                   <ProjectCard
                     key={project.id}
                     project={project}
-                    onStart={() => startProject(project)}
+
                     onToggleFavorite={() => toggleFavorite(project.id)}
                     onDelete={() => deleteProject(project.id)}
+                    onSetPassword={() => { setSetPasswordModal({ project, loading: false, error: '' }); setNewPassword(''); setConfirmNewPassword('') }}
                   />
                 ))}
               </div>
@@ -261,9 +333,10 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
                   <ProjectCard
                     key={project.id}
                     project={project}
-                    onStart={() => startProject(project)}
+
                     onToggleFavorite={() => toggleFavorite(project.id)}
                     onDelete={() => deleteProject(project.id)}
+                    onSetPassword={() => { setSetPasswordModal({ project, loading: false, error: '' }); setNewPassword(''); setConfirmNewPassword('') }}
                   />
                 ))}
               </div>
@@ -285,9 +358,10 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
                   <ProjectCard
                     key={project.id}
                     project={project}
-                    onStart={() => startProject(project)}
+
                     onToggleFavorite={() => toggleFavorite(project.id)}
                     onDelete={() => deleteProject(project.id)}
+                    onSetPassword={() => { setSetPasswordModal({ project, loading: false, error: '' }); setNewPassword(''); setConfirmNewPassword('') }}
                   />
                 ))
               )}
@@ -357,7 +431,14 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
                        <input
                          type="text"
                          value={newProject.name}
-                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject(prev => ({ ...prev, name: e.target.value }))}
+                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                           const name = e.target.value
+                           setNewProject(prev => ({
+                             ...prev,
+                             name,
+                             workdir: name ? `~/projects/${name.toLowerCase().replace(/\s+/g, '-')}` : ''
+                           }))
+                         }}
                          className="w-full px-3 py-2 rounded"
                          style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
                          placeholder="我的项目"
@@ -365,17 +446,47 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
                      </div>
 
                      <div>
-                       <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>工作目录 *</label>
+                       <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>项目目录 (自动生成)</label>
                        <input
                          type="text"
                          value={newProject.workdir}
-                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject(prev => ({ ...prev, workdir: e.target.value }))}
-                         className="w-full px-3 py-2 rounded"
-                         style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
-                         placeholder="/path/to/project 或 ~/project"
+                         readOnly
+                         className="w-full px-3 py-2 rounded opacity-70"
+                         style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}
                        />
+                       <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                         将创建在 ~/projects/ 目录下
+                       </p>
                      </div>
                    </>
+                 )}
+
+                 {/* 密码输入 - 两种模式共用 */}
+                 <div>
+                   <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>项目密码 (可选)</label>
+                   <input
+                     type="password"
+                     autoComplete="new-password"
+                     value={newProject.password}
+                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject(prev => ({ ...prev, password: e.target.value }))}
+                     className="w-full px-3 py-2 rounded"
+                     style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+                     placeholder="留空表示不设密码"
+                   />
+                 </div>
+                 {newProject.password && (
+                   <div>
+                     <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>确认密码</label>
+                     <input
+                       type="password"
+                       autoComplete="new-password"
+                       value={newProject.confirmPassword}
+                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                       className="w-full px-3 py-2 rounded"
+                       style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+                       placeholder="再次输入密码"
+                     />
+                   </div>
                  )}
               </div>
 
@@ -403,7 +514,7 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
                 ) : (
                   <button
                     onClick={createProject}
-                    disabled={!newProject.name || !newProject.workdir}
+                    disabled={!newProject.name}
                     className="px-4 py-2 rounded disabled:opacity-50"
                     style={{ background: 'var(--accent-primary)', color: '#fff' }}
                   >
@@ -414,12 +525,123 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
             </div>
           </div>
         )}
+
+        {/* 密码验证弹窗 */}
+        {passwordPrompt && (
+          <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
+            <div className="rounded-lg p-6 w-full max-w-sm" style={{ background: 'var(--bg-secondary)' }}>
+              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+                🔒 项目密码验证
+              </h3>
+              <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+                「{passwordPrompt.project.name}」需要密码才能访问
+              </p>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={projectPassword}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setProjectPassword(e.target.value)}
+                className="w-full px-3 py-2 rounded mb-2"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+                placeholder="请输入项目密码"
+                autoFocus
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                  if (e.key === 'Enter' && projectPassword) {
+                    doStartProject(passwordPrompt.project, projectPassword)
+                  }
+                }}
+              />
+              {passwordPrompt.error && (
+                <p className="text-sm mb-2" style={{ color: 'var(--error)' }}>{passwordPrompt.error}</p>
+              )}
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setPasswordPrompt(null)}
+                  className="px-4 py-2"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => doStartProject(passwordPrompt.project, projectPassword)}
+                  disabled={!projectPassword || passwordPrompt.loading}
+                  className="px-4 py-2 rounded disabled:opacity-50"
+                  style={{ background: 'var(--accent-primary)', color: '#fff' }}
+                >
+                  {passwordPrompt.loading ? '验证中...' : '确认'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 设置密码弹窗 */}
+        {setPasswordModal && (
+          <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
+            <div className="rounded-lg p-6 w-full max-w-sm" style={{ background: 'var(--bg-secondary)' }}>
+              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+                {setPasswordModal.project.hasPassword ? '🔑 修改密码' : '🔒 设置密码'}
+              </h3>
+              <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+                「{setPasswordModal.project.name}」
+                {setPasswordModal.project.hasPassword ? '修改项目密码' : '设置项目密码以保护访问'}
+              </p>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)}
+                className="w-full px-3 py-2 rounded mb-2"
+                style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+                placeholder={setPasswordModal.project.hasPassword ? '输入新密码' : '输入密码（留空则取消密码保护）'}
+                autoFocus
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                  if (e.key === 'Enter' && newPassword === confirmNewPassword) handleSetPassword()
+                }}
+              />
+              {newPassword && (
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmNewPassword}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfirmNewPassword(e.target.value)}
+                  className="w-full px-3 py-2 rounded mb-2"
+                  style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+                  placeholder="确认密码"
+                  onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                    if (e.key === 'Enter' && newPassword === confirmNewPassword) handleSetPassword()
+                  }}
+                />
+              )}
+              {setPasswordModal.error && (
+                <p className="text-sm mb-2" style={{ color: 'var(--error)' }}>{setPasswordModal.error}</p>
+              )}
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => { setSetPasswordModal(null); setNewPassword(''); setConfirmNewPassword('') }}
+                  className="px-4 py-2"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleSetPassword}
+                  disabled={setPasswordModal.loading}
+                  className="px-4 py-2 rounded disabled:opacity-50"
+                  style={{ background: 'var(--accent-primary)', color: '#fff' }}
+                >
+                  {setPasswordModal.loading ? '保存中...' : '保存'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-function ProjectCard({ project, onStart, onToggleFavorite, onDelete }: ProjectCardProps) {
+function ProjectCard({ project, onToggleFavorite, onDelete, onSetPassword }: ProjectCardProps) {
   const [showCredPicker, setShowCredPicker] = useState(false)
   const [credentials, setCredentials] = useState<Credential[]>([])
   const [loadingCreds, setLoadingCreds] = useState(false)
@@ -498,6 +720,7 @@ function ProjectCard({ project, onStart, onToggleFavorite, onDelete }: ProjectCa
           <div className="flex items-center gap-2">
             <h4 className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>{project.name}</h4>
             {project.favorite && <span style={{ color: 'var(--warning)' }}>⭐</span>}
+            {project.hasPassword && <span title="已设置密码保护">🔒</span>}
           </div>
           <p className="text-sm truncate mt-1" style={{ color: 'var(--text-muted)' }}>{project.workdir}</p>
            {/* Git状态显示 */}
@@ -615,11 +838,12 @@ function ProjectCard({ project, onStart, onToggleFavorite, onDelete }: ProjectCa
 
         <div className="flex items-center gap-2 ml-4">
           <button
-            onClick={onStart}
-            className="px-3 py-1.5 text-sm rounded"
-            style={{ background: 'var(--success)', color: '#fff' }}
+            onClick={onSetPassword}
+            className="p-1.5"
+            style={{ color: 'var(--text-muted)' }}
+            title={project.hasPassword ? '修改密码' : '设置密码'}
           >
-            启动
+            {project.hasPassword ? '🔒' : '🔓'}
           </button>
           <button
             onClick={onToggleFavorite}
