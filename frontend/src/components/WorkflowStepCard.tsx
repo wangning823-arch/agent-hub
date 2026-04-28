@@ -6,7 +6,7 @@ interface WorkflowStep {
   id: string
   name: string
   prompt: string
-  agentType: string
+  model?: string
   dependsOn: string[]
   status: StepStatus
   result: string | null
@@ -54,13 +54,16 @@ const formatDuration = (start: number, end: number): string => {
   return `${minutes}m ${remain}s`
 }
 
-const agentLabel = (type: string): string => {
-  switch (type) {
-    case 'claude-code': return 'Claude Code'
-    case 'opencode': return 'OpenCode'
-    case 'codex': return 'Codex'
-    default: return type
+const modelLabel = (model?: string): string => {
+  if (!model) return ''
+  // 提取模型名称，如 "claude-sonnet-4-20250514" -> "Sonnet 4"
+  const match = model.match(/^(\w+)-(\w+)-?(\d+)?/)
+  if (match) {
+    const provider = match[1] === 'claude' ? 'Claude' : match[1]
+    const name = match[2].charAt(0).toUpperCase() + match[2].slice(1)
+    return match[3] ? `${provider} ${name} ${match[3]}` : `${provider} ${name}`
   }
+  return model
 }
 
 export default function WorkflowStepCard({ step, isExpanded, onToggleExpand, onRetry }: WorkflowStepCardProps) {
@@ -78,10 +81,12 @@ export default function WorkflowStepCard({ step, isExpanded, onToggleExpand, onR
           <span className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
             {step.name}
           </span>
-          <span className="hidden md:inline px-1.5 py-0.5 rounded text-xs flex-shrink-0"
-                style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', fontSize: 10 }}>
-            {agentLabel(step.agentType)}
-          </span>
+          {step.model && (
+            <span className="hidden md:inline px-1.5 py-0.5 rounded text-xs flex-shrink-0"
+                  style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', fontSize: 10 }}>
+              {modelLabel(step.model)}
+            </span>
+          )}
           {duration && (
             <span className="flex-shrink-0 text-xs" style={{ color: 'var(--text-muted)' }}>
               {duration}

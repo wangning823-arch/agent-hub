@@ -7,7 +7,7 @@ interface WorkflowStep {
   id: string
   name: string
   prompt: string
-  agentType: string
+  model?: string
   dependsOn: string[]
   status: StepStatus
   result: string | null
