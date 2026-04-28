@@ -1285,8 +1285,8 @@ export default function ChatPanel({
         body: JSON.stringify({ sessionId })
       })
       const data = await res.json()
-      if (data.def) {
-        setEditingWorkflowDef(data.def)
+      if (data.id) {
+        setEditingWorkflowDef(data)
         setShowWorkflowEditor(true)
       }
       setShowWorkflowDropdown(false)
@@ -1330,14 +1330,21 @@ export default function ChatPanel({
     if (onSubtaskPanelClose) onSubtaskPanelClose()
   }
 
-  // 点击上下文百分比 - 通过 WebSocket 发送 /compact，与手动输入一致
+  // 点击上下文百分比 - 调用 API 压缩上下文
   const handleContextClick = () => {
     if (contextUsage.percentage < 50) return;
 
     if (confirm(`上下文已使用 ${contextUsage.percentage}%，是否压缩以释放空间？`)) {
-      if (wsRef.current && wsRef.current.readyState === 1) {
-        wsRef.current.send(JSON.stringify({ type: 'user_input', content: '/compact' }))
-      }
+      fetch(`${API_BASE}/sessions/${sessionId}/compact`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+          if (data.contextUsage) {
+            setContextUsage(data.contextUsage)
+            sessionStorage.setItem(`contextUsage_${sessionId}`, JSON.stringify(data.contextUsage))
+          }
+          toast.success('上下文已压缩')
+        })
+        .catch(err => toast.error('压缩失败: ' + err.message))
     }
   };
 

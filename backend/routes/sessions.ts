@@ -230,7 +230,40 @@ export default (sessionManager: any) => { // TODO: type this
         return res.status(404).json({ error: '会话不存在' });
       }
 
-      if (session.agent && session.agent.send) {
+      if (!session.agent) {
+        return res.status(400).json({ error: 'Agent不支持此操作' });
+      }
+
+      // OpenCode 不支持 /compact，通过重启会话并恢复记忆来清空上下文
+      if (session.agentType === 'opencode') {
+        const agent = session.agent as any;
+        // 重置 opencode 会话 ID
+        if (agent.opencodeSessionId) {
+          agent.opencodeSessionId = null;
+        }
+        // 恢复记忆：生成摘要并注入到 pendingHistory
+        if (session.messages.length >= 5) {
+          const { summarizeSession } = require('../summary-service');
+          const result = await summarizeSession(session.messages, 'opencode', session.workdir);
+          const summaryContent = `[之前对话的摘要]\n${result.summary}`;
+          // 保留最近10条，其余用摘要替代
+          const keepLast = Math.min(10, session.messages.length);
+          const recentMessages = session.messages.slice(-keepLast);
+          session.messages = [
+            { role: 'user', content: summaryContent, time: Date.now() },
+            { role: 'assistant', content: '已了解之前的对话内容，可以继续交流。', time: Date.now() },
+            ...recentMessages
+          ];
+          session.updatedAt = new Date();
+          sessionManager.saveSession(session);
+          // 注入摘要到 pendingHistory，下一条消息会带上
+          agent.pendingHistory = summaryContent;
+        }
+        res.json({ success: true, message: '上下文已重置并恢复记忆', contextUsage: null });
+        return;
+      }
+
+      if (session.agent.send) {
         await session.agent.send('/compact');
         // 压缩完成后，发送 /context 获取最新的上下文使用量
         let contextUsage: string | null = null;
