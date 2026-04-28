@@ -513,7 +513,6 @@ class SessionManager {
       this.broadcast(id, { type: 'error', content: err.toString() }),
     );
     agent.on('stopped', () => {
-      session.isActive = false;
       this.broadcast(id, { type: 'status', content: 'agent_stopped' });
       this.saveSession(session);
       this._generateSummaryIfNeeded(session);
@@ -668,7 +667,6 @@ class SessionManager {
       this.broadcast(session.id, { type: 'error', content: err.toString() }),
     );
     agent.on('stopped', () => {
-      session.isActive = false;
       this.broadcast(session.id, { type: 'status', content: 'agent_stopped' });
       this.saveSession(session);
       this._generateSummaryIfNeeded(session);
@@ -708,8 +706,11 @@ class SessionManager {
         'title_update',
         'context_usage',
         'subtask_status',
+        'workflow_status',
+        'workflow_step_status',
+        'workflow_step_message',
       ];
-      if (!metaTypes.includes(msg.type) && !msg.subtask_id) {
+      if (!metaTypes.includes(msg.type) && !msg.subtask_id && !(msg as any).workflow_id) {
         session.messages.push({ role: 'assistant', content: msg, time: Date.now() });
         this.saveSession(session);
       }

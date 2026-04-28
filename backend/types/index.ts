@@ -237,7 +237,8 @@ export interface WorkflowStepDef {
   id: string;
   name: string;
   prompt: string;
-  agentType: AgentType;
+  agentType?: AgentType;
+  model?: string;
   dependsOn: string[];
   timeout: number;
 }
@@ -259,6 +260,7 @@ export interface WorkflowStepRun {
   name: string;
   prompt: string;
   agentType: AgentType;
+  model?: string;
   dependsOn: string[];
   timeout: number;
   status: StepStatus;

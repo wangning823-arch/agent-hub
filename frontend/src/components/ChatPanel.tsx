@@ -187,7 +187,7 @@ export default function ChatPanel({
     startedAt: number | null; completedAt: number | null; createdAt: number;
   }
   interface WorkflowStepDef {
-    id: string; name: string; prompt: string; agentType: string;
+    id: string; name: string; prompt: string; model?: string;
     dependsOn: string[]; timeout: number;
   }
   const [workflows, setWorkflows] = useState<WorkflowInstance[]>([])
@@ -195,6 +195,7 @@ export default function ChatPanel({
   const [showWorkflowEditor, setShowWorkflowEditor] = useState(false)
   const [editingWorkflowDef, setEditingWorkflowDef] = useState<any>(null)
   const [workflowDefs, setWorkflowDefs] = useState<any[]>([])
+  const [workflowTemplates, setWorkflowTemplates] = useState<any[]>([])
   const [showWorkflowDropdown, setShowWorkflowDropdown] = useState(false)
 
   // 上下文使用情况（从 localStorage 恢复）
@@ -463,10 +464,14 @@ export default function ChatPanel({
       })
       .catch(() => {})
 
-    // 加载工作流定义和实例
+    // 加载工作流定义、模板和实例
     fetch(`${API_BASE}/sessions/${sessionId}/workflow-defs`)
       .then(r => r.json())
       .then(data => setWorkflowDefs(data.defs || []))
+      .catch(() => {})
+    fetch(`${API_BASE}/workflow-templates`)
+      .then(r => r.json())
+      .then(data => setWorkflowTemplates(Array.isArray(data) ? data : []))
       .catch(() => {})
     fetch(`${API_BASE}/sessions/${sessionId}/workflows`)
       .then(r => r.json())
@@ -1166,7 +1171,7 @@ export default function ChatPanel({
         body: JSON.stringify(def)
       })
       const data = await res.json()
-      if (data.def) setWorkflowDefs(prev => [...prev, data.def])
+      if (data.id) setWorkflowDefs(prev => [...prev, data])
       setShowWorkflowEditor(false)
       toast.success('工作流已保存')
     } catch (err: any) {
@@ -1183,17 +1188,17 @@ export default function ChatPanel({
         body: JSON.stringify(def)
       })
       const defData = await defRes.json()
-      if (defData.def) setWorkflowDefs(prev => [...prev, defData.def])
+      if (defData.id) setWorkflowDefs(prev => [...prev, defData])
       // 创建实例并启动
       const runRes = await fetch(`${API_BASE}/sessions/${sessionId}/workflows`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ defId: defData.def?.id, name: def.name, description: def.description, steps: def.steps })
+        body: JSON.stringify({ defId: defData.id, name: def.name, description: def.description, steps: def.steps })
       })
       const runData = await runRes.json()
-      if (runData.workflow) {
-        setWorkflows(prev => [...prev, runData.workflow])
-        setActiveWorkflow(runData.workflow)
+      if (runData.id) {
+        setWorkflows(prev => [...prev, runData])
+        setActiveWorkflow(runData)
         setActiveTab('workflow')
       }
       setShowWorkflowEditor(false)
@@ -1205,14 +1210,38 @@ export default function ChatPanel({
 
   const handleWorkflowSaveAsTemplate = async (def: { name: string; description: string; steps: WorkflowStepDef[] }) => {
     try {
-      await fetch(`${API_BASE}/workflow-templates`, {
+      const res = await fetch(`${API_BASE}/workflow-templates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(def)
       })
+      const data = await res.json()
+      if (data.id) {
+        setWorkflowTemplates(prev => [{ id: data.id, name: def.name, steps: def.steps, createdAt: Date.now(), usageCount: 0 }, ...prev])
+      }
       toast.success('已保存为模板')
     } catch (err: any) {
       toast.error('保存模板失败: ' + err.message)
+    }
+  }
+
+  const handleDeleteWorkflowDef = async (defId: string) => {
+    try {
+      await fetch(`${API_BASE}/sessions/${sessionId}/workflow-defs/${defId}`, { method: 'DELETE' })
+      setWorkflowDefs(prev => prev.filter(d => d.id !== defId))
+      toast.success('已删除工作流定义')
+    } catch (err: any) {
+      toast.error('删除失败: ' + err.message)
+    }
+  }
+
+  const handleDeleteWorkflowTemplate = async (templateId: string) => {
+    try {
+      await fetch(`${API_BASE}/workflow-templates/${templateId}`, { method: 'DELETE' })
+      setWorkflowTemplates(prev => prev.filter(t => t.id !== templateId))
+      toast.success('已删除模板')
+    } catch (err: any) {
+      toast.error('删除模板失败: ' + err.message)
     }
   }
 
@@ -1365,7 +1394,7 @@ export default function ChatPanel({
       />
 
       {/* Tab Bar - when subtasks or workflows exist */}
-      {(subtasks.length > 0 || workflows.length > 0) && (
+      {(subtasks.length > 0 || workflowDefs.length > 0 || workflows.length > 0) && (
         <div className="flex border-b" style={{ borderColor: 'var(--border-subtle)' }}>
           <button
             onClick={() => setActiveTab('main')}
@@ -1389,7 +1418,7 @@ export default function ChatPanel({
               )}
             </button>
           )}
-          {workflows.length > 0 && (
+          {(workflowDefs.length > 0 || workflows.length > 0) && (
             <button
               onClick={() => setActiveTab('workflow')}
               className={`tab-btn ${activeTab === 'workflow' ? 'active' : ''}`}
@@ -1575,6 +1604,7 @@ export default function ChatPanel({
           />
         ) : (
           <div className="space-y-3">
+            {/* 执行中的工作流 */}
             {workflows.map(w => (
               <div key={w.id} className="rounded-lg p-3 cursor-pointer hover:opacity-80"
                    style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}
@@ -1591,7 +1621,55 @@ export default function ChatPanel({
                 </div>
               </div>
             ))}
-            {workflows.length === 0 && (
+            {/* 已保存的工作流定义 */}
+            {workflowDefs.length > 0 && (
+              <div className="mt-4">
+                <div className="text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>已保存的工作流定义</div>
+                {workflowDefs.map((def: any) => {
+                  const lastRun = workflows.find(w => w.defId === def.id)
+                  return (
+                    <div key={def.id} className="rounded-lg p-3 mb-2" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}>
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{def.name}</span>
+                        <div className="flex gap-2">
+                          <button className="text-xs px-2 py-0.5 rounded"
+                                  style={{ background: 'var(--accent-primary)', color: 'white' }}
+                                  onClick={async () => {
+                                    const res = await fetch(`${API_BASE}/sessions/${sessionId}/workflows`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ defId: def.id, name: def.name, description: def.description, steps: def.steps })
+                                    })
+                                    const data = await res.json()
+                                    if (data.id) {
+                                      setWorkflows(prev => [...prev, data])
+                                      setActiveWorkflow(data)
+                                    }
+                                  }}>
+                            运行
+                          </button>
+                          <button className="text-xs px-2 py-0.5 rounded"
+                                  style={{ background: 'var(--bg-hover)', color: 'var(--text-primary)' }}
+                                  onClick={() => { setEditingWorkflowDef(def); setShowWorkflowEditor(true) }}>
+                            编辑
+                          </button>
+                          <button className="text-xs px-2 py-0.5 rounded"
+                                  style={{ background: 'var(--error-soft, #fef2f2)', color: 'var(--error, #ef4444)' }}
+                                  onClick={() => handleDeleteWorkflowDef(def.id)}>
+                            删除
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                        {def.steps.length} 个步骤
+                        {lastRun && <span className="ml-2">· 上次运行: {lastRun.status === 'done' ? '完成' : lastRun.status === 'running' ? '执行中' : lastRun.status}</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {workflows.length === 0 && workflowDefs.length === 0 && (
               <div className="text-center mt-20" style={{ color: 'var(--text-muted)' }}>
                 <p className="text-4xl mb-3">🔄</p>
                 <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>暂无工作流</p>
@@ -1612,7 +1690,7 @@ export default function ChatPanel({
                onClick={e => e.stopPropagation()}>
             <WorkflowEditor
               initialDef={editingWorkflowDef}
-              agentTypes={['claude-code', 'opencode', 'codex']}
+              models={models}
               onSave={handleWorkflowSave}
               onSaveAndRun={handleWorkflowSaveAndRun}
               onSaveAsTemplate={handleWorkflowSaveAsTemplate}
@@ -1809,7 +1887,15 @@ export default function ChatPanel({
               </label>
               <div className="relative" ref={workflowDropdownRef}>
                 <button
-                  onClick={() => setShowWorkflowDropdown(!showWorkflowDropdown)}
+                  onClick={() => {
+                    if (!showWorkflowDropdown) {
+                      fetch(`${API_BASE}/workflow-templates`)
+                        .then(r => r.json())
+                        .then(data => setWorkflowTemplates(Array.isArray(data) ? data : []))
+                        .catch(() => {})
+                    }
+                    setShowWorkflowDropdown(!showWorkflowDropdown)
+                  }}
                   className="flex items-center gap-1 text-xs cursor-pointer select-none px-1.5 py-0.5 rounded"
                   style={{ color: 'var(--text-secondary)' }}
                   title="工作流：创建多步骤编排任务"
@@ -1832,11 +1918,40 @@ export default function ChatPanel({
                       <>
                         <div className="border-t my-1" style={{ borderColor: 'var(--border-subtle)' }} />
                         {workflowDefs.map((def: any) => (
-                          <button key={def.id} className="w-full text-left px-3 py-1.5 text-xs hover:opacity-80"
-                                  style={{ color: 'var(--text-primary)' }}
-                                  onClick={() => { setEditingWorkflowDef(def); setShowWorkflowEditor(true); setShowWorkflowDropdown(false) }}>
-                            {def.name}
-                          </button>
+                          <div key={def.id} className="flex items-center justify-between px-3 py-1.5 text-xs hover:opacity-80"
+                                  style={{ color: 'var(--text-primary)' }}>
+                            <button className="flex-1 text-left hover:opacity-80"
+                                    onClick={() => { setEditingWorkflowDef(def); setShowWorkflowEditor(true); setShowWorkflowDropdown(false) }}>
+                              {def.name}
+                            </button>
+                            <button className="ml-2 px-1 hover:opacity-80"
+                                    style={{ color: 'var(--error, #ef4444)' }}
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteWorkflowDef(def.id); }}>
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                    {workflowTemplates.length > 0 && (
+                      <>
+                        <div className="border-t my-1" style={{ borderColor: 'var(--border-subtle)' }} />
+                        <div className="px-3 py-1 text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                          模板
+                        </div>
+                        {workflowTemplates.map((tpl: any) => (
+                          <div key={tpl.id} className="flex items-center justify-between px-3 py-1.5 text-xs hover:opacity-80"
+                                  style={{ color: 'var(--text-primary)' }}>
+                            <button className="flex-1 text-left hover:opacity-80"
+                                    onClick={() => { handleLoadWorkflowFromTemplate(tpl.id) }}>
+                              📋 {tpl.name}
+                            </button>
+                            <button className="ml-2 px-1 hover:opacity-80"
+                                    style={{ color: 'var(--error, #ef4444)' }}
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteWorkflowTemplate(tpl.id); }}>
+                              ✕
+                            </button>
+                          </div>
                         ))}
                       </>
                     )}

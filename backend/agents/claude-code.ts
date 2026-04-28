@@ -304,6 +304,9 @@ class ClaudeCodeAgent extends Agent {
         // 每次回答后自动获取上下文使用情况
         try { await this.sendContextCommand(); } catch (_) {}
 
+        // 通知会话 agent 已停止
+        this.emit('stopped', { code: 0 });
+
         resolve();
       });
 

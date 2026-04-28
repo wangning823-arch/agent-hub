@@ -303,6 +303,8 @@ class OpenCodeAgent extends Agent {
           this.emit('message', { type: 'error', content: `OpenCode 执行失败: ${err.message}` });
           reject(err);
         } else {
+          // 通知会话 agent 已停止
+          this.emit('stopped', { code: 0 });
           resolve();
         }
       });

@@ -19,7 +19,7 @@ interface RunningWorkflow {
 }
 
 interface SessionManagerLike {
-  getSession(sessionId: string): { workdir: string } | undefined;
+  getSession(sessionId: string): { workdir: string; agentType: AgentType } | undefined;
   broadcast(sessionId: string, message: Record<string, unknown>): void;
 }
 
@@ -220,7 +220,7 @@ class WorkflowEngine {
     this.broadcastWorkflow(sessionId, instance);
 
     const fullPrompt = this.buildContext(instance, step);
-    const agent = createAgent(session.workdir, step.agentType as AgentType, {});
+    const agent = createAgent(session.workdir, session.agentType as AgentType, { model: step.model });
     rw.agents.set(step.id, agent);
 
     const handler = (msg: { type: string; content: string | Record<string, unknown>; message?: { content: Array<{ type: string; text: string }> } }) => {

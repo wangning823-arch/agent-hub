@@ -195,6 +195,8 @@ class CodexAgent extends Agent {
         }
 
         this.activeProc = null;
+        // 通知会话 agent 已停止
+        this.emit('stopped', { code: 0 });
         resolve();
       });
 

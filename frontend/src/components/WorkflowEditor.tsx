@@ -4,7 +4,7 @@ interface StepDef {
   id: string
   name: string
   prompt: string
-  agentType: string
+  model?: string
   dependsOn: string[]
   timeout: number
 }
@@ -16,9 +16,14 @@ interface WorkflowDef {
   steps: StepDef[]
 }
 
+interface OptionItem {
+  id: string
+  name: string
+}
+
 interface WorkflowEditorProps {
   initialDef?: WorkflowDef
-  agentTypes: string[]
+  models: OptionItem[]
   onSave: (def: { name: string; description: string; steps: StepDef[] }) => void
   onSaveAndRun: (def: { name: string; description: string; steps: StepDef[] }) => void
   onSaveAsTemplate: (def: { name: string; description: string; steps: StepDef[] }) => void
@@ -43,28 +48,19 @@ const hasCycle = (steps: StepDef[], stepId: string, newDep: string): boolean => 
   return false
 }
 
-const agentLabel = (type: string): string => {
-  switch (type) {
-    case 'claude-code': return 'Claude Code'
-    case 'opencode': return 'OpenCode'
-    case 'codex': return 'Codex'
-    default: return type
-  }
-}
-
-export default function WorkflowEditor({ initialDef, agentTypes, onSave, onSaveAndRun, onSaveAsTemplate, onCancel }: WorkflowEditorProps) {
+export default function WorkflowEditor({ initialDef, models, onSave, onSaveAndRun, onSaveAsTemplate, onCancel }: WorkflowEditorProps) {
   const [name, setName] = useState(initialDef?.name || '')
   const [description, setDescription] = useState(initialDef?.description || '')
   const [steps, setSteps] = useState<StepDef[]>(
     initialDef?.steps?.map(s => ({ ...s })) || [
-      { id: generateStepId(0), name: '', prompt: '', agentType: agentTypes[0] || 'claude-code', dependsOn: [], timeout: 600 }
+      { id: generateStepId(0), name: '', prompt: '', model: '', dependsOn: [], timeout: 600 }
     ]
   )
 
   const addStep = () => {
     setSteps(prev => [
       ...prev,
-      { id: generateStepId(prev.length), name: '', prompt: '', agentType: agentTypes[0] || 'claude-code', dependsOn: [], timeout: 600 }
+      { id: generateStepId(prev.length), name: '', prompt: '', model: '', dependsOn: [], timeout: 600 }
     ])
   }
 
@@ -166,15 +162,16 @@ export default function WorkflowEditor({ initialDef, agentTypes, onSave, onSaveA
                   />
                 </div>
                 <div>
-                  <label className="block text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>Agent 类型</label>
+                  <label className="block text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>模型</label>
                   <select
-                    value={step.agentType}
-                    onChange={e => updateStep(step.id, 'agentType', e.target.value)}
+                    value={step.model || ''}
+                    onChange={e => updateStep(step.id, 'model', e.target.value)}
                     className="w-full px-2 py-1.5 rounded text-xs border focus:outline-none"
                     style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderColor: 'var(--border-primary)' }}
                   >
-                    {agentTypes.map(type => (
-                      <option key={type} value={type}>{agentLabel(type)}</option>
+                    <option value="">默认模型</option>
+                    {models.map(m => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
                     ))}
                   </select>
                 </div>

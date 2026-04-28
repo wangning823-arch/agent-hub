@@ -133,9 +133,10 @@ export default (sessionManager: SessionManagerLike, workflowEngine: WorkflowEngi
           id: s.id,
           name: s.name,
           prompt: s.prompt,
-          agentType: s.agentType,
+          agentType: s.agentType || 'claude-code',
+          model: s.model,
           dependsOn: s.dependsOn,
-          timeout: s.timeout || 600000,
+          timeout: (s.timeout || 600) * 1000,  // 前端传秒，转为毫秒
           status: 'pending',
           result: null,
           messages: [],
