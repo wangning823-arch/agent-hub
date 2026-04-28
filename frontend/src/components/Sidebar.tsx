@@ -931,7 +931,7 @@ export default function Sidebar({
             </p>
             <input
               type="password"
-              autoComplete="current-password"
+              autoComplete="one-time-code"
               value={projectPassword}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setProjectPassword(e.target.value)}
               className="w-full px-3 py-2 rounded mb-2"

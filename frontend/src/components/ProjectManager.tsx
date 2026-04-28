@@ -466,7 +466,7 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
                    <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>项目密码 (可选)</label>
                    <input
                      type="password"
-                     autoComplete="new-password"
+                     autoComplete="one-time-code"
                      value={newProject.password}
                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject(prev => ({ ...prev, password: e.target.value }))}
                      className="w-full px-3 py-2 rounded"
@@ -479,7 +479,7 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
                      <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>确认密码</label>
                      <input
                        type="password"
-                       autoComplete="new-password"
+                       autoComplete="one-time-code"
                        value={newProject.confirmPassword}
                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject(prev => ({ ...prev, confirmPassword: e.target.value }))}
                        className="w-full px-3 py-2 rounded"
@@ -538,7 +538,7 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
               </p>
               <input
                 type="password"
-                autoComplete="current-password"
+                autoComplete="one-time-code"
                 value={projectPassword}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setProjectPassword(e.target.value)}
                 className="w-full px-3 py-2 rounded mb-2"
@@ -588,7 +588,7 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
               </p>
               <input
                 type="password"
-                autoComplete="new-password"
+                autoComplete="one-time-code"
                 value={newPassword}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)}
                 className="w-full px-3 py-2 rounded mb-2"
@@ -602,7 +602,7 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
               {newPassword && (
                 <input
                   type="password"
-                  autoComplete="new-password"
+                  autoComplete="one-time-code"
                   value={confirmNewPassword}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfirmNewPassword(e.target.value)}
                   className="w-full px-3 py-2 rounded mb-2"

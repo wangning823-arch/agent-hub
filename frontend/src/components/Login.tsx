@@ -47,6 +47,7 @@ export default function Login({ onLogin }: LoginProps) {
         </p>
         <input
           type="password"
+          autoComplete="one-time-code"
           value={token}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setToken(e.target.value)}
           placeholder="Token"

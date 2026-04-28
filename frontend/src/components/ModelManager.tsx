@@ -441,7 +441,7 @@ function ProviderForm({ form, setForm, onSave, onCancel, isNew, hasApiKey }: Pro
       </div>
       <div>
         <label className="text-xs block mb-1" style={{ color: 'var(--text-secondary)' }}>API Key {!isNew && hasApiKey && <span style={{ color: 'var(--success, #22c55e)' }}>● 已设置</span>}</label>
-        <input value={form.apiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, apiKey: e.target.value }))} className="input-field text-xs" type="password" placeholder={isNew ? '输入 API Key' : hasApiKey ? '输入新值替换，留空保持原值' : '输入 API Key'} />
+        <input value={form.apiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, apiKey: e.target.value }))} className="input-field text-xs" type="password" autoComplete="one-time-code" placeholder={isNew ? '输入 API Key' : hasApiKey ? '输入新值替换，留空保持原值' : '输入 API Key'} />
       </div>
       <div className="flex gap-2 justify-end">
         <button onClick={onCancel} className="btn-secondary text-xs py-1 px-3">取消</button>
