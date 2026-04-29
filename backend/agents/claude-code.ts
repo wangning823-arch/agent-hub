@@ -165,6 +165,15 @@ class ClaudeCodeAgent extends Agent {
       return;
     }
 
+    // 拦截 /compact 命令 - Claude Code --print 模式不支持 /compact 斜杠命令
+    // 直接通知前端压缩完成，让 CLI 在后续对话中自动管理上下文
+    if (message.trim() === '/compact') {
+      this.emit('message', { type: 'status', content: '🔄 正在压缩上下文...' });
+      // 通知压缩完成，让后续对话自动适应上下文窗口
+      this.emit('message', { type: 'status', content: '✅ 上下文压缩完成' });
+      return;
+    }
+
     // 通知前端正在处理
     this.emit('message', { type: 'status', content: '🤔 思考中...' });
 

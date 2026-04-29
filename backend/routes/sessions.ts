@@ -264,7 +264,13 @@ export default (sessionManager: any) => { // TODO: type this
       }
 
       if (session.agent.send) {
+        // 检查 agent 是否正在执行任务，防止并发压缩
+        if ((session as any).isWorking) {
+          return res.status(409).json({ error: 'Agent正在执行任务，请等待完成后再压缩' });
+        }
+
         await session.agent.send('/compact');
+
         // 压缩完成后，发送 /context 获取最新的上下文使用量
         let contextUsage: string | null = null;
         try {
@@ -276,11 +282,11 @@ export default (sessionManager: any) => { // TODO: type this
               }
             };
             session.agent.on('message', handler);
-            // 超时 10 秒
+            // 超时 15 秒
             setTimeout(() => {
               session.agent.removeListener('message', handler);
               resolve(null);
-            }, 10000);
+            }, 15000);
           });
           await session.agent.send('/context');
           contextUsage = await contextPromise;
