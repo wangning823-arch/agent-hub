@@ -400,7 +400,14 @@ export default function Sidebar({
           if (!s) return false
           if (showArchived ? !s.isArchived : s.isArchived) return false
           const project = projects.find(p => p.id === selectedProjectId)
-          if (project && !s.workdir.startsWith(project.workdir)) return false
+          if (project) {
+            // 从会话 workdir 推断 home 目录，将 ~ 统一展开为绝对路径
+            const homeDir = s.workdir.split('/').slice(0, 3).join('/')
+            const normalize = (p: string) => p.startsWith('~/') ? homeDir + p.slice(1) : p
+            const sessionDir = normalize(s.workdir)
+            const projectDir = normalize(project.workdir)
+            if (!sessionDir.startsWith(projectDir) && !projectDir.startsWith(sessionDir)) return false
+          }
           if (selectedTags.length > 0) {
             const sessionTags = s.tags || []
             return selectedTags.some(tag => sessionTags.includes(tag))

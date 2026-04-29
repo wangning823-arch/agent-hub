@@ -118,6 +118,18 @@ class ProjectManager {
     }
   }
 
+  /**
+   * 将 ~ 开头的路径解析为绝对路径，确保存储格式一致
+   */
+  _resolveWorkdir(workdir: string): string {
+    if (workdir.startsWith('~/')) {
+      return path.join(process.env.HOME || '/root', workdir.slice(2));
+    } else if (!workdir.startsWith('/')) {
+      return path.resolve(process.env.HOME || '/root', workdir);
+    }
+    return workdir;
+  }
+
   _initProjectGitignore(workdir: string): void {
     const gitignorePath = path.join(workdir, '.gitignore');
     if (fs.existsSync(gitignorePath)) return;
@@ -318,6 +330,9 @@ class ProjectManager {
     const id = `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date().toISOString();
 
+    // 统一路径格式为绝对路径
+    workdir = this._resolveWorkdir(workdir);
+
     const project: ProjectObj = {
       id,
       name,
@@ -371,7 +386,7 @@ class ProjectManager {
 
     const allowedUpdates: Partial<ProjectObj> = {};
     if ('name' in updates) allowedUpdates.name = updates.name;
-    if ('workdir' in updates) allowedUpdates.workdir = updates.workdir;
+    if ('workdir' in updates) allowedUpdates.workdir = this._resolveWorkdir(updates.workdir!);
     if ('favorite' in updates) allowedUpdates.favorite = updates.favorite;
     if ('passwordHash' in updates) allowedUpdates.passwordHash = updates.passwordHash;
 
