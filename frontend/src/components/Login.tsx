@@ -41,7 +41,7 @@ export default function Login({ onLogin }: LoginProps) {
         border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-md)',
         width: 340, display: 'flex', flexDirection: 'column', gap: 16
       }}>
-        <h2 style={{ textAlign: 'center', margin: 0, color: 'var(--text-primary)' }}>🔐 Agent Hub</h2>
+        <h2 style={{ textAlign: 'center', margin: 0, color: 'var(--text-primary)' }}>🔐 AgentPilot</h2>
         <p style={{ textAlign: 'center', margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
           请输入访问 Token
         </p>

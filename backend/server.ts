@@ -149,7 +149,7 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ┌─────────────────────────────────────────┐
-│         Agent Hub Server                │
+│         AgentPilot Server               │
 │─────────────────────────────────────────│
 │  HTTP:      http://localhost:${PORT}       │
 │  WebSocket: ws://localhost:${PORT}         │

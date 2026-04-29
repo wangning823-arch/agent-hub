@@ -62,7 +62,7 @@ export default (sessionManager: any) => { // TODO: type this
         }))
       };
 
-      const filename = `agent-hub-backup_${new Date().toISOString().slice(0, 10)}.json`;
+      const filename = `agentpilot-backup_${new Date().toISOString().slice(0, 10)}.json`;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
       res.json(exportData);

@@ -123,7 +123,7 @@ class ProjectManager {
     if (fs.existsSync(gitignorePath)) return;
 
     const content = [
-      '# Agent Hub',
+      '# AgentPilot',
       '.agent-uploads/',
       '.claude/',
       '',

@@ -450,7 +450,7 @@ export default function Sidebar({
             style={{ background: 'var(--gradient-btn-primary)' }}>
             🤖
           </span>
-          Agent Hub
+          AgentPilot
         </h1>
       </div>
 
