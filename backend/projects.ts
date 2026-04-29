@@ -118,6 +118,42 @@ class ProjectManager {
     }
   }
 
+  _initProjectGitignore(workdir: string): void {
+    const gitignorePath = path.join(workdir, '.gitignore');
+    if (fs.existsSync(gitignorePath)) return;
+
+    const content = [
+      '# Agent Hub',
+      '.agent-uploads/',
+      '.claude/',
+      '',
+      '# IDE / Editor',
+      '.idea/',
+      '.vscode/',
+      '*.swp',
+      '*.swo',
+      '*~',
+      '',
+      '# OS',
+      '.DS_Store',
+      'Thumbs.db',
+      '',
+      '# Dependencies',
+      'node_modules/',
+      '',
+      '# Environment',
+      '.env',
+      '.env.local',
+      '',
+    ].join('\n');
+
+    try {
+      fs.writeFileSync(gitignorePath, content, 'utf8');
+    } catch (e) {
+      console.warn('创建 .gitignore 失败:', e);
+    }
+  }
+
   _getRemoteProtocol(workdir: string): 'ssh' | 'https' | null {
     try {
       const url = execSync('git config --local --get remote.origin.url', {
@@ -291,6 +327,9 @@ class ProjectManager {
       favorite: false,
       passwordHash: password ? hashPassword(password) : undefined
     };
+
+    // 为新项目目录初始化 .gitignore
+    this._initProjectGitignore(workdir);
 
     const host = this._getGitHostFromWorkdir(workdir);
     const protocol = this._getRemoteProtocol(workdir);

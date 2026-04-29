@@ -569,6 +569,9 @@ class SessionManager {
       }
     }
 
+    // 处理图片引用：将 /uploads/ 路径复制到项目 workdir 内
+    message = await this._processUploadRefs(message, session.workdir);
+
     session.messages.push({ role: 'user', content: message, time: Date.now() });
     this.saveSession(session);
 
@@ -616,6 +619,34 @@ class SessionManager {
     }
     this.saveSession(session);
     return session;
+  }
+
+  private async _processUploadRefs(message: string, workdir: string): Promise<string> {
+    // 匹配 [图片: name](/uploads/...) 和 ![](uploads/...) 格式
+    const uploadPattern = /\[([^\]]*)\]\(\/uploads\/([^)]+)\)/g;
+    const matches = [...message.matchAll(uploadPattern)];
+    if (matches.length === 0) return message;
+
+    const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
+    const localDir = path.join(workdir, '.agent-uploads');
+
+    if (!fs.existsSync(localDir)) {
+      fs.mkdirSync(localDir, { recursive: true });
+    }
+
+    let result = message;
+    for (const match of matches) {
+      const [fullMatch, label, fileRef] = match;
+      const srcPath = path.join(uploadsDir, fileRef);
+      if (fs.existsSync(srcPath)) {
+        const fileName = path.basename(fileRef);
+        const destPath = path.join(localDir, fileName);
+        fs.copyFileSync(srcPath, destPath);
+        // 替换为 workdir 内的绝对路径
+        result = result.replace(fullMatch, `[${label}](${destPath})`);
+      }
+    }
+    return result;
   }
 
   private async _resumeAgent(session: SessionInstance): Promise<void> {

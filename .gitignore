@@ -20,5 +20,6 @@ data/*.db
 data/backups/
 .token
 uploads/
+.agent-uploads/
 memory/
 MULTI-TENANT-PLAN.md
