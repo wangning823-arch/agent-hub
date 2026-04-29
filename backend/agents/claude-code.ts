@@ -106,6 +106,15 @@ class ClaudeCodeAgent extends Agent {
         env: { ...process.env }
       });
 
+      let resolved = false;
+      const done = () => { if (!resolved) { resolved = true; resolve(); } };
+
+      // 超时 30 秒自动终止，防止进程挂起阻塞主流程
+      const timeout = setTimeout(() => {
+        try { proc.kill('SIGTERM'); } catch {}
+        done();
+      }, 30000);
+
       let buffer = '';
       proc.stdout!.on('data', (data: Buffer) => {
         buffer += data.toString();
@@ -125,8 +134,8 @@ class ClaudeCodeAgent extends Agent {
           }
         }
       });
-      proc.on('close', () => resolve());
-      proc.on('error', () => resolve()); // 静默失败
+      proc.on('close', () => { clearTimeout(timeout); done(); });
+      proc.on('error', () => { clearTimeout(timeout); done(); });
     });
   }
 
@@ -310,13 +319,13 @@ class ClaudeCodeAgent extends Agent {
         // 清理活跃进程引用
         this.activeProc = null;
 
-        // 每次回答后自动获取上下文使用情况
-        try { await this.sendContextCommand(); } catch (_) {}
-
         // 通知会话 agent 已停止
         this.emit('stopped', { code: 0 });
 
         resolve();
+
+        // 每次回答后异步获取上下文使用情况（不阻塞主流程）
+        this.sendContextCommand().catch(() => {});
       });
 
       proc.on('error', (err: Error) => {
