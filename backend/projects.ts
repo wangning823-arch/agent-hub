@@ -242,7 +242,7 @@ class ProjectManager {
             const migrated: ProjectObj = {
               id: proj.id,
               name: proj.name,
-              workdir: proj.workdir,
+              workdir: this._resolveWorkdir(proj.workdir),
               createdAt: proj.createdAt || new Date().toISOString(),
               updatedAt: proj.updatedAt || new Date().toISOString(),
               favorite: !!proj.favorite,
@@ -271,7 +271,7 @@ class ProjectManager {
             const migrated: ProjectObj = {
               id: proj.id,
               name: proj.name,
-              workdir: proj.workdir,
+              workdir: this._resolveWorkdir(proj.workdir),
               createdAt: proj.createdAt || new Date().toISOString(),
               updatedAt: proj.updatedAt || new Date().toISOString(),
               favorite: !!proj.favorite,
