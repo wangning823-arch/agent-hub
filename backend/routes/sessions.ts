@@ -264,9 +264,10 @@ export default (sessionManager: any) => { // TODO: type this
       }
 
       if (session.agent.send) {
-        // 检查 agent 是否正在执行任务，防止并发压缩
+        // 检查 agent 是否正在执行任务
         if ((session as any).isWorking) {
-          return res.status(409).json({ error: 'Agent正在执行任务，请等待完成后再压缩' });
+          // 返回成功但附带警告，让前端显示提示而不是错误
+          return res.json({ success: true, message: 'agent正在执行任务，压缩将在任务完成后生效', contextUsage: null, pending: true });
         }
 
         await session.agent.send('/compact');

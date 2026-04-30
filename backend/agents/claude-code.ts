@@ -97,7 +97,18 @@ class ClaudeCodeAgent extends Agent {
         '--output-format', 'stream-json'
       ];
       if (this.options.model) args.push('--model', this.options.model);
-      if (this.options.sessionId) args.push('--resume', this.options.sessionId);
+      // 对话隔离：与 send() 方法保持一致，检查会话文件是否存在
+      if (this.conversationId) {
+        args.push('--resume', this.conversationId);
+      } else if (this.options.sessionId) {
+        if (this._conversationFileExists(this.options.sessionId)) {
+          args.push('--resume', this.options.sessionId);
+        } else {
+          args.push('--session-id', this.options.sessionId);
+        }
+      } else {
+        args.push('--continue');
+      }
       args.push('-p', '/context');
 
       const proc: ChildProcess = spawn(claudePath, args, {
@@ -174,12 +185,17 @@ class ClaudeCodeAgent extends Agent {
       return;
     }
 
-    // 拦截 /compact 命令 - Claude Code --print 模式不支持 /compact 斜杠命令
-    // 直接通知前端压缩完成，让 CLI 在后续对话中自动管理上下文
+    // 拦截 /compact 命令 - 通过 CLI 子进程实际执行上下文压缩
     if (message.trim() === '/compact') {
       this.emit('message', { type: 'status', content: '🔄 正在压缩上下文...' });
-      // 通知压缩完成，让后续对话自动适应上下文窗口
-      this.emit('message', { type: 'status', content: '✅ 上下文压缩完成' });
+      try {
+        await this._executeCompact();
+        this.emit('message', { type: 'status', content: '✅ 上下文压缩完成' });
+        // 压缩完成后自动获取最新的上下文使用量
+        await this.sendContextCommand();
+      } catch (err) {
+        this.emit('message', { type: 'status', content: '⚠️ 压缩失败，将在后续对话中自动管理上下文' });
+      }
       return;
     }
 
@@ -403,6 +419,53 @@ class ClaudeCodeAgent extends Agent {
    */
   async approve(approvalId: string, allow: boolean = true): Promise<void> {
     console.log(`[权限] ${allow ? '允许' : '拒绝'} ${approvalId}`);
+  }
+
+  /**
+   * 通过 CLI 子进程执行 /compact 命令，实际压缩上下文
+   */
+  private _executeCompact(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const claudePath = process.env.CLAUDE_CLI_PATH || 'claude';
+      const args: string[] = ['--print', '--dangerously-skip-permissions'];
+
+      // 使用 --resume 恢复现有对话并发送 /compact
+      if (this.conversationId) {
+        args.push('--resume', this.conversationId);
+      } else if (this.options.sessionId) {
+        args.push('--resume', this.options.sessionId);
+      } else {
+        args.push('--continue');
+      }
+
+      // 添加模式参数
+      if (this.options.mode) {
+        args.push('--permission-mode', this.options.mode);
+      }
+      if (this.options.model) {
+        args.push('--model', this.options.model);
+      }
+
+      args.push('-p', '/compact');
+
+      const proc = spawn(claudePath, args, {
+        cwd: this.workdir,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env }
+      });
+
+      let resolved = false;
+      const done = () => { if (!resolved) { resolved = true; resolve(); } };
+
+      // 超时 60 秒
+      const timeout = setTimeout(() => {
+        try { proc.kill('SIGTERM'); } catch {}
+        done();
+      }, 60000);
+
+      proc.on('close', () => { clearTimeout(timeout); done(); });
+      proc.on('error', (err) => { clearTimeout(timeout); reject(err); });
+    });
   }
 
   /**

@@ -199,7 +199,6 @@ export default function ChatPanel({
   const [showWorkflowDropdown, setShowWorkflowDropdown] = useState(false)
 
   // 上下文使用情况（从 localStorage 恢复）
-  const [compacting, setCompacting] = useState(false)
   const [contextUsage, setContextUsage] = useState<ContextUsage>(() => {
     try {
       const cached = sessionStorage.getItem(`contextUsage_${sessionId}`)
@@ -1331,23 +1330,18 @@ export default function ChatPanel({
     if (onSubtaskPanelClose) onSubtaskPanelClose()
   }
 
-  // 点击上下文百分比 - 调用 API 压缩上下文
+  // 点击上下文百分比 - 通过 WebSocket 发送 /compact 命令
   const handleContextClick = () => {
-    if (contextUsage.percentage < 50 || compacting) return;
+    if (contextUsage.percentage < 50 || isWorking) return;
 
     if (confirm(`上下文已使用 ${contextUsage.percentage}%，是否压缩以释放空间？`)) {
-      setCompacting(true)
-      fetch(`${API_BASE}/sessions/${sessionId}/compact`, { method: 'POST' })
-        .then(r => r.json())
-        .then(data => {
-          if (data.contextUsage) {
-            setContextUsage(data.contextUsage)
-            sessionStorage.setItem(`contextUsage_${sessionId}`, JSON.stringify(data.contextUsage))
-          }
-          toast.success('上下文已压缩')
-        })
-        .catch(err => toast.error('压缩失败: ' + err.message))
-        .finally(() => setCompacting(false))
+      if (wsRef.current && wsRef.current.readyState === 1) {
+        setMessages(prev => [...prev, { type: 'user', content: '/compact' }])
+        wsRef.current.send(JSON.stringify({
+          type: 'user_input',
+          content: '/compact'
+        }))
+      }
     }
   };
 
@@ -1759,15 +1753,15 @@ export default function ChatPanel({
                 <div
                   className="absolute top-1 right-3 text-xs px-1.5 py-0.5 rounded transition-colors"
                   style={{
-                    background: compacting ? 'var(--bg-secondary)' : contextUsage.percentage > 80 ? 'var(--error-soft)' : contextUsage.percentage > 50 ? 'var(--warning-soft)' : 'var(--success-soft)',
-                    color: compacting ? 'var(--text-secondary)' : contextUsage.percentage > 80 ? 'var(--error)' : contextUsage.percentage > 50 ? 'var(--warning)' : 'var(--success)',
-                    cursor: compacting || contextUsage.percentage < 50 ? 'default' : 'pointer'
+                    background: isWorking ? 'var(--bg-secondary)' : contextUsage.percentage > 80 ? 'var(--error-soft)' : contextUsage.percentage > 50 ? 'var(--warning-soft)' : 'var(--success-soft)',
+                    color: isWorking ? 'var(--text-secondary)' : contextUsage.percentage > 80 ? 'var(--error)' : contextUsage.percentage > 50 ? 'var(--warning)' : 'var(--success)',
+                    cursor: isWorking || contextUsage.percentage < 50 ? 'default' : 'pointer'
                   }}
-                  title={compacting ? '正在压缩...' : `上下文使用: ${contextUsage.inputTokens.toLocaleString()} / ${contextUsage.contextWindow.toLocaleString()}`}
+                  title={isWorking ? '任务进行中...' : `上下文使用: ${contextUsage.inputTokens.toLocaleString()} / ${contextUsage.contextWindow.toLocaleString()}`}
                   onClick={() => handleContextClick()}
                 >
-                  {compacting ? '压缩中...' : `${contextUsage.percentage}%`}
-                  {!compacting && contextUsage.percentage > 50 && ' ⚠️'}
+                  {isWorking ? '处理中...' : `${contextUsage.percentage}%`}
+                  {!isWorking && contextUsage.percentage > 50 && ' ⚠️'}
                 </div>
               )}
               <input
