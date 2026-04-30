@@ -10,6 +10,7 @@ import type { AgentOptions } from '../types';
 interface OpenCodeOptions extends AgentOptions {
   model?: string;
   agent?: string;
+  mode?: string;
   variant?: string;
   sessionId?: string;
   conversationId?: string;
@@ -230,9 +231,10 @@ class OpenCodeAgent extends Agent {
         args.push('--model', this.options.model);
       }
 
-      // 指定agent类型（build/plan）
-      if (this.options.agent) {
-        args.push('--agent', this.options.agent);
+      // 指定agent类型（build/plan）：优先用 agent，否则从 mode 映射
+      const agentType = this.options.agent || this.options.mode;
+      if (agentType) {
+        args.push('--agent', agentType);
       }
 
       // 推理强度

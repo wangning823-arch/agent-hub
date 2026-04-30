@@ -14,6 +14,7 @@ class Agent extends EventEmitter {
   process: ChildProcess | null;
   isRunning: boolean;
   activeProc: ChildProcess | null;
+  options: Record<string, unknown>;
 
   constructor(name: string, workdir: string) {
     super();
@@ -22,6 +23,7 @@ class Agent extends EventEmitter {
     this.process = null;
     this.isRunning = false;
     this.activeProc = null;
+    this.options = {};
   }
 
   /**
@@ -61,6 +63,13 @@ class Agent extends EventEmitter {
       this.activeProc = null;
     }
     this.emit('interrupted');
+  }
+
+  /**
+   * 运行时更新选项（如切换模式）
+   */
+  updateOptions(newOptions: Record<string, unknown>): void {
+    Object.assign(this.options || {}, newOptions);
   }
 
   /**

@@ -93,10 +93,18 @@ class ClaudeCodeAgent extends Agent {
       const args: string[] = [
         '--print',
         '--verbose',
-        '--dangerously-skip-permissions',
         '--output-format', 'stream-json'
       ];
       if (this.options.model) args.push('--model', this.options.model);
+      // 权限模式：plan 模式下不使用 --dangerously-skip-permissions
+      if (this.options.mode === 'plan') {
+        args.push('--permission-mode', 'plan');
+      } else {
+        args.push('--dangerously-skip-permissions');
+        if (this.options.mode && this.options.mode !== 'default') {
+          args.push('--permission-mode', this.options.mode);
+        }
+      }
       // 对话隔离：与 send() 方法保持一致，检查会话文件是否存在
       if (this.conversationId) {
         args.push('--resume', this.conversationId);
@@ -210,7 +218,6 @@ class ClaudeCodeAgent extends Agent {
       const args: string[] = [
         '--print',
         '--verbose',
-        '--dangerously-skip-permissions',
         '--output-format', 'stream-json'
       ];
 
@@ -219,9 +226,14 @@ class ClaudeCodeAgent extends Agent {
         args.push('--model', this.options.model);
       }
 
-      // 添加模式参数
-      if (this.options.mode) {
-        args.push('--permission-mode', this.options.mode);
+      // 权限模式：plan 模式下不使用 --dangerously-skip-permissions，否则会覆盖 plan
+      if (this.options.mode === 'plan') {
+        args.push('--permission-mode', 'plan');
+      } else {
+        args.push('--dangerously-skip-permissions');
+        if (this.options.mode && this.options.mode !== 'default') {
+          args.push('--permission-mode', this.options.mode);
+        }
       }
 
       // 添加努力程度参数
@@ -427,7 +439,7 @@ class ClaudeCodeAgent extends Agent {
   private _executeCompact(): Promise<void> {
     return new Promise((resolve, reject) => {
       const claudePath = process.env.CLAUDE_CLI_PATH || 'claude';
-      const args: string[] = ['--print', '--dangerously-skip-permissions'];
+      const args: string[] = ['--print'];
 
       // 使用 --resume 恢复现有对话并发送 /compact
       if (this.conversationId) {
@@ -438,9 +450,14 @@ class ClaudeCodeAgent extends Agent {
         args.push('--continue');
       }
 
-      // 添加模式参数
-      if (this.options.mode) {
-        args.push('--permission-mode', this.options.mode);
+      // 权限模式
+      if (this.options.mode === 'plan') {
+        args.push('--permission-mode', 'plan');
+      } else {
+        args.push('--dangerously-skip-permissions');
+        if (this.options.mode && this.options.mode !== 'default') {
+          args.push('--permission-mode', this.options.mode);
+        }
       }
       if (this.options.model) {
         args.push('--model', this.options.model);
