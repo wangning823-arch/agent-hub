@@ -6,7 +6,7 @@ export default (sessionManager: any) => { // TODO: type this
 
   router.post('/', async (req: Request, res: Response) => {
     try {
-      const { workdir, agentType = 'claude-code', ...options } = req.body;
+      const { workdir, agentType = 'claude-code', mode = 'auto', model = null, effort = 'medium', ...options } = req.body;
 
       if (!workdir) {
         return res.status(400).json({ error: 'workdir是必需的' });
@@ -17,7 +17,7 @@ export default (sessionManager: any) => { // TODO: type this
         return res.status(400).json({ error: `不支持的Agent类型: ${agentType}` });
       }
 
-      const session = await sessionManager.createSession(workdir, agentType, options);
+      const session = await sessionManager.createSession(workdir, agentType, { mode, model, effort, ...options });
       res.json(session.toJSON());
     } catch (error: any) {
       console.error('创建会话失败:', error);
@@ -119,6 +119,23 @@ export default (sessionManager: any) => { // TODO: type this
       sessionManager.saveData();
 
       res.json({ success: true, conversationId });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 更新session选项（mode/model/effort等）
+  router.put('/:id/options', (req: Request, res: Response) => {
+    try {
+      const { mode, model, effort, ...rest } = req.body;
+      const updates: Record<string, unknown> = {};
+      if (mode !== undefined) updates.mode = mode;
+      if (model !== undefined) updates.model = model;
+      if (effort !== undefined) updates.effort = effort;
+      Object.assign(updates, rest);
+
+      sessionManager.updateSessionOptions(req.params.id, updates);
+      res.json({ success: true, options: updates });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

@@ -538,6 +538,16 @@ class SessionManager {
     return this.sessions.get(sessionId);
   }
 
+  updateSessionOptions(sessionId: string, newOptions: Record<string, unknown>): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error('会话不存在');
+    session.options = { ...session.options, ...newOptions };
+    if (session.agent) {
+      session.agent.updateOptions(newOptions);
+    }
+    this.saveSession(session);
+  }
+
   listSessions(): SessionJSON[] {
     return Array.from(this.sessions.values()).map((s) => s.toJSON());
   }

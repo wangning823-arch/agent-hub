@@ -119,11 +119,17 @@ class ClaudeCodeAgent extends Agent {
       }
       args.push('-p', '/context');
 
+      console.log(`[Context] 执行: ${claudePath} ${args.join(' ')}`);
+      console.log(`[Context] conversationId=${this.conversationId}, sessionId=${this.options.sessionId}`);
+
       const proc: ChildProcess = spawn(claudePath, args, {
         cwd: this.workdir,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env }
       });
+
+      let stderr = '';
+      proc.stderr!.on('data', (data: Buffer) => { stderr += data.toString(); });
 
       let resolved = false;
       const done = () => { if (!resolved) { resolved = true; resolve(); } };
@@ -144,17 +150,30 @@ class ClaudeCodeAgent extends Agent {
             try {
               const msg: StreamMessage = JSON.parse(line);
               if (msg.type === 'result' && msg.result) {
+                console.log('[Context] result:', msg.result.substring(0, 200));
                 const info: ContextInfo | null = this._parseContextInfo(msg.result);
                 if (info) {
+                  console.log('[Context] parsed:', JSON.stringify(info));
                   this.emit('message', { type: 'context_usage', content: info } as any);
+                } else {
+                  console.log('[Context] 解析失败');
                 }
               }
             } catch (_) {}
           }
         }
       });
-      proc.on('close', () => { clearTimeout(timeout); done(); });
-      proc.on('error', () => { clearTimeout(timeout); done(); });
+      proc.on('close', (code) => {
+        clearTimeout(timeout);
+        console.log(`[Context] 进程退出, code=${code}`);
+        if (stderr) console.log(`[Context] stderr: ${stderr.slice(0, 500)}`);
+        done();
+      });
+      proc.on('error', (err) => {
+        clearTimeout(timeout);
+        console.error(`[Context] 进程错误:`, err.message);
+        done();
+      });
     });
   }
 
@@ -195,6 +214,7 @@ class ClaudeCodeAgent extends Agent {
 
     // 拦截 /compact 命令 - 通过 CLI 子进程实际执行上下文压缩
     if (message.trim() === '/compact') {
+      console.log(`[Compact] conversationId=${this.conversationId}, sessionId=${this.options.sessionId}`);
       this.emit('message', { type: 'status', content: '🔄 正在压缩上下文...' });
       try {
         await this._executeCompact();
@@ -202,6 +222,7 @@ class ClaudeCodeAgent extends Agent {
         // 压缩完成后自动获取最新的上下文使用量
         await this.sendContextCommand();
       } catch (err) {
+        console.error('[Compact] 失败:', (err as Error).message);
         this.emit('message', { type: 'status', content: '⚠️ 压缩失败，将在后续对话中自动管理上下文' });
       }
       return;
@@ -469,11 +490,18 @@ class ClaudeCodeAgent extends Agent {
 
       args.push('-p', '/compact');
 
+      console.log(`[Compact] 执行: ${claudePath} ${args.join(' ')}`);
+
       const proc = spawn(claudePath, args, {
         cwd: this.workdir,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env }
       });
+
+      let stdout = '';
+      let stderr = '';
+      proc.stdout!.on('data', (data: Buffer) => { stdout += data.toString(); });
+      proc.stderr!.on('data', (data: Buffer) => { stderr += data.toString(); });
 
       let resolved = false;
       const done = () => { if (!resolved) { resolved = true; resolve(); } };
@@ -481,10 +509,19 @@ class ClaudeCodeAgent extends Agent {
       // 超时 60 秒
       const timeout = setTimeout(() => {
         try { proc.kill('SIGTERM'); } catch {}
-        done();
+        reject(new Error('Compact 超时'));
       }, 60000);
 
-      proc.on('close', () => { clearTimeout(timeout); done(); });
+      proc.on('close', (code) => {
+        clearTimeout(timeout);
+        console.log(`[Compact] 进程退出, code=${code}`);
+        if (stderr) console.log(`[Compact] stderr: ${stderr.slice(0, 500)}`);
+        if (code !== 0) {
+          reject(new Error(`Compact 失败 (exit code: ${code}): ${stderr.slice(0, 200)}`));
+        } else {
+          done();
+        }
+      });
       proc.on('error', (err) => { clearTimeout(timeout); reject(err); });
     });
   }

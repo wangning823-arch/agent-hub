@@ -126,6 +126,7 @@ export interface AgentBase extends EventEmitter {
   send(message: string): Promise<void>;
   stop(): Promise<void>;
   interrupt(): Promise<void>;
+  updateOptions(newOptions: Record<string, unknown>): void;
   parseOutput(data: Buffer): AgentMessage;
 }
 

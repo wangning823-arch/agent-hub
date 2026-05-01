@@ -426,6 +426,12 @@ export default function App() {
 
   const handleUpdateOptions = (sessionId: string, options: Record<string, any>): void => {
     setSessionOptions(prev => ({ ...prev, [sessionId]: options }))
+    // 同步更新后端agent的options（mode/model/effort）
+    fetch(`${API_BASE}/sessions/${sessionId}/options`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options)
+    }).catch(err => console.error('更新session选项失败:', err))
   }
 
   const handleProjectChange = (project: { id?: string; workdir?: string } | null): void => {
