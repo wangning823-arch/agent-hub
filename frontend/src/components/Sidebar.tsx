@@ -104,6 +104,7 @@ interface SidebarProps {
   onUpdateTags: (id: string, tags: string[]) => void
   onSetLoading: (id: string | null) => void
   onRestoringMemoryChange?: (id: string, restoring: boolean) => void
+  onProjectChange?: (project: Project | null) => void
 }
 
 interface Project {
@@ -131,7 +132,8 @@ export default function Sidebar({
   onArchiveSession,
   onUpdateTags,
   onSetLoading,
-  onRestoringMemoryChange
+  onRestoringMemoryChange,
+  onProjectChange
 }: SidebarProps) {
   const toast = useToast()
   const [expandedSection, setExpandedSection] = useState<string>('sessions')
@@ -246,15 +248,19 @@ export default function Sidebar({
   const loadProjects = async () => {
     try {
       const data = await fetch(`${API_BASE}/projects`).then(r => r.json())
-      setProjects(data || [])
+      if (Array.isArray(data)) {
+        setProjects(data)
+      }
     } catch (error) { console.error('加载项目失败:', error) }
   }
 
   const handleProjectSelect = async (projectId: string) => {
     if (!projectId) {
       setSelectedProjectId('')
+      if (onProjectChange) onProjectChange(null)
       return
     }
+    if (!Array.isArray(projects)) return
     const project = projects.find(p => p.id === projectId)
     if (!project) return
 
@@ -265,6 +271,7 @@ export default function Sidebar({
     }
 
     setSelectedProjectId(projectId)
+    if (onProjectChange) onProjectChange(project)
   }
 
   const verifyProjectPassword = async () => {
@@ -390,7 +397,7 @@ export default function Sidebar({
         .filter((s): s is Session => {
           if (!s) return false
           if (showArchived ? !s.isArchived : s.isArchived) return false
-          const project = projects.find(p => p.id === selectedProjectId)
+          const project = Array.isArray(projects) ? projects.find(p => p.id === selectedProjectId) : undefined
           if (project && !s.workdir.startsWith(project.workdir)) return false
           if (selectedTags.length > 0) {
             const sessionTags = s.tags || []
@@ -629,15 +636,17 @@ export default function Sidebar({
                 ))
               )}
 
-              <button
-                onClick={() => {
-                  const project = selectedProjectId ? projects.find(p => p.id === selectedProjectId) : undefined
-                  onNewSession(project)
-                }}
-                className="btn-secondary w-full text-sm py-2.5 flex items-center justify-center gap-2"
-              >
-                <IconPlus /> 新建会话
-              </button>
+              {selectedProjectId && (
+                <button
+                  onClick={() => {
+                    const project = projects.find(p => p.id === selectedProjectId)
+                    onNewSession(project)
+                  }}
+                  className="btn-secondary w-full text-sm py-2.5 flex items-center justify-center gap-2"
+                >
+                  <IconPlus /> 新建会话
+                </button>
+              )}
             </div>
           )}
         </div>

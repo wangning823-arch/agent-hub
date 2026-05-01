@@ -112,6 +112,7 @@ export default function App() {
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
+  const [activeProjectWorkdir, setActiveProjectWorkdir] = useState<string | null>(null)
 
   // 全局 fetch 拦截，自动加 token 和项目 ID
   useEffect(() => {
@@ -427,6 +428,21 @@ export default function App() {
     setSessionOptions(prev => ({ ...prev, [sessionId]: options }))
   }
 
+  const handleProjectChange = (project: { id?: string; workdir?: string } | null): void => {
+    if (project) {
+      // 先设置 projectId，再设置 workdir，确保 fetch 拦截器使用正确的 projectId
+      setActiveProjectId(project.id || null)
+      setTimeout(() => {
+        setActiveProjectWorkdir(project.workdir || null)
+        setActiveSession(null)
+      }, 0)
+    } else {
+      setActiveProjectId(null)
+      setActiveProjectWorkdir(null)
+      setActiveSession(null)
+    }
+  }
+
   const handleViewFile = async (filePath: string): Promise<void> => {
     try {
       const data = await fetch(`${API_BASE}/files/content?path=${encodeURIComponent(filePath)}`).then(r => r.json())
@@ -524,6 +540,7 @@ export default function App() {
             setSessions(prev => prev.map(s => s.id === id ? { ...s, tags } : s))
           }}
           onRestoringMemoryChange={setSessionRestoringMemory}
+          onProjectChange={handleProjectChange}
         />
       </div>
 
@@ -628,17 +645,19 @@ export default function App() {
                   <button onClick={() => setShowProjectManager(true)} className="btn-primary py-3.5 text-base font-semibold">
                     &#x1F4C1; 打开项目
                   </button>
-                  <button onClick={() => setShowNewModal(true)} className="py-3.5 text-base font-semibold rounded-xl transition-all"
-                    style={{
-                      background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary, #8b5cf6))',
-                      color: '#fff',
-                      boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
-                    }}
-                    onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.boxShadow = '0 6px 20px rgba(99,102,241,0.6)')}
-                    onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.boxShadow = '0 4px 14px rgba(99,102,241,0.4)')}
-                  >
-                    &#x26A1; 新建会话
-                  </button>
+                  {activeProjectId && (
+                    <button onClick={() => setShowNewModal(true)} className="py-3.5 text-base font-semibold rounded-xl transition-all"
+                      style={{
+                        background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary, #8b5cf6))',
+                        color: '#fff',
+                        boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
+                      }}
+                      onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.boxShadow = '0 6px 20px rgba(99,102,241,0.6)')}
+                      onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.boxShadow = '0 4px 14px rgba(99,102,241,0.4)')}
+                    >
+                      &#x26A1; 新建会话
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -650,7 +669,7 @@ export default function App() {
       <div className={isMobile ? 'mobile-panel' : 'relative'}>
         <RightSidebar
           sessionId={activeSession!}
-          workdir={currentSession?.workdir}
+          workdir={activeProjectWorkdir || currentSession?.workdir}
           onViewFile={handleViewFile}
         />
       </div>

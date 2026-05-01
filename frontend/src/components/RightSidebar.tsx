@@ -53,14 +53,6 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
   const [gitOutput, setGitOutput] = useState('')
   const [gitError, setGitError] = useState('')
 
-  useEffect(() => {
-    if (workdir) {
-      setCurrentPath(workdir)
-      loadFiles(workdir)
-      loadGitStatus()
-    }
-  }, [workdir, sessionId])
-
   const loadFiles = async (dirPath: string) => {
     setLoading(true)
     try {
@@ -80,6 +72,23 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
       setGitStatus({ branch: 'main', modified: [], staged: [], untracked: [] })
     }
   }
+
+  useEffect(() => {
+    if (workdir) {
+      setCurrentPath(workdir)
+      setFiles([])
+      setGitStatus(null)
+      setGitOutput('')
+      setGitError('')
+      setCommitMessage('')
+      // 延迟加载，确保 activeProjectId 已经更新（全局 fetch 拦截器需要它）
+      const timer = setTimeout(() => {
+        loadFiles(workdir)
+        loadGitStatus()
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [workdir])
 
   const enterDirectory = (dirPath: string) => {
     if (workdir && !dirPath.startsWith(workdir)) return
