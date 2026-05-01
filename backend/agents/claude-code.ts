@@ -445,7 +445,11 @@ class ClaudeCodeAgent extends Agent {
       if (this.conversationId) {
         args.push('--resume', this.conversationId);
       } else if (this.options.sessionId) {
-        args.push('--resume', this.options.sessionId);
+        if (this._conversationFileExists(this.options.sessionId)) {
+          args.push('--resume', this.options.sessionId);
+        } else {
+          args.push('--session-id', this.options.sessionId);
+        }
       } else {
         args.push('--continue');
       }
