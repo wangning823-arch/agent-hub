@@ -11,6 +11,8 @@ import { useToast } from './components/Toast'
 import { useTheme } from './components/ThemeContext'
 import Login from './components/Login'
 import UserManager from './components/UserManager'
+import ModelManager from './components/ModelManager'
+import AccessControlManager from './components/AccessControlManager'
 import {
   AgentPilotLogo,
   IconMenu,
@@ -548,27 +550,9 @@ export default function App() {
   const currentToken: string = localStorage.getItem('access_token') || accessToken
   if (!currentToken) return <Login onLogin={handleLogin} />
 
-  // 管理员：只显示管理界面
+  // 管理员：显示管理界面
   if (user?.role === 'admin') {
-    return (
-      <div className="overflow-hidden flex flex-col h-screen" style={{ background: 'var(--bg-primary)' }}>
-        <header className="flex items-center justify-between px-5 py-3 border-b" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-subtle)' }}>
-          <div className="flex items-center gap-3">
-            <span className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>AgentPilot 管理面板</span>
-            <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ background: 'var(--accent-primary-soft)', color: 'var(--accent-primary)' }}>Admin</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm" style={{ color: 'var(--text-muted)' }}>{user.username}</span>
-            <button onClick={handleLogout} className="text-sm px-3 py-1.5 rounded transition-colors" style={{ color: 'var(--error)', border: '1px solid var(--border-subtle)' }}>
-              退出登录
-            </button>
-          </div>
-        </header>
-        <div className="flex-1 overflow-auto">
-          <UserManager onClose={() => {}} fullPage />
-        </div>
-      </div>
-    )
+    return <AdminPanel user={user} onLogout={handleLogout} />
   }
 
   return (
@@ -773,6 +757,66 @@ export default function App() {
         />
       )}
       {showUserManager && <UserManager onClose={() => setShowUserManager(false)} />}
+    </div>
+  )
+}
+
+// ===================== 管理员面板 =====================
+
+function AdminPanel({ user, onLogout }: { user: { username: string; role: string }; onLogout: () => void }) {
+  const [activeTab, setActiveTab] = useState('users')
+
+  const tabs = [
+    { key: 'users', icon: '👥', label: '用户管理' },
+    { key: 'models', icon: '🤖', label: '模型管理' },
+    { key: 'access', icon: '🔐', label: '权限分配' },
+  ]
+
+  return (
+    <div className="overflow-hidden flex flex-col h-screen" style={{ background: 'var(--bg-primary)' }}>
+      <header className="flex items-center justify-between px-5 py-3 border-b" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-subtle)' }}>
+        <div className="flex items-center gap-3">
+          <span className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>AgentPilot 管理面板</span>
+          <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ background: 'var(--accent-primary-soft)', color: 'var(--accent-primary)' }}>Admin</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm" style={{ color: 'var(--text-muted)' }}>{user.username}</span>
+          <button onClick={onLogout} className="text-sm px-3 py-1.5 rounded transition-colors" style={{ color: 'var(--error)', border: '1px solid var(--border-subtle)' }}>
+            退出登录
+          </button>
+        </div>
+      </header>
+      {/* 标签页 */}
+      <div className="flex border-b px-5" style={{ borderColor: 'var(--border-subtle)' }}>
+        {tabs.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className="tab-btn"
+            style={{
+              padding: '10px 20px',
+              borderBottom: activeTab === tab.key ? '2px solid var(--accent-primary)' : '2px solid transparent',
+              color: activeTab === tab.key ? 'var(--accent-primary)' : 'var(--text-muted)',
+              fontWeight: activeTab === tab.key ? 600 : 400,
+              background: 'transparent',
+              border: 'none',
+              borderBottomWidth: '2px',
+              borderBottomStyle: 'solid',
+              borderBottomColor: activeTab === tab.key ? 'var(--accent-primary)' : 'transparent',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            {tab.icon} {tab.label}
+          </button>
+        ))}
+      </div>
+      {/* 内容 */}
+      <div className="flex-1 overflow-auto p-5">
+        {activeTab === 'users' && <UserManager onClose={() => {}} fullPage />}
+        {activeTab === 'models' && <ModelManager />}
+        {activeTab === 'access' && <AccessControlManager />}
+      </div>
     </div>
   )
 }

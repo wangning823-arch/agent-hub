@@ -125,6 +125,7 @@ interface Project {
   id: string
   name: string
   workdir: string
+  favorite?: boolean
   hasPassword?: boolean
 }
 

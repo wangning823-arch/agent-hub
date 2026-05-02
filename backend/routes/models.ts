@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getDb, saveToFile } from '../db';
+import { requireAdmin } from '../middleware/userAuth';
 import path from 'path';
 import fs from 'fs';
 
@@ -52,11 +53,14 @@ function getConfigPaths(tool: string, homeOverride?: string): string[] {
 export default () => {
   const router = Router();
 
-  // ── Provider CRUD ──
+  // 所有 /api/models/* 路由需要管理员权限
+  router.use(requireAdmin);
+
+  // ── Provider CRUD（仅系统 Provider，owner_id IS NULL）──
 
   router.get('/providers', (_req: Request, res: Response) => {
     const db = getDb();
-    const result = db.exec('SELECT id, name, npm_package, base_url, base_url_anthropic, api_key, created_at, updated_at FROM providers ORDER BY created_at');
+    const result = db.exec('SELECT id, name, npm_package, base_url, base_url_anthropic, api_key, created_at, updated_at FROM providers WHERE owner_id IS NULL ORDER BY created_at');
     const providers: any[] = result.length > 0 ? result[0].values.map((row: any[]) => ({ // TODO: type this
       id: row[0], name: row[1], npmPackage: row[2], baseUrl: row[3],
       baseUrlAnthropic: row[4], hasApiKey: !!row[5], createdAt: row[6], updatedAt: row[7]
@@ -80,7 +84,7 @@ export default () => {
     const db = getDb();
     const now = new Date().toISOString();
     try {
-      const stmt = db.prepare('INSERT INTO providers (id, name, npm_package, base_url, base_url_anthropic, api_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+      const stmt = db.prepare('INSERT INTO providers (id, name, npm_package, base_url, base_url_anthropic, api_key, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)');
       stmt.run([id, name, npmPackage || '', baseUrl, baseUrlAnthropic || '', apiKey || '', now, now]);
       saveToFile();
       res.json({ success: true, provider: { id, name, npmPackage, baseUrl, baseUrlAnthropic, hasApiKey: !!apiKey, createdAt: now, updatedAt: now } });
@@ -113,9 +117,11 @@ export default () => {
   router.delete('/providers/:id', (req: Request, res: Response) => {
     const db = getDb();
     try {
-      db.run(`DELETE FROM models WHERE provider_id = '${req.params.id.replace(/'/g, "''")}'`);
-      db.run(`DELETE FROM providers WHERE id = '${req.params.id.replace(/'/g, "''")}'`);
-      db.run(`DELETE FROM tool_sync WHERE provider_id = '${req.params.id.replace(/'/g, "''")}'`);
+      const pid = req.params.id.replace(/'/g, "''");
+      db.run(`DELETE FROM models WHERE provider_id = '${pid}'`);
+      db.run(`DELETE FROM providers WHERE id = '${pid}'`);
+      db.run(`DELETE FROM tool_sync WHERE provider_id = '${pid}'`);
+      db.run(`DELETE FROM user_providers WHERE provider_id = '${pid}'`);
       saveToFile();
       res.json({ success: true });
     } catch (e: any) {
@@ -583,5 +589,389 @@ export default () => {
     }
   });
 
-  return router;
+  // ── 自动发现模型 ──
+
+  async function discoverModels(baseUrl: string, apiKey: string): Promise<any[]> {
+    const cleanBase = baseUrl.replace(/\/+$/, '');
+    const headers: Record<string, string> = {};
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+    // 构建候选 URL 列表，按优先级尝试
+    const candidates: string[] = [];
+    if (cleanBase.endsWith('/v1')) {
+      candidates.push(cleanBase + '/models');       // /v1/models
+      candidates.push(cleanBase.slice(0, -3) + '/models');  // 去掉 /v1 后 + /models
+    } else if (cleanBase.endsWith('/v1/')) {
+      candidates.push(cleanBase + 'models');
+      candidates.push(cleanBase.slice(0, -4) + '/models');
+    } else {
+      candidates.push(cleanBase + '/v1/models');
+      candidates.push(cleanBase + '/models');
+    }
+
+    let lastError = '';
+    for (const modelsUrl of candidates) {
+      let response: globalThis.Response;
+      try {
+        response = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(15000) });
+      } catch (e: any) {
+        if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+          throw new Error('请求超时，请检查网络或 URL 是否正确');
+        }
+        lastError = e.message || '网络连接失败';
+        continue;
+      }
+      if (!response.ok) {
+        lastError = `请求失败: ${response.status} ${response.statusText} (${modelsUrl})`;
+        continue;
+      }
+      const data = await response.json() as any;
+
+      // OpenAI 格式: { data: [{ id, object, ... }] }
+      if (data.data && Array.isArray(data.data)) {
+        return data.data.map((m: any) => ({
+          id: m.id,
+          name: m.id,
+          contextLimit: m.context_length || m.context_window || 0,
+          outputLimit: m.max_output_tokens || 0,
+        }));
+      }
+
+      // Anthropic 格式 或其他: 直接是数组
+      if (Array.isArray(data)) {
+        return data.map((m: any) => ({
+          id: typeof m === 'string' ? m : m.id || m.name || String(m),
+          name: typeof m === 'string' ? m : m.name || m.id || String(m),
+          contextLimit: m.context_length || m.context_window || 0,
+          outputLimit: m.max_output_tokens || 0,
+        }));
+      }
+
+      throw new Error('无法解析模型列表，API 返回格式不支持');
+    }
+
+    throw new Error(`无法获取模型列表: ${lastError || '所有候选 URL 均失败'}`);
+  }
+
+  router.post('/discover', async (req: Request, res: Response) => {
+    const { baseUrl, apiKey } = req.body;
+    if (!baseUrl) return res.status(400).json({ error: 'baseUrl 必填' });
+    try {
+      console.log(`[Discover] Admin 正在发现模型: ${baseUrl}`);
+      const models = await discoverModels(baseUrl, apiKey || '');
+      console.log(`[Discover] 发现 ${models.length} 个模型`);
+      res.json({ models });
+    } catch (e: any) {
+      console.error(`[Discover] 发现模型失败:`, e.message);
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  // 通过 Provider ID 自动发现（后端读取 baseUrl 和 apiKey）
+  router.post('/providers/:providerId/discover', async (req: Request, res: Response) => {
+    const db = getDb();
+    const pid = req.params.providerId.replace(/'/g, "''");
+    const result = db.exec(`SELECT base_url, api_key FROM providers WHERE id = '${pid}' AND owner_id IS NULL`);
+    if (result.length === 0 || result[0].values.length === 0) {
+      return res.status(404).json({ error: 'Provider 不存在' });
+    }
+    const baseUrl = result[0].values[0][0] as string;
+    const apiKey = result[0].values[0][1] as string;
+    if (!baseUrl) {
+      return res.status(400).json({ error: 'Provider 未设置 Base URL' });
+    }
+    try {
+      console.log(`[Discover] Admin 正在发现模型 (provider: ${pid}): ${baseUrl}`);
+      const models = await discoverModels(baseUrl, apiKey);
+      console.log(`[Discover] 发现 ${models.length} 个模型`);
+      res.json({ models });
+    } catch (e: any) {
+      console.error(`[Discover] 发现模型失败:`, e.message);
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  // ── 个人 Provider 路由（普通用户管理自己的 Provider）──
+
+  const myModelsRouter = Router();
+
+  myModelsRouter.get('/providers', (req: Request, res: Response) => {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const result = db.exec(
+      `SELECT id, name, npm_package, base_url, base_url_anthropic, api_key, created_at, updated_at FROM providers WHERE owner_id = '${userId.replace(/'/g, "''")}' ORDER BY created_at`
+    );
+    const providers: any[] = result.length > 0 ? result[0].values.map((row: any[]) => ({
+      id: row[0], name: row[1], npmPackage: row[2], baseUrl: row[3],
+      baseUrlAnthropic: row[4], hasApiKey: !!row[5], createdAt: row[6], updatedAt: row[7]
+    })) : [];
+
+    const countResult = db.exec(`SELECT provider_id, COUNT(*) as cnt FROM models WHERE provider_id IN (SELECT id FROM providers WHERE owner_id = '${userId.replace(/'/g, "''")}') GROUP BY provider_id`);
+    const modelCounts: Record<string, number> = {};
+    if (countResult.length > 0) {
+      countResult[0].values.forEach((row: any[]) => { modelCounts[row[0]] = row[1]; });
+    }
+    providers.forEach((p: any) => { p.modelCount = modelCounts[p.id] || 0; });
+
+    res.json({ providers });
+  });
+
+  myModelsRouter.post('/providers', (req: Request, res: Response) => {
+    const { id, name, npmPackage, baseUrl, baseUrlAnthropic, apiKey } = req.body;
+    if (!id || !name || !baseUrl) {
+      return res.status(400).json({ error: 'id, name, baseUrl 必填' });
+    }
+    const db = getDb();
+    const userId = req.user!.userId;
+    const now = new Date().toISOString();
+    try {
+      const stmt = db.prepare('INSERT INTO providers (id, name, npm_package, base_url, base_url_anthropic, api_key, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      stmt.run([id, name, npmPackage || '', baseUrl, baseUrlAnthropic || '', apiKey || '', userId, now, now]);
+      saveToFile();
+      res.json({ success: true, provider: { id, name, npmPackage, baseUrl, baseUrlAnthropic, hasApiKey: !!apiKey, createdAt: now, updatedAt: now } });
+    } catch (e: any) {
+      res.status(400).json({ error: 'Provider 已存在: ' + e.message });
+    }
+  });
+
+  myModelsRouter.put('/providers/:id', (req: Request, res: Response) => {
+    const { name, npmPackage, baseUrl, baseUrlAnthropic, apiKey } = req.body;
+    const db = getDb();
+    const userId = req.user!.userId;
+    const pid = req.params.id.replace(/'/g, "''");
+
+    const existing = db.exec(`SELECT api_key, owner_id FROM providers WHERE id = '${pid}'`);
+    if (existing.length === 0) return res.status(404).json({ error: 'Provider 不存在' });
+    if (existing[0].values[0][1] !== userId) return res.status(403).json({ error: '无权操作此 Provider' });
+
+    const oldApiKey = existing[0].values[0][0];
+    const newApiKey = apiKey !== undefined && apiKey !== '' ? apiKey : oldApiKey;
+    const now = new Date().toISOString();
+
+    try {
+      const stmt = db.prepare('UPDATE providers SET name=?, npm_package=?, base_url=?, base_url_anthropic=?, api_key=?, updated_at=? WHERE id=?');
+      stmt.run([name || '', npmPackage || '', baseUrl || '', baseUrlAnthropic || '', newApiKey, now, req.params.id]);
+      saveToFile();
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  myModelsRouter.delete('/providers/:id', (req: Request, res: Response) => {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const pid = req.params.id.replace(/'/g, "''");
+
+    const existing = db.exec(`SELECT owner_id FROM providers WHERE id = '${pid}'`);
+    if (existing.length === 0) return res.status(404).json({ error: 'Provider 不存在' });
+    if (existing[0].values[0][0] !== userId) return res.status(403).json({ error: '无权操作此 Provider' });
+
+    try {
+      db.run(`DELETE FROM models WHERE provider_id = '${pid}'`);
+      db.run(`DELETE FROM providers WHERE id = '${pid}'`);
+      saveToFile();
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  myModelsRouter.get('/providers/:providerId/models', (req: Request, res: Response) => {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const pid = req.params.providerId.replace(/'/g, "''");
+
+    const existing = db.exec(`SELECT owner_id FROM providers WHERE id = '${pid}'`);
+    if (existing.length === 0) return res.status(404).json({ error: 'Provider 不存在' });
+    if (existing[0].values[0][0] !== userId) return res.status(403).json({ error: '无权访问此 Provider' });
+
+    const result = db.exec(`SELECT id, provider_id, name, context_limit, output_limit, input_modalities, output_modalities FROM models WHERE provider_id = '${pid}' ORDER BY name`);
+    const models: any[] = result.length > 0 ? result[0].values.map((row: any[]) => ({
+      id: row[0], providerId: row[1], name: row[2], contextLimit: row[3],
+      outputLimit: row[4], inputModalities: JSON.parse(row[5]), outputModalities: JSON.parse(row[6])
+    })) : [];
+    res.json({ models });
+  });
+
+  myModelsRouter.post('/providers/:providerId/models', (req: Request, res: Response) => {
+    const { id, name, contextLimit, outputLimit, inputModalities, outputModalities } = req.body;
+    if (!id || !name) return res.status(400).json({ error: 'id, name 必填' });
+    const db = getDb();
+    const userId = req.user!.userId;
+    const pid = req.params.providerId.replace(/'/g, "''");
+
+    const existing = db.exec(`SELECT owner_id FROM providers WHERE id = '${pid}'`);
+    if (existing.length === 0) return res.status(404).json({ error: 'Provider 不存在' });
+    if (existing[0].values[0][0] !== userId) return res.status(403).json({ error: '无权操作此 Provider' });
+
+    try {
+      const stmt = db.prepare(
+        'INSERT INTO models (id, provider_id, name, context_limit, output_limit, input_modalities, output_modalities) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      );
+      stmt.run([
+        id, req.params.providerId, name,
+        contextLimit || 0, outputLimit || 0,
+        JSON.stringify(inputModalities || ['text']),
+        JSON.stringify(outputModalities || ['text'])
+      ]);
+      saveToFile();
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(400).json({ error: '模型已存在: ' + e.message });
+    }
+  });
+
+  myModelsRouter.put('/providers/:providerId/models/:modelId', (req: Request, res: Response) => {
+    const { name, contextLimit, outputLimit, inputModalities, outputModalities } = req.body;
+    const db = getDb();
+    const userId = req.user!.userId;
+    const pid = req.params.providerId.replace(/'/g, "''");
+
+    const existing = db.exec(`SELECT owner_id FROM providers WHERE id = '${pid}'`);
+    if (existing.length === 0) return res.status(404).json({ error: 'Provider 不存在' });
+    if (existing[0].values[0][0] !== userId) return res.status(403).json({ error: '无权操作此 Provider' });
+
+    try {
+      const stmt = db.prepare(
+        'UPDATE models SET name=?, context_limit=?, output_limit=?, input_modalities=?, output_modalities=? WHERE id=? AND provider_id=?'
+      );
+      stmt.run([
+        name || '', contextLimit || 0, outputLimit || 0,
+        JSON.stringify(inputModalities || ['text']),
+        JSON.stringify(outputModalities || ['text']),
+        req.params.modelId, req.params.providerId
+      ]);
+      saveToFile();
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  myModelsRouter.delete('/providers/:providerId/models/:modelId', (req: Request, res: Response) => {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const pid = req.params.providerId.replace(/'/g, "''");
+
+    const existing = db.exec(`SELECT owner_id FROM providers WHERE id = '${pid}'`);
+    if (existing.length === 0) return res.status(404).json({ error: 'Provider 不存在' });
+    if (existing[0].values[0][0] !== userId) return res.status(403).json({ error: '无权操作此 Provider' });
+
+    try {
+      db.run(`DELETE FROM models WHERE id = '${req.params.modelId.replace(/'/g, "''")}' AND provider_id = '${pid}'`);
+      saveToFile();
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  // ── 个人 Provider 自动发现模型 ──
+  myModelsRouter.post('/discover', async (req: Request, res: Response) => {
+    const { baseUrl, apiKey } = req.body;
+    if (!baseUrl) return res.status(400).json({ error: 'baseUrl 必填' });
+    try {
+      console.log(`[Discover] 用户 ${req.user!.userId} 正在发现模型: ${baseUrl}`);
+      const models = await discoverModels(baseUrl, apiKey || '');
+      console.log(`[Discover] 发现 ${models.length} 个模型`);
+      res.json({ models });
+    } catch (e: any) {
+      console.error(`[Discover] 发现模型失败:`, e.message);
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  // 通过 Provider ID 自动发现（后端读取 baseUrl 和 apiKey）
+  myModelsRouter.post('/providers/:providerId/discover', async (req: Request, res: Response) => {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const pid = req.params.providerId.replace(/'/g, "''");
+    const result = db.exec(`SELECT base_url, api_key, owner_id FROM providers WHERE id = '${pid}'`);
+    if (result.length === 0 || result[0].values.length === 0) {
+      return res.status(404).json({ error: 'Provider 不存在' });
+    }
+    if (result[0].values[0][2] !== userId) {
+      return res.status(403).json({ error: '无权操作此 Provider' });
+    }
+    const baseUrl = result[0].values[0][0] as string;
+    const apiKey = result[0].values[0][1] as string;
+    if (!baseUrl) {
+      return res.status(400).json({ error: 'Provider 未设置 Base URL' });
+    }
+    try {
+      console.log(`[Discover] 用户 ${userId} 正在发现模型 (provider: ${pid}): ${baseUrl}`);
+      const models = await discoverModels(baseUrl, apiKey);
+      console.log(`[Discover] 发现 ${models.length} 个模型`);
+      res.json({ models });
+    } catch (e: any) {
+      console.error(`[Discover] 发现模型失败:`, e.message);
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  // ── 批量导入模型到 Provider ──
+  myModelsRouter.post('/providers/:providerId/import', (req: Request, res: Response) => {
+    const { models: modelsToImport } = req.body;
+    if (!Array.isArray(modelsToImport)) return res.status(400).json({ error: 'models 必须是数组' });
+    const db = getDb();
+    const userId = req.user!.userId;
+    const pid = req.params.providerId.replace(/'/g, "''");
+
+    const existing = db.exec(`SELECT owner_id FROM providers WHERE id = '${pid}'`);
+    if (existing.length === 0) return res.status(404).json({ error: 'Provider 不存在' });
+    if (existing[0].values[0][0] !== userId) return res.status(403).json({ error: '无权操作此 Provider' });
+
+    let imported = 0;
+    let skipped = 0;
+    for (const m of modelsToImport) {
+      try {
+        const stmt = db.prepare(
+          'INSERT INTO models (id, provider_id, name, context_limit, output_limit, input_modalities, output_modalities) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        );
+        stmt.run([
+          m.id, req.params.providerId, m.name || m.id,
+          m.contextLimit || 0, m.outputLimit || 0,
+          JSON.stringify(m.inputModalities || ['text']),
+          JSON.stringify(m.outputModalities || ['text'])
+        ]);
+        imported++;
+      } catch {
+        skipped++;
+      }
+    }
+    saveToFile();
+    res.json({ success: true, imported, skipped });
+  });
+
+  // ── 系统 Provider 批量导入模型 ──
+  router.post('/providers/:providerId/import', (req: Request, res: Response) => {
+    const { models: modelsToImport } = req.body;
+    if (!Array.isArray(modelsToImport)) return res.status(400).json({ error: 'models 必须是数组' });
+    const db = getDb();
+    const pid = req.params.providerId.replace(/'/g, "''");
+
+    let imported = 0;
+    let skipped = 0;
+    for (const m of modelsToImport) {
+      try {
+        const stmt = db.prepare(
+          'INSERT INTO models (id, provider_id, name, context_limit, output_limit, input_modalities, output_modalities) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        );
+        stmt.run([
+          m.id, req.params.providerId, m.name || m.id,
+          m.contextLimit || 0, m.outputLimit || 0,
+          JSON.stringify(m.inputModalities || ['text']),
+          JSON.stringify(m.outputModalities || ['text'])
+        ]);
+        imported++;
+      } catch {
+        skipped++;
+      }
+    }
+    saveToFile();
+    res.json({ success: true, imported, skipped });
+  });
+
+  return { systemRouter: router, myModelsRouter };
 };

@@ -18,7 +18,6 @@ const WHITELIST_PATHS = [
 
 const WHITELIST_PREFIXES = [
   '/assets',
-  '/api/options',
 ];
 
 const TOKEN_FILE = path.join(__dirname, '..', '..', '.token');

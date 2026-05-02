@@ -86,6 +86,7 @@ interface ProviderFormProps {
   setForm: React.Dispatch<React.SetStateAction<ProviderForm>>
   onSave: () => void
   onCancel: () => void
+  onDiscover?: () => void
   isNew?: boolean
   hasApiKey: boolean
 }
@@ -125,6 +126,13 @@ export default function ModelManager() {
 
   const modelFormInit: ModelForm = { id: '', name: '', contextLimit: 0, outputLimit: 0, inputModalities: ['text'], outputModalities: ['text'] }
   const [modelForm, setModelForm] = useState<ModelForm>(modelFormInit)
+
+  // 自动发现状态
+  const [discovering, setDiscovering] = useState(false)
+  const [discoverError, setDiscoverError] = useState<string | null>(null)
+  const [discoveredModels, setDiscoveredModels] = useState<Array<{ id: string; name: string; contextLimit?: number; outputLimit?: number }>>([])
+  const [selectedDiscovered, setSelectedDiscovered] = useState<Set<string>>(new Set())
+  const [discoverForProvider, setDiscoverForProvider] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -283,6 +291,84 @@ export default function ModelManager() {
     window.dispatchEvent(new CustomEvent('models-changed'))
   }
 
+  // ── 自动发现模型 ──
+
+  const startDiscover = (providerId: string | null) => {
+    setDiscoverForProvider(providerId)
+    setDiscoveredModels([])
+    setSelectedDiscovered(new Set())
+    setDiscoverError(null)
+  }
+
+  const cancelDiscover = () => {
+    setDiscoverForProvider(null)
+    setDiscoveredModels([])
+    setSelectedDiscovered(new Set())
+    setDiscoverError(null)
+  }
+
+  const doDiscover = async () => {
+    setDiscovering(true)
+    setDiscoverError(null)
+    try {
+      let res: Response
+      if (discoverForProvider !== null) {
+        // 已有 Provider
+        res = await fetch(`${API_BASE}/models/providers/${discoverForProvider}/discover`, { method: 'POST' })
+      } else {
+        // 新 Provider：使用表单中的 baseUrl 和 apiKey
+        if (!providerForm.baseUrl) {
+          setDiscoverError('请先填写 Base URL')
+          setDiscovering(false)
+          return
+        }
+        res = await fetch(`${API_BASE}/models/discover`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ baseUrl: providerForm.baseUrl, apiKey: providerForm.apiKey }),
+        })
+      }
+      let data: any
+      try {
+        data = await res.json()
+      } catch {
+        setDiscoverError(`服务器返回异常 (HTTP ${res.status})`)
+        return
+      }
+      if (!res.ok) { setDiscoverError(data.error || '发现失败'); return }
+      setDiscoveredModels(data.models || [])
+      setSelectedDiscovered(new Set((data.models || []).map((m: any) => m.id)))
+    } catch (error: any) {
+      console.error('模型发现请求失败:', error)
+      setDiscoverError(error?.message || '网络请求失败')
+    } finally {
+      setDiscovering(false)
+    }
+  }
+
+  const importDiscovered = async () => {
+    if (discoverForProvider === null || discoveredModels.length === 0) return
+    const toImport = discoveredModels
+      .filter(m => selectedDiscovered.has(m.id))
+      .map(m => ({ id: m.id, name: m.name, contextLimit: m.contextLimit || 0, outputLimit: m.outputLimit || 0 }))
+    if (toImport.length === 0) { toast.error('请选择要导入的模型'); return }
+    try {
+      const res = await fetch(`${API_BASE}/models/providers/${discoverForProvider}/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ models: toImport }),
+      })
+      const data = await res.json()
+      if (!res.ok) { toast.error(data.error || '导入失败'); return }
+      toast.success(`已导入 ${data.imported} 个模型${data.skipped > 0 ? `，跳过 ${data.skipped} 个` : ''}`)
+      cancelDiscover()
+      fetchData()
+      notifyModelsChanged()
+    } catch (e: any) {
+      toast.error('导入失败: ' + e.message)
+    }
+  }
+
   const handleSync = async (tool: string, body: Record<string, any>) => {
     setSyncing(prev => ({ ...prev, [tool]: true }))
     try {
@@ -325,7 +411,18 @@ export default function ModelManager() {
         </div>
 
         {addingProvider && (
-          <ProviderForm form={providerForm} setForm={setProviderForm} onSave={() => saveProvider(false)} onCancel={cancelProviderForm} isNew hasApiKey={editingHasApiKey} />
+          <ProviderForm form={providerForm} setForm={setProviderForm} onSave={() => saveProvider(false)} onCancel={cancelProviderForm} onDiscover={() => startDiscover(null)} isNew hasApiKey={editingHasApiKey} />
+        )}
+
+        {/* 新建 Provider 时的发现模型面板 */}
+        {addingProvider && discoverForProvider === null && discoveredModels.length > 0 && (
+          <DiscoveredPanel models={discoveredModels} selected={selectedDiscovered} discovering={discovering}
+            error={discoverError} onDiscover={doDiscover} onToggle={(id) => {
+              setSelectedDiscovered(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+            }} onCancel={cancelDiscover} />
+        )}
+        {addingProvider && discoverForProvider === null && discoverError && !discoveredModels.length && (
+          <div className="mt-2 p-2 rounded text-xs" style={{ background: 'var(--error-soft)', color: 'var(--error)' }}>{discoverError}</div>
         )}
 
         {providers.length === 0 && !addingProvider && (
@@ -396,10 +493,24 @@ export default function ModelManager() {
                   <p className="text-xs py-2" style={{ color: 'var(--text-muted)' }}>暂无模型</p>
                 )}
                 {addingModel !== p.id && (
-                  <button onClick={() => startAddModel(p.id)} className="text-xs mt-2 py-1 px-2 rounded-lg"
-                    style={{ color: 'var(--accent-primary)', background: 'var(--accent-primary-soft)' }}>
-                    + 添加模型
-                  </button>
+                  <div className="flex gap-2 mt-2">
+                    <button onClick={() => startAddModel(p.id)} className="text-xs py-1 px-2 rounded-lg"
+                      style={{ color: 'var(--accent-primary)', background: 'var(--accent-primary-soft)' }}>
+                      + 添加模型
+                    </button>
+                    <button onClick={() => startDiscover(p.id)} className="text-xs py-1 px-2 rounded-lg"
+                      style={{ color: 'var(--success)', background: 'var(--success-soft)' }}>
+                      🔍 发现模型
+                    </button>
+                  </div>
+                )}
+
+                {/* 已有 Provider 的发现模型面板 */}
+                {discoverForProvider === p.id && (
+                  <DiscoveredPanel models={discoveredModels} selected={selectedDiscovered} discovering={discovering}
+                    error={discoverError} onDiscover={doDiscover}
+                    onToggle={(id) => { setSelectedDiscovered(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n }) }}
+                    onImport={importDiscovered} onCancel={cancelDiscover} />
                 )}
               </div>
             )}
@@ -412,7 +523,72 @@ export default function ModelManager() {
   )
 }
 
-function ProviderForm({ form, setForm, onSave, onCancel, isNew, hasApiKey }: ProviderFormProps) {
+// ── 发现模型面板 ──
+
+function DiscoveredPanel({ models, selected, discovering, error, onDiscover, onToggle, onImport, onCancel }: {
+  models: Array<{ id: string; name: string; contextLimit?: number; outputLimit?: number }>
+  selected: Set<string>
+  discovering: boolean
+  error: string | null
+  onDiscover: () => void
+  onToggle: (id: string) => void
+  onImport?: () => void
+  onCancel: () => void
+}) {
+  const formatCtx = (t?: number) => t ? (t >= 1000000 ? `${(t / 1000000).toFixed(0)}M` : `${Math.round(t / 1000)}K`) : ''
+  return (
+    <div className="mt-3 p-3 rounded-lg" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--success)' }}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium" style={{ color: 'var(--success)' }}>发现模型</span>
+        <button onClick={onCancel} className="text-xs px-2 py-0.5 rounded" style={{ color: 'var(--text-muted)', background: 'var(--bg-hover)', border: 'none', cursor: 'pointer' }}>关闭</button>
+      </div>
+      {models.length === 0 && !discovering && (
+        <div className="text-center py-3">
+          <button onClick={onDiscover} className="px-4 py-1.5 text-xs rounded" style={{ background: 'var(--accent-primary)', color: 'white', border: 'none', cursor: 'pointer' }}>
+            🔍 开始发现
+          </button>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>调用 /v1/models 获取模型列表</p>
+        </div>
+      )}
+      {discovering && (
+        <div className="text-center py-3" style={{ color: 'var(--text-muted)' }}>
+          <div className="inline-block w-4 h-4 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--accent-primary)', borderTopColor: 'transparent' }} />
+          <span className="text-xs ml-2">查询中...</span>
+        </div>
+      )}
+      {error && <p className="text-xs mb-2" style={{ color: 'var(--error)' }}>{error}</p>}
+      {models.length > 0 && (
+        <>
+          <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>发现 {models.length} 个，已选 {selected.size} 个</p>
+          <div className="max-h-48 overflow-y-auto space-y-1 mb-2">
+            {models.map(m => (
+              <label key={m.id} className="flex items-center gap-2 p-1.5 rounded cursor-pointer text-xs"
+                style={{ background: selected.has(m.id) ? 'var(--accent-primary-soft)' : 'var(--bg-secondary)' }}>
+                <input type="checkbox" checked={selected.has(m.id)} onChange={() => onToggle(m.id)} style={{ accentColor: 'var(--accent-primary)' }} />
+                <span style={{ color: 'var(--text-primary)' }}>{m.name}</span>
+                <span style={{ color: 'var(--text-muted)' }}>{m.id}</span>
+                <span className="ml-auto" style={{ color: 'var(--text-muted)' }}>
+                  {m.contextLimit ? formatCtx(m.contextLimit) : ''}{m.outputLimit ? ` / ${formatCtx(m.outputLimit)}` : ''}
+                </span>
+              </label>
+            ))}
+          </div>
+          {onImport ? (
+            <button onClick={onImport} disabled={selected.size === 0}
+              className="w-full py-1.5 text-xs rounded"
+              style={{ background: 'var(--accent-primary)', color: 'white', border: 'none', cursor: selected.size === 0 ? 'not-allowed' : 'pointer', opacity: selected.size === 0 ? 0.5 : 1 }}>
+              导入选中的 {selected.size} 个模型
+            </button>
+          ) : (
+            <p className="text-xs" style={{ color: 'var(--warning)' }}>请先保存 Provider，然后在 Provider 中导入模型</p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function ProviderForm({ form, setForm, onSave, onCancel, onDiscover, isNew, hasApiKey }: ProviderFormProps) {
   return (
     <div className="p-3 mt-2 rounded-lg space-y-2" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}>
       <div className="grid grid-cols-2 gap-2">
@@ -445,6 +621,12 @@ function ProviderForm({ form, setForm, onSave, onCancel, isNew, hasApiKey }: Pro
       </div>
       <div className="flex gap-2 justify-end">
         <button onClick={onCancel} className="btn-secondary text-xs py-1 px-3">取消</button>
+        {isNew && onDiscover && (
+          <button onClick={onDiscover} className="text-xs py-1 px-3 rounded"
+            style={{ background: 'var(--success-soft)', color: 'var(--success)', border: '1px solid var(--success)', cursor: 'pointer' }}>
+            🔍 发现模型
+          </button>
+        )}
         <button onClick={onSave} className="btn-primary text-xs py-1 px-3">保存</button>
       </div>
     </div>

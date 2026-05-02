@@ -235,4 +235,61 @@ router.delete('/:id', (req: Request, res: Response) => {
   }
 });
 
+// ── Provider 分配 API ──
+
+router.get('/:id/providers', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.params.id.replace(/'/g, "''");
+
+    const existing = db.exec(`SELECT id FROM users WHERE id = '${userId}'`);
+    if (existing.length === 0 || existing[0].values.length === 0) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
+    const result = db.exec(
+      `SELECT p.id, p.name FROM providers p JOIN user_providers up ON p.id = up.provider_id WHERE up.user_id = '${userId}' ORDER BY p.name`
+    );
+    const providers = result.length > 0 ? result[0].values.map((row: any[]) => ({
+      id: row[0], name: row[1]
+    })) : [];
+
+    res.json({ providers });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/:id/providers', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.params.id.replace(/'/g, "''");
+    const { providerIds } = req.body;
+
+    if (!Array.isArray(providerIds)) {
+      return res.status(400).json({ error: 'providerIds 必须是数组' });
+    }
+
+    const existing = db.exec(`SELECT id FROM users WHERE id = '${userId}'`);
+    if (existing.length === 0 || existing[0].values.length === 0) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
+    const now = new Date().toISOString();
+    db.run(`DELETE FROM user_providers WHERE user_id = '${userId}'`);
+    for (const pid of providerIds) {
+      const safePid = String(pid).replace(/'/g, "''");
+      db.run(
+        `INSERT OR IGNORE INTO user_providers (user_id, provider_id, created_at) VALUES ('${userId}', '${safePid}', '${now}')`
+      );
+    }
+    saveToFile();
+
+    console.log(`[管理员分配 Provider] 用户 ${userId} -> ${providerIds.length} 个 Provider by ${req.user!.username}`);
+    res.json({ success: true, message: `已分配 ${providerIds.length} 个 Provider` });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

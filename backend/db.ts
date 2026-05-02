@@ -98,6 +98,11 @@ async function initDb(): Promise<SqlJsDatabase> {
         db.run('ALTER TABLE providers ADD COLUMN base_url_anthropic TEXT DEFAULT ""');
         console.log('[数据库迁移] providers 表添加 base_url_anthropic 列');
       }
+      // 增量迁移：给 providers 表添加 owner_id 列（NULL = 系统 Provider，user_id = 个人 Provider）
+      if (!colNames.includes('owner_id')) {
+        db.run('ALTER TABLE providers ADD COLUMN owner_id TEXT DEFAULT NULL');
+        console.log('[数据库迁移] providers 表添加 owner_id 列');
+      }
     }
   } catch (e) { }
 
@@ -193,6 +198,38 @@ async function initDb(): Promise<SqlJsDatabase> {
     )
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
+
+  // 模型权限表：管理系统 Provider 分配给用户
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_providers (
+      user_id TEXT NOT NULL,
+      provider_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, provider_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_user_providers_provider_id ON user_providers(provider_id)`);
+
+  // 向后兼容：如果 user_providers 为空且只有一个 admin，自动分配所有系统 Provider 给该 admin
+  try {
+    const adminResult = db.exec("SELECT id FROM users WHERE role = 'admin' AND is_active = 1");
+    const providerResult = db.exec("SELECT id FROM providers WHERE owner_id IS NULL");
+    if (adminResult.length > 0 && adminResult[0].values.length === 1 && providerResult.length > 0 && providerResult[0].values.length > 0) {
+      const permResult = db.exec("SELECT COUNT(*) FROM user_providers");
+      const permCount = permResult[0]?.values[0][0] as number;
+      if (permCount === 0) {
+        const adminId = adminResult[0].values[0][0] as string;
+        const now = new Date().toISOString();
+        for (const row of providerResult[0].values) {
+          const pid = row[0] as string;
+          db.run("INSERT OR IGNORE INTO user_providers (user_id, provider_id, created_at) VALUES (?, ?, ?)", [adminId, pid, now]);
+        }
+        console.log(`[数据库迁移] 自动分配 ${providerResult[0].values.length} 个系统 Provider 给管理员 ${adminId}`);
+      }
+    }
+  } catch (e) { }
 
   try {
     const cols = db.exec("PRAGMA table_info(projects)");

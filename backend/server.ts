@@ -144,7 +144,9 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   app.use('/api/options', optionsRouter());
   app.use('/api/credentials', credentialsRouter(credentialManager, ALLOWED_ROOT));
   app.use('/api/skills', skillsRouter);
-  app.use('/api/models', modelsRouter());
+  const { systemRouter: modelsSystemRouter, myModelsRouter } = modelsRouter();
+  app.use('/api/models', modelsSystemRouter);
+  app.use('/api/my-models', myModelsRouter);
   app.use('/api', workflowsRouter(sessionManager, workflowEngine));
 
   // Authenticated uploads route
