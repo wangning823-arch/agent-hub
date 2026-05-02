@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useTheme, ThemeConfig } from './ThemeContext'
 import { useNotification } from '../hooks/useNotification'
-import CredentialManager from './CredentialManager'
+import UserCredentialView from './UserCredentialView'
 import UserModelView from './UserModelView'
 
 const API_BASE = '/api'
@@ -144,7 +144,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
             </div>
           )}
 
-          {activeTab === 'credentials' && <CredentialManager />}
+          {activeTab === 'credentials' && <UserCredentialView />}
 
           {activeTab === 'models' && <UserModelView />}
 

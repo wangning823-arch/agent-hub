@@ -13,6 +13,7 @@ import Login from './components/Login'
 import UserManager from './components/UserManager'
 import ModelManager from './components/ModelManager'
 import AccessControlManager from './components/AccessControlManager'
+import CredentialManager from './components/CredentialManager'
 import {
   AgentPilotLogo,
   IconMenu,
@@ -769,6 +770,7 @@ function AdminPanel({ user, onLogout }: { user: { username: string; role: string
   const tabs = [
     { key: 'users', icon: '👥', label: '用户管理' },
     { key: 'models', icon: '🤖', label: '模型管理' },
+    { key: 'credentials', icon: '🔑', label: '凭证管理' },
     { key: 'access', icon: '🔐', label: '权限分配' },
   ]
 
@@ -815,6 +817,7 @@ function AdminPanel({ user, onLogout }: { user: { username: string; role: string
       <div className="flex-1 overflow-auto p-5">
         {activeTab === 'users' && <UserManager onClose={() => {}} fullPage />}
         {activeTab === 'models' && <ModelManager />}
+        {activeTab === 'credentials' && <CredentialManager />}
         {activeTab === 'access' && <AccessControlManager />}
       </div>
     </div>

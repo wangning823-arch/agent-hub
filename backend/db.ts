@@ -212,6 +212,58 @@ async function initDb(): Promise<SqlJsDatabase> {
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_user_providers_provider_id ON user_providers(provider_id)`);
 
+  // ========== 凭证管理表 ==========
+  db.run(`
+    CREATE TABLE IF NOT EXISTS credentials (
+      id TEXT PRIMARY KEY,
+      host TEXT NOT NULL,
+      type TEXT NOT NULL,
+      username TEXT,
+      secret TEXT,
+      key_data TEXT,
+      owner_id TEXT DEFAULT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_credentials_host ON credentials(host)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_credentials_owner_id ON credentials(owner_id)`);
+
+  // 管理员分配系统凭证给用户
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_credentials (
+      user_id TEXT NOT NULL,
+      credential_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, credential_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (credential_id) REFERENCES credentials(id) ON DELETE CASCADE
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_user_credentials_credential_id ON user_credentials(credential_id)`);
+
+  // 向后兼容：从 JSON 迁移旧凭证到 SQLite
+  await migrateCredentialsFromJson();
+
+  // 向后兼容：如果 user_credentials 为空且只有一个 admin，自动分配所有系统凭证给该 admin
+  try {
+    const adminResult = db.exec("SELECT id FROM users WHERE role = 'admin' AND is_active = 1");
+    const credResult = db.exec("SELECT id FROM credentials WHERE owner_id IS NULL");
+    if (adminResult.length > 0 && adminResult[0].values.length === 1 && credResult.length > 0 && credResult[0].values.length > 0) {
+      const permResult = db.exec("SELECT COUNT(*) FROM user_credentials");
+      const permCount = permResult[0]?.values[0][0] as number;
+      if (permCount === 0) {
+        const adminId = adminResult[0].values[0][0] as string;
+        const now = new Date().toISOString();
+        for (const row of credResult[0].values) {
+          const cid = row[0] as string;
+          db.run("INSERT OR IGNORE INTO user_credentials (user_id, credential_id, created_at) VALUES (?, ?, ?)", [adminId, cid, now]);
+        }
+        console.log(`[数据库迁移] 自动分配 ${credResult[0].values.length} 个系统凭证给管理员 ${adminId}`);
+      }
+    }
+  } catch (e) { }
+
   // 向后兼容：如果 user_providers 为空且只有一个 admin，自动分配所有系统 Provider 给该 admin
   try {
     const adminResult = db.exec("SELECT id FROM users WHERE role = 'admin' AND is_active = 1");
@@ -386,6 +438,45 @@ async function migrateProjectsFromJson(): Promise<void> {
   insertProject.free();
 
   console.log(`迁移 ${jsonData.projects.length} 个项目到数据库`);
+}
+
+async function migrateCredentialsFromJson(): Promise<void> {
+  const credsFile = path.join(dataDir, 'credentials.json');
+  if (!fs.existsSync(credsFile)) return;
+
+  const result = db!.exec('SELECT COUNT(*) as count FROM credentials');
+  const count = result.length > 0 ? result[0].values[0][0] : 0;
+  if ((count as number) > 0) return;
+
+  try {
+    const jsonData = JSON.parse(fs.readFileSync(credsFile, 'utf8'));
+    if (!jsonData || Object.keys(jsonData).length === 0) return;
+
+    const now = new Date().toISOString();
+    const insertStmt = db!.prepare(
+      'INSERT INTO credentials (id, host, type, username, secret, key_data, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)'
+    );
+
+    let migrated = 0;
+    for (const [key, cred] of Object.entries(jsonData) as [string, any][]) {
+      const id = `cred_migrated_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      insertStmt.run([
+        id,
+        cred.host || key,
+        cred.type || 'token',
+        cred.username || null,
+        cred.secret || null,
+        cred.keyData || null,
+        now,
+        now
+      ]);
+      migrated++;
+    }
+    insertStmt.free();
+    console.log(`[凭证迁移] 从 JSON 导入 ${migrated} 个凭证到数据库`);
+  } catch (e: any) {
+    console.warn('[凭证迁移] 读取凭证 JSON 失败:', e.message);
+  }
 }
 
 async function migrateModelsFromConfigFiles(): Promise<void> {

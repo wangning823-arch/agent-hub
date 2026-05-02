@@ -292,4 +292,61 @@ router.put('/:id/providers', (req: Request, res: Response) => {
   }
 });
 
+// ── Credential 分配 API ──
+
+router.get('/:id/credentials', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.params.id.replace(/'/g, "''");
+
+    const existing = db.exec(`SELECT id FROM users WHERE id = '${userId}'`);
+    if (existing.length === 0 || existing[0].values.length === 0) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
+    const result = db.exec(
+      `SELECT c.id, c.host, c.type, c.username FROM credentials c JOIN user_credentials uc ON c.id = uc.credential_id WHERE uc.user_id = '${userId}' ORDER BY c.host`
+    );
+    const credentials = result.length > 0 ? result[0].values.map((row: any[]) => ({
+      id: row[0], host: row[1], type: row[2], username: row[3]
+    })) : [];
+
+    res.json({ credentials });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/:id/credentials', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.params.id.replace(/'/g, "''");
+    const { credentialIds } = req.body;
+
+    if (!Array.isArray(credentialIds)) {
+      return res.status(400).json({ error: 'credentialIds 必须是数组' });
+    }
+
+    const existing = db.exec(`SELECT id FROM users WHERE id = '${userId}'`);
+    if (existing.length === 0 || existing[0].values.length === 0) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
+    const now = new Date().toISOString();
+    db.run(`DELETE FROM user_credentials WHERE user_id = '${userId}'`);
+    for (const cid of credentialIds) {
+      const safeCid = String(cid).replace(/'/g, "''");
+      db.run(
+        `INSERT OR IGNORE INTO user_credentials (user_id, credential_id, created_at) VALUES ('${userId}', '${safeCid}', '${now}')`
+      );
+    }
+    saveToFile();
+
+    console.log(`[管理员分配 Credential] 用户 ${userId} -> ${credentialIds.length} 个凭证 by ${req.user!.username}`);
+    res.json({ success: true, message: `已分配 ${credentialIds.length} 个凭证` });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

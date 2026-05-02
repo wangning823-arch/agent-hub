@@ -103,6 +103,59 @@ export default () => {
     res.json({ providers });
   });
 
+  // 获取当前用户的凭证概览（只读）
+  router.get('/my-credentials', (req: Request, res: Response) => {
+    const db = getDb();
+    const uid = req.user!.userId.replace(/'/g, "''");
+
+    let credentials: any[] = [];
+
+    if (req.user!.role === 'admin') {
+      // Admin 看所有系统凭证
+      const result = db.exec('SELECT id, host, type, username, owner_id, created_at, updated_at FROM credentials WHERE owner_id IS NULL ORDER BY updated_at DESC');
+      if (result.length > 0) {
+        credentials = result[0].values.map((row: any[]) => {
+          const obj: any = {};
+          result[0].columns.forEach((col, i) => { obj[col] = row[i]; });
+          obj.isPersonal = false;
+          return obj;
+        });
+      }
+    } else {
+      // 被分配的系统凭证
+      const assignedResult = db.exec(
+        `SELECT c.id, c.host, c.type, c.username, c.owner_id, c.created_at, c.updated_at
+         FROM credentials c JOIN user_credentials uc ON c.id = uc.credential_id
+         WHERE uc.user_id = '${uid}' AND c.owner_id IS NULL ORDER BY c.updated_at DESC`
+      );
+      if (assignedResult.length > 0) {
+        credentials = assignedResult[0].values.map((row: any[]) => {
+          const obj: any = {};
+          assignedResult[0].columns.forEach((col, i) => { obj[col] = row[i]; });
+          obj.isPersonal = false;
+          return obj;
+        });
+      }
+
+      // 个人凭证
+      const personalResult = db.exec(
+        `SELECT id, host, type, username, owner_id, created_at, updated_at FROM credentials WHERE owner_id = '${uid}' ORDER BY updated_at DESC`
+      );
+      if (personalResult.length > 0) {
+        credentials = credentials.concat(
+          personalResult[0].values.map((row: any[]) => {
+            const obj: any = {};
+            personalResult[0].columns.forEach((col, i) => { obj[col] = row[i]; });
+            obj.isPersonal = true;
+            return obj;
+          })
+        );
+      }
+    }
+
+    res.json({ credentials });
+  });
+
   router.get('/modes', (_req: Request, res: Response) => {
     res.json({ modes: PERMISSION_MODES });
   });

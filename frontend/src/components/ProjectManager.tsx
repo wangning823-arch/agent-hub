@@ -662,8 +662,11 @@ function ProjectCard({ project, onToggleFavorite, onDelete, onSetPassword }: Pro
   const loadCredentials = async () => {
     setLoadingCreds(true)
     try {
-      const res = await fetch('/api/credentials')
-      setCredentials(await res.json())
+      const res = await fetch('/api/my-credentials')
+      const data = await res.json()
+      // 兼容新格式 { credentials: [...] } 和旧格式 [...]
+      const list = Array.isArray(data) ? data : (data.credentials || [])
+      setCredentials(list)
     } catch (e) {
       console.error('加载凭证失败:', e)
     } finally {
@@ -702,7 +705,7 @@ function ProjectCard({ project, onToggleFavorite, onDelete, onSetPassword }: Pro
       const body: Record<string, any> = { host: project.gitHost, type: newCredType, username: 'git' }
       if (newCredType === 'token') body.secret = newCredSecret
       else body.keyData = newCredKeyData
-      const res = await fetch('/api/credentials', {
+      const res = await fetch('/api/my-credentials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)

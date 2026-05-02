@@ -9,7 +9,6 @@ import SessionManager from './sessions';
 import PermissionManager from './permissions';
 import ProjectManager from './projects';
 import TokenTracker from './token-tracker';
-import credentialManager from './credentialManager';
 import sessionsRouter from './routes/sessions';
 import tagsRouter from './routes/tags';
 import projectsRouter from './routes/projects';
@@ -142,7 +141,9 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   app.use('/api/health', healthRouter());
   app.use('/api/upload', uploadRouter());
   app.use('/api/options', optionsRouter());
-  app.use('/api/credentials', credentialsRouter(credentialManager, ALLOWED_ROOT));
+  const { systemRouter: credentialsSystemRouter, myCredentialsRouter } = credentialsRouter();
+  app.use('/api/credentials', credentialsSystemRouter);
+  app.use('/api/my-credentials', myCredentialsRouter);
   app.use('/api/skills', skillsRouter);
   const { systemRouter: modelsSystemRouter, myModelsRouter } = modelsRouter();
   app.use('/api/models', modelsSystemRouter);

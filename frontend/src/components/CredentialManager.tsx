@@ -2,23 +2,15 @@ import React, { useState, useEffect } from 'react'
 
 const API_BASE = '/api'
 
-// ---- 类型定义 ----
-
 interface Credential {
-  key: string
+  id: string
   host: string
   type: string
   username?: string
   updatedAt?: string
-  [key: string]: any
-}
-
-interface Project {
-  id: string
-  name: string
-  workdir: string
-  gitHost?: string
-  [key: string]: any
+  created_at?: string
+  updated_at?: string
+  key?: string
 }
 
 interface FormData {
@@ -39,38 +31,61 @@ interface ScanResult {
 }
 
 interface ScanResults {
-  remoteUrl: string
+  host?: string
+  remoteUrl?: string
+  isSsh?: boolean
   results: ScanResult[]
   message?: string
 }
 
 export default function CredentialManager() {
   const [credentials, setCredentials] = useState<Credential[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState<FormData>({ host: '', type: 'token', username: '', secret: '', keyData: '' })
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [scanResults, setScanResults] = useState<ScanResults | null>(null)
-  const [selectedProject, setSelectedProject] = useState('')
+  const [scanWorkdir, setScanWorkdir] = useState('')
 
   useEffect(() => { fetchData() }, [])
 
   const fetchData = async () => {
     try {
-      const [creds, projs] = await Promise.all([
-        fetch(`${API_BASE}/credentials`).then(r => r.json()),
-        fetch(`${API_BASE}/projects`).then(r => r.json())
-      ])
-      setCredentials(creds)
-      setProjects(projs)
+      const res = await fetch(`${API_BASE}/credentials`)
+      const data = await res.json()
+      // 兼容新格式 { credentials: [...] } 和旧格式 [...]
+      const list = Array.isArray(data) ? data : (data.credentials || [])
+      setCredentials(list)
     } catch (e) {
-      console.error('加载数据失败:', e)
+      console.error('加载凭证失败:', e)
     } finally {
       setLoading(false)
     }
+  }
+
+  const resetForm = () => {
+    setFormData({ host: '', type: 'token', username: '', secret: '', keyData: '' })
+    setEditingId(null)
+    setShowForm(false)
+    setError('')
+    setScanResults(null)
+  }
+
+  const startEdit = (cred: Credential) => {
+    setFormData({
+      host: cred.host,
+      type: cred.type,
+      username: cred.username || '',
+      secret: '',
+      keyData: '',
+    })
+    setEditingId(cred.id)
+    setShowForm(true)
+    setError('')
+    setScanResults(null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -80,52 +95,78 @@ export default function CredentialManager() {
     try {
       const body: Record<string, any> = { host: formData.host.trim(), type: formData.type }
       if (formData.username) body.username = formData.username.trim()
-      if (formData.type === 'token') body.secret = formData.secret
-      if (formData.type === 'ssh') body.keyData = formData.keyData
+      if (formData.type === 'token' && formData.secret) body.secret = formData.secret
+      if (formData.type === 'ssh' && formData.keyData) body.keyData = formData.keyData
 
-      const res = await fetch(`${API_BASE}/credentials`, {
-        method: 'POST',
+      const url = editingId ? `${API_BASE}/credentials/${editingId}` : `${API_BASE}/credentials`
+      const method = editingId ? 'PUT' : 'POST'
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || '设置失败')
+      let data: any
+      try {
+        data = await res.json()
+      } catch {
+        setError(`服务器返回异常 (HTTP ${res.status})`)
+        return
+      }
+      if (!res.ok) {
+        setError(data.error || '操作失败')
+        return
+      }
 
-      setFormData({ host: '', type: 'token', username: '', secret: '', keyData: '' })
-      setShowForm(false)
+      resetForm()
       await fetchData()
     } catch (e: any) {
-      setError(e.message)
+      console.error('保存凭证失败:', e)
+      setError(e?.message || '网络请求失败')
     } finally {
       setSubmitting(false)
     }
   }
 
-  const handleDelete = async (key: string) => {
-    if (!confirm(`确定删除此凭证？`)) return
+  const handleDelete = async (id: string) => {
+    if (!confirm('确定删除此系统凭证？')) return
     try {
-      await fetch(`${API_BASE}/credentials/${encodeURIComponent(key)}`, { method: 'DELETE' })
-      await fetchData()
+      const res = await fetch(`${API_BASE}/credentials/${id}`, { method: 'DELETE' })
+      if (res.ok) fetchData()
     } catch (e) {
       console.error('删除凭证失败:', e)
     }
   }
 
   const handleScan = async () => {
-    if (!selectedProject) return
-    const proj = projects.find(p => p.id === selectedProject)
-    if (!proj) return
+    if (!scanWorkdir.trim()) {
+      setError('请输入项目路径')
+      return
+    }
     setScanning(true)
     setScanResults(null)
+    setError('')
     try {
       const res = await fetch(`${API_BASE}/credentials/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workdir: proj.workdir })
+        body: JSON.stringify({ workdir: scanWorkdir.trim() })
       })
-      setScanResults(await res.json())
+      let data: any
+      try {
+        data = await res.json()
+      } catch {
+        setError(`服务器返回异常 (HTTP ${res.status})`)
+        return
+      }
+      if (!res.ok) {
+        setError(data.error || '扫描失败')
+        return
+      }
+      setScanResults(data)
     } catch (e: any) {
-      setError('扫描失败: ' + e.message)
+      console.error('扫描凭证失败:', e)
+      setError(e?.message || '网络请求失败')
     } finally {
       setScanning(false)
     }
@@ -143,12 +184,22 @@ export default function CredentialManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || '保存失败')
+      let data: any
+      try {
+        data = await res.json()
+      } catch {
+        setError(`服务器返回异常 (HTTP ${res.status})`)
+        return
+      }
+      if (!res.ok) {
+        setError(data.error || '保存失败')
+        return
+      }
       await fetchData()
       setScanResults(null)
     } catch (e: any) {
-      setError('保存失败: ' + e.message)
+      console.error('保存扫描凭证失败:', e)
+      setError(e?.message || '网络请求失败')
     }
   }
 
@@ -159,40 +210,39 @@ export default function CredentialManager() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-          管理Git远程仓库凭证，自动应用到匹配的项目
+          管理系统级凭证，可分配给用户使用
         </p>
         <div className="flex gap-2">
-          <button onClick={() => { setShowForm(!showForm); setError(''); setScanResults(null) }} className="btn-secondary px-3 py-1.5 text-sm">
+          <button onClick={() => showForm ? resetForm() : setShowForm(true)} className="btn-secondary px-3 py-1.5 text-sm">
             {showForm ? '取消' : '+ 手动添加'}
           </button>
         </div>
       </div>
 
-      {/* 从现有项目扫描 */}
-      <div className="card space-y-2">
-        <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>从现有项目读取凭证</label>
-        <div className="flex gap-2">
-          <select
-            value={selectedProject}
-            onChange={e => setSelectedProject(e.target.value)}
-            className="select-field flex-1"
-          >
-            <option value="">选择一个项目...</option>
-            {projects.filter(p => p.gitHost).map(p => (
-              <option key={p.id} value={p.id}>{p.name} ({p.gitHost})</option>
-            ))}
-          </select>
-          <button onClick={handleScan} disabled={!selectedProject || scanning} className="btn-primary px-3 py-1.5 text-sm whitespace-nowrap">
-            {scanning ? '扫描中...' : '🔍 扫描'}
-          </button>
+      {/* 扫描区域 */}
+      {!showForm && (
+        <div className="card space-y-2">
+          <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>从现有项目读取凭证</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="项目路径 (如 /home/user/project)"
+              value={scanWorkdir}
+              onChange={e => setScanWorkdir(e.target.value)}
+              className="input-field flex-1"
+            />
+            <button onClick={handleScan} disabled={scanning || !scanWorkdir.trim()} className="btn-primary px-3 py-1.5 text-sm whitespace-nowrap">
+              {scanning ? '扫描中...' : '🔍 扫描'}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 扫描结果 */}
       {scanResults && (
         <div className="card space-y-2">
           <div className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-            扫描结果: {scanResults.remoteUrl}
+            扫描结果: {scanResults.remoteUrl || scanResults.host}
           </div>
           {scanResults.results.length === 0 ? (
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
@@ -220,10 +270,13 @@ export default function CredentialManager() {
               ))}
             </div>
           )}
+          <button onClick={() => setScanResults(null)} className="text-xs" style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
+            关闭
+          </button>
         </div>
       )}
 
-      {/* 手动添加表单 */}
+      {/* 手动添加/编辑表单 */}
       {showForm && (
         <form onSubmit={handleSubmit} className="card space-y-3">
           {error && (
@@ -265,7 +318,7 @@ export default function CredentialManager() {
           </div>
           {formData.type === 'token' ? (
             <div>
-              <label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-secondary)' }}>Token *</label>
+              <label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-secondary)' }}>Token {editingId ? '(留空则不更新)' : '*'}</label>
               <input
                 type="password"
                 autoComplete="one-time-code"
@@ -273,23 +326,23 @@ export default function CredentialManager() {
                 value={formData.secret}
                 onChange={e => setFormData(p => ({ ...p, secret: e.target.value }))}
                 className="input-field w-full"
-                required
+                required={!editingId}
               />
             </div>
           ) : (
             <div>
-              <label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-secondary)' }}>SSH私钥 *</label>
+              <label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-secondary)' }}>SSH私钥 {editingId ? '(留空则不更新)' : '*'}</label>
               <textarea
                 placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
                 value={formData.keyData}
                 onChange={e => setFormData(p => ({ ...p, keyData: e.target.value }))}
                 className="input-field w-full h-24 resize-none font-mono text-xs"
-                required
+                required={!editingId}
               />
             </div>
           )}
           <button type="submit" disabled={submitting} className="btn-primary w-full py-2 text-sm">
-            {submitting ? '保存中...' : '保存凭证'}
+            {submitting ? '保存中...' : editingId ? '更新凭证' : '保存凭证'}
           </button>
         </form>
       )}
@@ -299,32 +352,43 @@ export default function CredentialManager() {
         <div className="text-center py-8" style={{ color: 'var(--text-muted)' }}>加载中...</div>
       ) : credentials.length === 0 ? (
         <div className="card text-center py-8">
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>暂无已配置的凭证</p>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>暂无系统凭证</p>
           <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>从现有项目扫描或手动添加</p>
         </div>
       ) : (
         <div className="space-y-2">
           {credentials.map(cred => (
-            <div key={cred.key} className="card flex items-center justify-between">
+            <div key={cred.id} className="card flex items-center justify-between">
               <div>
                 <div className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
                   {typeIcon(cred.type)}
                   {cred.username ? (
                     <><span style={{ color: 'var(--accent-primary)' }}>{cred.username}</span>@{cred.host}</>
-                  ) : (
-                    cred.host
-                  )}
+                  ) : cred.host}
                   <span className="badge text-xs" style={{ background: 'var(--accent-primary-soft)', color: 'var(--accent-primary)' }}>
                     {typeLabel(cred.type)}
                   </span>
                 </div>
                 <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                  {cred.updatedAt ? `更新于 ${new Date(cred.updatedAt).toLocaleDateString()}` : ''}
+                  {cred.updated_at ? `更新于 ${new Date(cred.updated_at).toLocaleDateString()}` : ''}
                 </div>
               </div>
-              <button onClick={() => handleDelete(cred.key)} className="text-xs px-2 py-1 rounded hover:bg-red-500/10" style={{ color: 'var(--error)' }}>
-                删除
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => startEdit(cred)}
+                  className="text-xs px-2 py-1 rounded"
+                  style={{ color: 'var(--accent-primary)', background: 'var(--accent-primary-soft)', border: 'none', cursor: 'pointer' }}
+                >
+                  编辑
+                </button>
+                <button
+                  onClick={() => handleDelete(cred.id)}
+                  className="text-xs px-2 py-1 rounded"
+                  style={{ color: 'var(--error)', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                >
+                  删除
+                </button>
+              </div>
             </div>
           ))}
         </div>
