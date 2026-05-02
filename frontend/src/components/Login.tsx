@@ -5,7 +5,6 @@ interface LoginProps {
 }
 
 export default function Login({ onLogin }: LoginProps) {
-  const [mode, setMode] = useState<'login' | 'register'>('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -15,10 +14,7 @@ export default function Login({ onLogin }: LoginProps) {
   useEffect(() => {
     fetch('/api/auth/status')
       .then(r => r.json())
-      .then(data => {
-        setHasUsers(data.hasUsers)
-        if (!data.hasUsers) setMode('register')
-      })
+      .then(data => setHasUsers(data.hasUsers))
       .catch(() => setHasUsers(true))
   }, [])
 
@@ -29,8 +25,7 @@ export default function Login({ onLogin }: LoginProps) {
     setError('')
 
     try {
-      const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register'
-      const res = await fetch(endpoint, {
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim(), password }),
@@ -38,7 +33,7 @@ export default function Login({ onLogin }: LoginProps) {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error || '操作失败')
+        setError(data.error || '登录失败')
         setLoading(false)
         return
       }
@@ -52,6 +47,26 @@ export default function Login({ onLogin }: LoginProps) {
     setLoading(false)
   }
 
+  if (hasUsers === false) {
+    return (
+      <div style={{
+        display: 'flex', justifyContent: 'center', alignItems: 'center',
+        height: '100vh', background: 'var(--bg-primary)'
+      }}>
+        <div style={{
+          background: 'var(--bg-secondary)', padding: '40px', borderRadius: '16px',
+          border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-md)',
+          width: 360, textAlign: 'center'
+        }}>
+          <h2 style={{ margin: '0 0 16px', color: 'var(--text-primary)' }}>AgentPilot</h2>
+          <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: '0.9rem' }}>
+            系统暂无用户，请联系管理员创建账户
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{
       display: 'flex', justifyContent: 'center', alignItems: 'center',
@@ -63,35 +78,6 @@ export default function Login({ onLogin }: LoginProps) {
         width: 360, display: 'flex', flexDirection: 'column', gap: 16
       }}>
         <h2 style={{ textAlign: 'center', margin: 0, color: 'var(--text-primary)' }}>AgentPilot</h2>
-
-        {hasUsers !== false && (
-          <div style={{ display: 'flex', gap: 0, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border-primary)' }}>
-            <button
-              type="button"
-              onClick={() => { setMode('login'); setError('') }}
-              style={{
-                flex: 1, padding: '8px', border: 'none', cursor: 'pointer', fontWeight: 600,
-                background: mode === 'login' ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
-                color: mode === 'login' ? '#fff' : 'var(--text-muted)',
-              }}
-            >登录</button>
-            <button
-              type="button"
-              onClick={() => { setMode('register'); setError('') }}
-              style={{
-                flex: 1, padding: '8px', border: 'none', cursor: 'pointer', fontWeight: 600,
-                background: mode === 'register' ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
-                color: mode === 'register' ? '#fff' : 'var(--text-muted)',
-              }}
-            >注册</button>
-          </div>
-        )}
-
-        {hasUsers === false && (
-          <p style={{ textAlign: 'center', margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            首次使用，请创建管理员账户
-          </p>
-        )}
 
         <input
           type="text"
@@ -125,7 +111,7 @@ export default function Login({ onLogin }: LoginProps) {
           background: 'var(--accent-primary)', color: '#fff', cursor: 'pointer',
           fontWeight: 600, fontSize: '0.9rem'
         }}>
-          {loading ? '处理中...' : (mode === 'login' ? '登录' : '注册')}
+          {loading ? '处理中...' : '登录'}
         </button>
       </form>
     </div>

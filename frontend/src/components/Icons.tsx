@@ -11,62 +11,29 @@ interface IconProps {
 // ============================================
 export const AgentPilotLogo: React.FC<IconProps> = ({ size = 32, className = '' }) => (
   <svg width={size} height={size} viewBox="0 0 64 64" fill="none" className={className}>
-    {/* 外圈光环 */}
-    <circle cx="32" cy="32" r="30" stroke="url(#logoGradient)" strokeWidth="1.5" opacity="0.3" />
-
-    {/* 核心 - 抽象的 AI 芯片/大脑 */}
-    <path
-      d="M32 8L44 20V28L52 36V44L44 52H20L12 44V36L20 28V20L32 8Z"
-      stroke="url(#logoGradient)"
-      strokeWidth="2"
-      strokeLinejoin="round"
-      fill="url(#logoFill)"
-      fillOpacity="0.1"
-    />
-
-    {/* 内部连接线 - 代表神经网络 */}
-    <circle cx="32" cy="32" r="8" stroke="url(#logoGradient)" strokeWidth="1.5" fill="none" />
-    <circle cx="32" cy="32" r="3" fill="url(#logoGradient)" />
-
-    {/* 四个节点 - 代表连接 */}
-    <circle cx="32" cy="20" r="2.5" fill="url(#logoGradient)" />
-    <circle cx="44" cy="32" r="2.5" fill="url(#logoGradient)" />
-    <circle cx="32" cy="44" r="2.5" fill="url(#logoGradient)" />
-    <circle cx="20" cy="32" r="2.5" fill="url(#logoGradient)" />
-
-    {/* 连接线 */}
-    <line x1="32" y1="24" x2="32" y2="20" stroke="url(#logoGradient)" strokeWidth="1" opacity="0.6" />
-    <line x1="36" y1="32" x2="44" y2="32" stroke="url(#logoGradient)" strokeWidth="1" opacity="0.6" />
-    <line x1="32" y1="36" x2="32" y2="44" stroke="url(#logoGradient)" strokeWidth="1" opacity="0.6" />
-    <line x1="28" y1="32" x2="20" y2="32" stroke="url(#logoGradient)" strokeWidth="1" opacity="0.6" />
-
-    {/* 飞行轨迹 - 动态感 */}
-    <path
-      d="M8 32C8 32 16 28 20 20"
-      stroke="url(#logoGradient)"
-      strokeWidth="1"
-      strokeLinecap="round"
-      opacity="0.4"
-    />
-    <path
-      d="M56 32C56 32 48 36 44 44"
-      stroke="url(#logoGradient)"
-      strokeWidth="1"
-      strokeLinecap="round"
-      opacity="0.4"
-    />
-
     <defs>
-      <linearGradient id="logoGradient" x1="12" y1="12" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-        <stop stopColor="#60A5FA" />
-        <stop offset="0.5" stopColor="#A78BFA" />
-        <stop offset="1" stopColor="#F472B6" />
-      </linearGradient>
-      <linearGradient id="logoFill" x1="12" y1="12" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+      <linearGradient id="logoGradient" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
         <stop stopColor="#60A5FA" />
         <stop offset="1" stopColor="#A78BFA" />
       </linearGradient>
     </defs>
+    {/* 简洁的火箭/箭头形状 - 代表 Agent 智能体 */}
+    <path
+      d="M32 8L44 28H38V42H26V28H20L32 8Z"
+      fill="url(#logoGradient)"
+      fillOpacity="0.15"
+      stroke="url(#logoGradient)"
+      strokeWidth="2"
+      strokeLinejoin="round"
+    />
+    {/* 底部喷射火焰 - 简化为一个小三角 */}
+    <path
+      d="M28 42L32 50L36 42"
+      stroke="url(#logoGradient)"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </svg>
 )
 
@@ -301,5 +268,30 @@ export const IconUpload: React.FC<IconProps> = ({ size = 16, color = 'currentCol
     <path d="M21 15V19C21 20.1 20.1 21 19 21H5C3.9 21 3 20.1 3 19V15" />
     <polyline points="17 8 12 3 7 8" />
     <line x1="12" y1="3" x2="12" y2="15" />
+  </svg>
+)
+
+export const IconLogout: React.FC<IconProps> = ({ size = 16, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5C3.9 21 3 20.1 3 19V5C3 3.9 3.9 3 5 3H9" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" y1="12" x2="9" y2="12" />
+  </svg>
+)
+
+export const IconList: React.FC<IconProps> = ({ size = 16, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="8" y1="6" x2="21" y2="6" />
+    <line x1="8" y1="12" x2="21" y2="12" />
+    <line x1="8" y1="18" x2="21" y2="18" />
+    <line x1="3" y1="6" x2="3.01" y2="6" />
+    <line x1="3" y1="12" x2="3.01" y2="12" />
+    <line x1="3" y1="18" x2="3.01" y2="18" />
+  </svg>
+)
+
+export const IconChat: React.FC<IconProps> = ({ size = 16, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
   </svg>
 )

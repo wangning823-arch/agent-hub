@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react'
 import ChatPanel from './components/ChatPanel'
 import NewSessionModal from './components/NewSessionModal'
 import SettingsPanel from './components/SettingsPanel'
-import ProjectManager from './components/ProjectManager'
 import Sidebar from './components/Sidebar'
 import RightSidebar from './components/RightSidebar'
 import ContextManager from './components/ContextManager'
@@ -79,18 +78,6 @@ interface UserInfo {
   homeDir: string
 }
 
-interface SelectProjectResult {
-  session: Session
-  project: {
-    id?: string
-    name?: string
-    mode?: string
-    model?: string
-    effort?: string
-    [key: string]: any
-  }
-}
-
 // ===================== 主组件 =====================
 
 export default function App() {
@@ -104,7 +91,6 @@ export default function App() {
   const [showNewModal, setShowNewModal] = useState<boolean>(false)
   const [preselectedProject, setPreselectedProject] = useState<{ id: string; name: string; workdir: string; [key: string]: any } | null>(null)
   const [showSettings, setShowSettings] = useState<boolean>(false)
-  const [showProjectManager, setShowProjectManager] = useState<boolean>(false)
   const toast = useToast()
   const { themeName } = useTheme()
   const [showContextManager, setShowContextManager] = useState<boolean>(false)
@@ -297,6 +283,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (!accessToken) return
     fetch(`${API_BASE}/sessions`)
       .then(res => res.json())
       .then(data => {
@@ -326,7 +313,7 @@ export default function App() {
         }
       })
       .catch(console.error)
-  }, [])
+  }, [accessToken])
 
   useEffect(() => {
     const checkAgentStatus = async (): Promise<void> => {
@@ -479,19 +466,6 @@ export default function App() {
     ))
   }
 
-  const handleSelectProject = (result: SelectProjectResult): void => {
-    const { session, project } = result
-    setSessions(prev => [...prev, session])
-    setActiveSession(session.id)
-    setSessionOptions(prev => ({
-      ...prev,
-      [session.id]: { mode: project.mode, model: project.model, effort: project.effort }
-    }))
-    if (project.id) setActiveProjectId(project.id)
-    setShowProjectManager(false)
-    if (isMobile) scrollToPanel('main')
-  }
-
   const handleUpdateOptions = (sessionId: string, options: Record<string, any>): void => {
     setSessionOptions(prev => ({ ...prev, [sessionId]: options }))
     // 同步更新后端agent的options（mode/model/effort）
@@ -615,6 +589,9 @@ export default function App() {
           workdir={currentSession?.workdir || ''}
           sessionOptions={sessionOptions}
           loadingSessionId={loadingSessionId}
+          user={user}
+          onLogout={handleLogout}
+          onShowUserManager={() => setShowUserManager(true)}
           onSetLoading={(id: string | null) => setLoadingSessionId(id)}
           onSelectSession={(id: string) => {
             if (id === activeSession) {
@@ -629,7 +606,6 @@ export default function App() {
           onCloseSession={removeSession}
           onResumeSession={resumeSession}
           onNewSession={(project) => { setPreselectedProject(project || null); setShowNewModal(true) }}
-          onOpenProject={() => setShowProjectManager(true)}
           onUpdateOptions={handleUpdateOptions}
           onRenameSession={renameSession}
           onPinSession={pinSession}
@@ -693,39 +669,6 @@ export default function App() {
             <button onClick={() => setShowSearch(true)} className="btn-icon" title="搜索 (Ctrl+K)">
               <IconSearch />
             </button>
-            <div className="relative group">
-              <button className="btn-icon flex items-center gap-1.5" title="用户菜单">
-                <span className="text-sm" style={{ color: 'var(--text-primary)' }}>
-                  {user?.username || 'User'}
-                </span>
-                {user?.role === 'admin' && (
-                  <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-primary-soft)', color: 'var(--accent-primary)' }}>
-                    Admin
-                  </span>
-                )}
-              </button>
-              <div className="absolute right-0 top-full mt-1 hidden group-hover:block z-50" style={{
-                background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)',
-                borderRadius: 8, padding: 4, minWidth: 160, boxShadow: 'var(--shadow-lg)'
-              }}>
-                {user?.role === 'admin' && (
-                  <button
-                    onClick={() => setShowUserManager(true)}
-                    className="w-full text-left px-3 py-2 text-sm rounded hover:bg-[var(--bg-tertiary)]"
-                    style={{ color: 'var(--text-primary)' }}
-                  >
-                    用户管理
-                  </button>
-                )}
-                <button
-                  onClick={handleLogout}
-                  className="w-full text-left px-3 py-2 text-sm rounded hover:bg-[var(--bg-tertiary)]"
-                  style={{ color: 'var(--error)' }}
-                >
-                  退出登录
-                </button>
-              </div>
-            </div>
             <button
               onClick={() => isMobile ? scrollToPanel('right') : setRightSidebarOpen(!rightSidebarOpen)}
               className={`btn-icon ${rightSidebarOpen ? 'active' : ''}`}
@@ -773,22 +716,17 @@ export default function App() {
                 <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>AgentPilot</h2>
                 <p className="mb-8" style={{ color: 'var(--text-muted)' }}>多 Agent 协作开发平台</p>
                 <div className="flex flex-col gap-3 max-w-xs mx-auto">
-                  <button onClick={() => setShowProjectManager(true)} className="btn-primary py-3.5 text-base font-semibold">
-                    &#x1F4C1; 打开项目
+                  <button onClick={() => setShowNewModal(true)} className="btn-primary py-3.5 text-base font-semibold rounded-xl transition-all"
+                    style={{
+                      background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary, #8b5cf6))',
+                      color: '#fff',
+                      boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
+                    }}
+                    onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.boxShadow = '0 6px 20px rgba(99,102,241,0.6)')}
+                    onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.boxShadow = '0 4px 14px rgba(99,102,241,0.4)')}
+                  >
+                    &#x26A1; 新建会话
                   </button>
-                  {activeProjectId && (
-                    <button onClick={() => setShowNewModal(true)} className="py-3.5 text-base font-semibold rounded-xl transition-all"
-                      style={{
-                        background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary, #8b5cf6))',
-                        color: '#fff',
-                        boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
-                      }}
-                      onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.boxShadow = '0 6px 20px rgba(99,102,241,0.6)')}
-                      onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.boxShadow = '0 4px 14px rgba(99,102,241,0.4)')}
-                    >
-                      &#x26A1; 新建会话
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
@@ -815,14 +753,6 @@ export default function App() {
         />
       )}
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
-      {showProjectManager && (
-        <ProjectManager
-          onSelectProject={handleSelectProject}
-          onNewSession={(project: any) => { setPreselectedProject(project as any); setShowProjectManager(false); setShowNewModal(true) }}
-          onClose={() => setShowProjectManager(false)}
-          homeDir={user?.homeDir}
-        />
-      )}
       {showContextManager && activeSession && (
         <ContextManager
           sessionId={activeSession}

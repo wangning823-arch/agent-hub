@@ -14,7 +14,11 @@ import {
   IconPause,
   IconRunning,
   IconCheck,
-  IconExternal
+  IconExternal,
+  IconSettings,
+  IconLogout,
+  IconList,
+  IconChat
 } from './Icons'
 
 // ---- Type Definitions ----
@@ -85,6 +89,13 @@ interface IconChevronProps {
   open: boolean
 }
 
+interface UserInfo {
+  userId: string
+  username: string
+  role: 'admin' | 'user'
+  homeDir?: string
+}
+
 interface SidebarProps {
   sessions: Session[]
   activeSession: string | null
@@ -93,11 +104,11 @@ interface SidebarProps {
   workdir?: string
   sessionOptions: SessionOptions
   loadingSessionId: string | null
+  user?: UserInfo | null
   onSelectSession: (id: string) => void
   onCloseSession: (id: string) => void
   onResumeSession: (id: string) => void
   onNewSession: (project?: Project) => void
-  onOpenProject: () => void
   onUpdateOptions: (sessionId: string, options: Record<string, unknown>) => void
   onRenameSession: (id: string, title: string) => void
   onPinSession: (id: string) => void
@@ -106,6 +117,8 @@ interface SidebarProps {
   onSetLoading: (id: string | null) => void
   onRestoringMemoryChange?: (id: string, restoring: boolean) => void
   onProjectChange?: (project: Project | null) => void
+  onLogout?: () => void
+  onShowUserManager?: () => void
 }
 
 interface Project {
@@ -123,11 +136,11 @@ export default function Sidebar({
   workdir = '',
   sessionOptions,
   loadingSessionId,
+  user,
   onSelectSession,
   onCloseSession,
   onResumeSession,
   onNewSession,
-  onOpenProject,
   onUpdateOptions,
   onRenameSession,
   onPinSession,
@@ -135,7 +148,9 @@ export default function Sidebar({
   onUpdateTags,
   onSetLoading,
   onRestoringMemoryChange,
-  onProjectChange
+  onProjectChange,
+  onLogout,
+  onShowUserManager
 }: SidebarProps) {
   const toast = useToast()
   const [expandedSection, setExpandedSection] = useState<string>('sessions')
@@ -160,6 +175,12 @@ export default function Sidebar({
   } | null>(null)
   const [projectPassword, setProjectPassword] = useState('')
   const [verifiedProjectIds, setVerifiedProjectIds] = useState<Set<string>>(new Set())
+  const [showProjectPopover, setShowProjectPopover] = useState(false)
+  const [showCreateProject, setShowCreateProject] = useState(false)
+  const [createMode, setCreateMode] = useState<'git' | 'manual'>('git')
+  const [newProject, setNewProject] = useState({ name: '', workdir: '', password: '', confirmPassword: '' })
+  const [gitUrl, setGitUrl] = useState('')
+  const [importing, setImporting] = useState(false)
 
   const skillDescriptionTranslations: Record<string, string> = {
     // 通用命令
@@ -261,6 +282,79 @@ export default function Sidebar({
         setProjects(data)
       }
     } catch (error) { console.error('加载项目失败:', error) }
+  }
+
+  const toggleFavorite = async (projectId: string) => {
+    try {
+      await fetch(`${API_BASE}/projects/${projectId}/favorite`, { method: 'POST' })
+      await loadProjects()
+    } catch (error) { toast.error('操作失败') }
+  }
+
+  const deleteProject = async (projectId: string) => {
+    if (!confirm('确定要删除这个项目吗？')) return
+    try {
+      const res = await fetch(`${API_BASE}/projects/${projectId}`, { method: 'DELETE' }).then(r => r.json())
+      if (res.success) {
+        toast.success('项目已删除')
+        if (selectedProjectId === projectId) {
+          setSelectedProjectId('')
+          if (onProjectChange) onProjectChange(null)
+        }
+        await loadProjects()
+      }
+    } catch (error) { toast.error('删除失败') }
+  }
+
+  const createProject = async () => {
+    if (newProject.password && newProject.password !== newProject.confirmPassword) {
+      toast.error('两次输入的密码不一致'); return
+    }
+    try {
+      const res = await fetch(`${API_BASE}/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newProject.name,
+          workdir: newProject.workdir,
+          password: newProject.password || undefined
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) { toast.error(data.error || '创建失败'); return }
+      toast.success('项目已创建')
+      setNewProject({ name: '', workdir: '', password: '', confirmPassword: '' })
+      setShowCreateProject(false)
+      await loadProjects()
+    } catch (error: any) { toast.error('创建失败: ' + error.message) }
+  }
+
+  const importFromGit = async () => {
+    if (!gitUrl.trim()) { toast.warning('请输入 Git 仓库地址'); return }
+    setImporting(true)
+    try {
+      const result = await fetch(`${API_BASE}/projects/import-git`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gitUrl: gitUrl.trim(), password: newProject.password || undefined })
+      }).then(r => r.json())
+      if (result.error) { toast.error(result.error); return }
+      if (result.status === 'existing') {
+        toast.info(result.message)
+      } else if (result.status === 'imported') {
+        toast.success(result.message)
+      } else {
+        toast.success(result.message)
+      }
+      loadProjects()
+      setShowCreateProject(false)
+      setGitUrl('')
+      setNewProject({ name: '', workdir: '', password: '', confirmPassword: '' })
+    } catch (error: any) {
+      toast.error('导入失败: ' + error.message)
+    } finally {
+      setImporting(false)
+    }
   }
 
   const handleProjectSelect = async (projectId: string) => {
@@ -458,97 +552,170 @@ export default function Sidebar({
         </h1>
       </div>
 
-      {/* Project button */}
-      <div className="p-3">
-        <button onClick={onOpenProject} className="btn-primary w-full flex items-center justify-center gap-2 py-2.5">
-          📁 项目管理
+      {/* Project selector */}
+      <div className="px-3 pt-3 pb-1 relative">
+        <button
+          onClick={() => setShowProjectPopover(!showProjectPopover)}
+          className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors"
+          style={{
+            background: 'var(--bg-primary)',
+            border: '1px solid var(--border-subtle)',
+            color: 'var(--text-primary)'
+          }}
+        >
+          <span className="flex items-center gap-2 min-w-0 truncate">
+            {selectedProjectId ? (
+              <>
+                {projects.find(p => p.id === selectedProjectId)?.hasPassword && <span className="shrink-0">🔒</span>}
+                <span className="truncate">{projects.find(p => p.id === selectedProjectId)?.name || '选择项目'}</span>
+              </>
+            ) : (
+              <span style={{ color: 'var(--text-muted)' }}>请选择项目</span>
+            )}
+          </span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" style={{ color: 'var(--text-muted)', transform: showProjectPopover ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }}>
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
         </button>
+
+        {showProjectPopover && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setShowProjectPopover(false)} />
+            <div
+              className="absolute left-3 right-3 top-full mt-1 z-50 rounded-lg overflow-hidden"
+              style={{
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border-subtle)',
+                boxShadow: 'var(--shadow-lg)',
+                maxHeight: 320,
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+            >
+              <div className="overflow-y-auto flex-1">
+                {projects.length === 0 ? (
+                  <div className="px-3 py-4 text-center text-xs" style={{ color: 'var(--text-muted)' }}>
+                    暂无项目
+                  </div>
+                ) : (
+                  [...projects].sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0)).map(project => (
+                    <div
+                      key={project.id}
+                      className="flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors"
+                      style={{
+                        background: project.id === selectedProjectId ? 'var(--accent-primary-soft)' : 'transparent',
+                        color: 'var(--text-primary)'
+                      }}
+                      onMouseEnter={(e) => { if (project.id !== selectedProjectId) e.currentTarget.style.background = 'var(--bg-tertiary)' }}
+                      onMouseLeave={(e) => { if (project.id !== selectedProjectId) e.currentTarget.style.background = 'transparent' }}
+                      onClick={() => { handleProjectSelect(project.id); setShowProjectPopover(false) }}
+                    >
+                      <span className="min-w-0 flex-1 truncate text-sm">
+                        {project.hasPassword && <span className="mr-1">🔒</span>}
+                        {project.name}
+                      </span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleFavorite(project.id) }}
+                        className="shrink-0 p-0.5 rounded transition-colors"
+                        style={{ color: project.favorite ? '#fbbf24' : 'var(--text-muted)', fontSize: 14 }}
+                        title={project.favorite ? '取消收藏' : '收藏'}
+                      >
+                        {project.favorite ? '★' : '☆'}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteProject(project.id) }}
+                        className="shrink-0 p-0.5 rounded transition-colors"
+                        style={{ color: 'var(--text-muted)', fontSize: 12 }}
+                        title="删除"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="border-t px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}>
+                <button
+                  onClick={() => { setShowProjectPopover(false); setShowCreateProject(true) }}
+                  className="w-full text-left px-2 py-1.5 rounded text-xs transition-colors"
+                  style={{ color: 'var(--accent-primary)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-tertiary)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  + 新建项目
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
-        {/* Sessions */}
-        <div className="border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-          <SectionHeader icon="💬" label="会话列表" count={sortedSessions.length} section="sessions" />
+        {/* Sessions - always visible */}
+        <div className="border-b flex flex-col" style={{ borderColor: 'var(--border-subtle)', minHeight: 0 }}>
+          <div className="px-4 py-3 flex items-center justify-between" style={{ color: 'var(--text-secondary)' }}>
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <IconList size={16} /> 会话列表
+              <span className="badge badge-count">{sortedSessions.length}</span>
+            </span>
+          </div>
 
-          {expandedSection === 'sessions' && (
-            <div className="pb-2">
-              {/* Project filter */}
-              <div className="px-4 py-2 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-                {projects.length === 0 ? (
-                  <div className="text-xs py-1.5" style={{ color: 'var(--text-muted)' }}>
-                    请先创建项目
-                  </div>
-                ) : (
-                  <select
-                    value={selectedProjectId || ''}
-                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleProjectSelect(e.target.value)}
-                    className="w-full text-xs px-2 py-1.5 rounded"
-                    style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
-                  >
-                    <option value="">请选择项目</option>
-                    {projects.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.hasPassword ? '🔒 ' : ''}{p.name}
-                      </option>
-                    ))}
-                  </select>
+          <div className="px-4 py-2 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                {showArchived ? <IconArchive size={14} /> : <IconChat size={14} />}
+                {showArchived ? '已归档' : '活跃会话'}
+              </span>
+              <button
+                onClick={() => setShowArchived(!showArchived)}
+                className="text-xs font-medium flex items-center gap-1"
+                style={{ color: 'var(--accent-primary)' }}
+              >
+                {showArchived ? <><IconChat size={12} /> 查看活跃</> : <><IconArchive size={12} /> 查看归档</>}
+              </button>
+            </div>
+          </div>
+
+          {allTags.length > 0 && (
+            <div className="px-4 py-2 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+              <TagFilter
+                tags={allTags}
+                selectedTags={selectedTags}
+                onToggleTag={(tag: string) => setSelectedTags(prev =>
+                  prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
                 )}
+                onClearTags={() => setSelectedTags([])}
+              />
+            </div>
+          )}
+
+          <div className="overflow-y-auto flex-1" style={{ minHeight: 240, maxHeight: 400 }}>
+            {!selectedProjectId ? (
+              <div className="px-4 py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+                请先选择一个项目
               </div>
-
-              {/* Tag filter */}
-              {allTags.length > 0 && (
-                <div className="px-4 py-2 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-                  <TagFilter
-                    tags={allTags}
-                    selectedTags={selectedTags}
-                    onToggleTag={(tag: string) => setSelectedTags(prev =>
-                      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-                    )}
-                    onClearTags={() => setSelectedTags([])}
-                  />
-                </div>
-              )}
-
-              {/* Archive toggle */}
-              <div className="px-4 py-2 flex items-center justify-between">
-                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  {showArchived ? '📦 已归档' : '📋 活跃会话'}
-                </span>
-                <button
-                  onClick={() => setShowArchived(!showArchived)}
-                  className="text-xs font-medium"
-                  style={{ color: 'var(--accent-primary)' }}
+            ) : sortedSessions.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+                {showArchived ? '没有已归档的会话' : '还没有会话'}
+              </div>
+            ) : (
+              sortedSessions.map(session => (
+                <div
+                  key={session.id}
+                  onClick={() => {
+                    if (session.isActive) {
+                      onSelectSession(session.id);
+                    } else {
+                      // 立即显示加载中，不等 API 返回
+                      if (onSetLoading) onSetLoading(session.id);
+                      onResumeSession(session.id);
+                    }
+                  }}
+                  className={`sidebar-item group ${activeSession === session.id ? 'active' : ''}`}
+                  style={{ flexDirection: 'column', alignItems: 'stretch' }}
                 >
-                  {showArchived ? '查看活跃' : '查看归档'}
-                </button>
-              </div>
-
-              {!selectedProjectId ? (
-                <div className="px-4 py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-                  请先选择一个项目
-                </div>
-              ) : sortedSessions.length === 0 ? (
-                <div className="px-4 py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-                  {showArchived ? '没有已归档的会话' : '还没有会话'}
-                </div>
-              ) : (
-                sortedSessions.map(session => (
-                  <div
-                    key={session.id}
-                    onClick={() => {
-                      if (session.isActive) {
-                        onSelectSession(session.id);
-                      } else {
-                        // 立即显示加载中，不等 API 返回
-                        if (onSetLoading) onSetLoading(session.id);
-                        onResumeSession(session.id);
-                      }
-                    }}
-                    className={`sidebar-item group ${activeSession === session.id ? 'active' : ''}`}
-                    style={{ flexDirection: 'column', alignItems: 'stretch' }}
-                  >
-                    <div className="flex items-center gap-2 min-w-0 w-full">
+                  <div className="flex items-center gap-2 min-w-0 w-full">
                       {session.isPinned && <span className="text-xs flex-shrink-0" style={{ color: 'var(--warning)' }}>📌</span>}
                       {session.isWorking ? <IconRunning /> : session.isActive ? <span className="text-xs" style={{ color: 'var(--success, #22c55e)' }}>●</span> : <IconPause />}
                       {editingSession === session.id ? (
@@ -644,20 +811,21 @@ export default function Sidebar({
                   </div>
                 ))
               )}
-
-              {selectedProjectId && (
-                <button
-                  onClick={() => {
-                    const project = projects.find(p => p.id === selectedProjectId)
-                    onNewSession(project)
-                  }}
-                  className="btn-secondary w-full text-sm py-2.5 flex items-center justify-center gap-2"
-                >
-                  <IconPlus /> 新建会话
-                </button>
-              )}
             </div>
-          )}
+
+          <div className="px-3 py-2">
+            {selectedProjectId && (
+              <button
+                onClick={() => {
+                  const project = projects.find(p => p.id === selectedProjectId)
+                  onNewSession(project)
+                }}
+                className="btn-secondary w-full text-sm py-2.5 flex items-center justify-center gap-2"
+              >
+                <IconPlus /> 新建会话
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Session Controls */}
@@ -674,9 +842,9 @@ export default function Sidebar({
                 <>
                   {/* Current config */}
                   <div className="text-xs space-y-1" style={{ color: 'var(--text-muted)' }}>
-                    {currentOptions.mode && <div>🛡️ 模式: {currentOptions.mode}</div>}
-                    {currentOptions.model && <div>🧠 模型: {currentOptions.model}</div>}
-                    {currentOptions.effort && <div>💪 努力: {currentOptions.effort}</div>}
+                    {currentOptions.mode && <div>模式: {currentOptions.mode}</div>}
+                    {currentOptions.model && <div>模型: {currentOptions.model}</div>}
+                    {currentOptions.effort && <div>努力: {currentOptions.effort}</div>}
                   </div>
 
                   {/* 恢复记忆按钮 */}
@@ -704,12 +872,12 @@ export default function Sidebar({
                     }}
                     className="btn-secondary w-full text-sm py-2 flex items-center justify-center gap-2"
                   >
-                    🧠 恢复记忆
+                    恢复记忆
                   </button>
 
                   {/* Permission modes */}
                   <div>
-                    <label className="block text-xs mb-2" style={{ color: 'var(--text-muted)' }}>🛡️ 权限模式</label>
+                    <label className="block text-xs mb-2" style={{ color: 'var(--text-muted)' }}>权限模式</label>
                     <div className="grid grid-cols-2 gap-1.5">
                       {options.modes.slice(0, 4).map(mode => (
                         <button
@@ -726,7 +894,7 @@ export default function Sidebar({
 
                   {/* Model select */}
                   <div>
-                    <label className="block text-xs mb-2" style={{ color: 'var(--text-muted)' }}>🧠 模型</label>
+                    <label className="block text-xs mb-2" style={{ color: 'var(--text-muted)' }}>模型</label>
                     <select
                       value={currentOptions.model || ''}
                       onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleOptionChange('model', e.target.value)}
@@ -741,7 +909,7 @@ export default function Sidebar({
 
                   {/* Effort */}
                   <div>
-                    <label className="block text-xs mb-2" style={{ color: 'var(--text-muted)' }}>💪 努力程度</label>
+                    <label className="block text-xs mb-2" style={{ color: 'var(--text-muted)' }}>努力程度</label>
                     <div className="flex gap-1.5">
                       {options.efforts.map(effort => (
                         <button
@@ -836,58 +1004,40 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Bottom actions - icon only */}
-      <div className="p-2 border-t flex items-center justify-center gap-1" style={{ borderColor: 'var(--border-subtle)' }}>
-        <button
-          onClick={() => {
-            const token = localStorage.getItem('access_token') || ''
-            if (activeSession) window.open(`${API_BASE}/export/session/${activeSession}?token=${token}`, '_blank')
-          }}
-          disabled={!activeSession}
-          className="btn-icon text-sm"
-          style={{ width: 32, height: 32, opacity: activeSession ? 1 : 0.3 }}
-          title="导出当前会话"
-        >📋</button>
-        <button
-          onClick={() => {
-            const token = localStorage.getItem('access_token') || ''
-            window.open(`${API_BASE}/export/sessions?token=${token}`, '_blank')
-          }}
-          className="btn-icon text-sm"
-          style={{ width: 32, height: 32 }}
-          title="备份所有会话"
-        >💾</button>
-        <button
-          onClick={() => {
-            const input = document.createElement('input')
-            input.type = 'file'
-            input.accept = '.json'
-            input.onchange = async (e: Event) => {
-              const target = e.target as HTMLInputElement
-              const file = target.files?.[0]
-              if (!file) return
-              try {
-                const text = await file.text()
-                const data = JSON.parse(text)
-                if (!data.sessions) { toast.error('无效的备份文件'); return }
-                const res = await fetch(`${API_BASE}/import/sessions`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: text
-                })
-                const result = await res.json()
-                if (result.success) {
-                  toast.success(`导入成功: ${result.imported} 个会话`)
-                  window.location.reload()
-                }
-              } catch (error: any) { toast.error('导入失败: ' + error.message) }
-            }
-            input.click()
-          }}
-          className="btn-icon text-sm"
-          style={{ width: 32, height: 32 }}
-          title="导入备份"
-        >📂</button>
+      {/* Bottom user info */}
+      <div className="p-3 border-t flex items-center justify-between" style={{ borderColor: 'var(--border-subtle)' }}>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+            {user?.username || 'User'}
+          </span>
+          {user?.role === 'admin' && (
+            <span className="text-xs px-1.5 py-0.5 rounded shrink-0" style={{ background: 'var(--accent-primary-soft)', color: 'var(--accent-primary)' }}>
+              Admin
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {user?.role === 'admin' && onShowUserManager && (
+            <button
+              onClick={onShowUserManager}
+              className="btn-icon"
+              style={{ width: 28, height: 28 }}
+              title="用户管理"
+            >
+              <IconSettings />
+            </button>
+          )}
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="btn-icon"
+              style={{ width: 28, height: 28 }}
+              title="退出登录"
+            >
+              <IconLogout size={16} color="var(--error)" />
+            </button>
+          )}
+        </div>
       </div>
 
       {showInstallModal && (
@@ -920,6 +1070,139 @@ export default function Sidebar({
               <button onClick={handleInstallSkill} disabled={installing || !installSource.trim()} className="btn-primary px-4 py-2">
                 {installing ? '安装中...' : '安装'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create project modal */}
+      {showCreateProject && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="rounded-lg p-6 w-full max-w-md" style={{ background: 'var(--bg-secondary)' }}>
+            <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>新建项目</h3>
+
+            <div className="flex gap-1 mb-4 rounded p-1" style={{ background: 'var(--bg-tertiary)' }}>
+              <button
+                onClick={() => setCreateMode('git')}
+                className="flex-1 py-2 px-3 rounded text-sm font-medium transition-colors"
+                style={createMode === 'git' ? { background: 'var(--accent-primary)', color: '#fff' } : { color: 'var(--text-muted)' }}
+              >
+                从 Git 克隆
+              </button>
+              <button
+                onClick={() => setCreateMode('manual')}
+                className="flex-1 py-2 px-3 rounded text-sm font-medium transition-colors"
+                style={createMode === 'manual' ? { background: 'var(--accent-primary)', color: '#fff' } : { color: 'var(--text-muted)' }}
+              >
+                手动创建
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {createMode === 'git' ? (
+                <div>
+                  <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>Git 仓库地址 *</label>
+                  <input
+                    type="text"
+                    value={gitUrl}
+                    onChange={(e) => setGitUrl(e.target.value)}
+                    className="w-full px-3 py-2 rounded"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+                    placeholder="https://github.com/user/repo 或 user/repo"
+                    onKeyDown={(e) => { if (e.key === 'Enter') importFromGit() }}
+                  />
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                    支持 GitHub/GitLab/Bitbucket，本地已有则直接进入
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>项目名称 *</label>
+                    <input
+                      type="text"
+                      value={newProject.name}
+                      onChange={(e) => {
+                        const name = e.target.value
+                        const slug = name.toLowerCase().replace(/\s+/g, '-')
+                        setNewProject(prev => ({ ...prev, name, workdir: name ? `${user?.homeDir || '~'}/projects/${slug}` : '' }))
+                      }}
+                      className="w-full px-3 py-2 rounded"
+                      style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+                      placeholder="我的项目"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>项目目录 (自动生成)</label>
+                    <input
+                      type="text"
+                      value={newProject.workdir ? newProject.workdir.replace(user?.homeDir || '', '~') : ''}
+                      readOnly
+                      className="w-full px-3 py-2 rounded opacity-70"
+                      style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}
+                    />
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                      将创建在 ~/projects/ 目录下
+                    </p>
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>项目密码 (可选)</label>
+                <input
+                  type="password"
+                  autoComplete="one-time-code"
+                  value={newProject.password}
+                  onChange={(e) => setNewProject(prev => ({ ...prev, password: e.target.value }))}
+                  className="w-full px-3 py-2 rounded"
+                  style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+                  placeholder="留空表示不设密码"
+                />
+              </div>
+              {newProject.password && (
+                <div>
+                  <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>确认密码</label>
+                  <input
+                    type="password"
+                    autoComplete="one-time-code"
+                    value={newProject.confirmPassword}
+                    onChange={(e) => setNewProject(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                    className="w-full px-3 py-2 rounded"
+                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+                    placeholder="再次输入密码"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => { setShowCreateProject(false); setGitUrl(''); setCreateMode('git'); setNewProject({ name: '', workdir: '', password: '', confirmPassword: '' }) }}
+                className="px-4 py-2"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                取消
+              </button>
+              {createMode === 'git' ? (
+                <button
+                  onClick={importFromGit}
+                  disabled={!gitUrl.trim() || importing}
+                  className="px-4 py-2 rounded disabled:opacity-50"
+                  style={{ background: 'var(--success, #22c55e)', color: '#fff' }}
+                >
+                  {importing ? '导入中...' : '克隆并导入'}
+                </button>
+              ) : (
+                <button
+                  onClick={createProject}
+                  disabled={!newProject.name}
+                  className="px-4 py-2 rounded disabled:opacity-50"
+                  style={{ background: 'var(--accent-primary)', color: '#fff' }}
+                >
+                  创建
+                </button>
+              )}
             </div>
           </div>
         </div>
