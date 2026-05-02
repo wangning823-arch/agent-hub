@@ -140,11 +140,10 @@ export const IconCopy: React.FC<IconProps> = ({ size = 14, color = 'currentColor
 )
 
 export const IconQuote: React.FC<IconProps> = ({ size = 14, color = 'currentColor' }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 21C3 21 3 13 8 8" />
-    <path d="M3 15C3 15 5 9 11 7" />
-    <path d="M13 21C13 21 13 13 18 8" />
-    <path d="M13 15C13 15 15 9 21 7" />
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 6h18" />
+    <path d="M3 12h12" />
+    <path d="M3 18h18" />
   </svg>
 )
 

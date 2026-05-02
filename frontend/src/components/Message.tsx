@@ -2,7 +2,7 @@ import React, { useRef } from 'react'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
-import { IconCopy, IconQuote, IconTrash, IconResend } from './Icons'
+import { IconCopy, IconQuote, IconTrash, IconResend, IconCheck } from './Icons'
 
 // ---- 类型定义 ----
 
@@ -57,12 +57,31 @@ export default function Message({ message, index, onDelete, onCopy, onQuote, onR
   // 确保 content 始终是字符串，防止 React 崩溃
   const content: string = rawContent != null ? (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent)) : ''
   const contentRef = useRef<HTMLDivElement>(null)
+  const [copied, setCopied] = React.useState(false)
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (content) {
-      navigator.clipboard.writeText(content)
-        .then(() => { if (onCopy) onCopy() })
-        .catch((err: any) => console.error('复制失败:', err))
+      try {
+        // 优先使用 Clipboard API
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(content)
+        } else {
+          // 后备方案：使用 textarea
+          const textarea = document.createElement('textarea')
+          textarea.value = content
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          document.execCommand('copy')
+          document.body.removeChild(textarea)
+        }
+        setCopied(true)
+        if (onCopy) onCopy()
+        setTimeout(() => setCopied(false), 1500)
+      } catch (err) {
+        console.error('复制失败:', err)
+      }
     }
   }
 
@@ -120,7 +139,9 @@ export default function Message({ message, index, onDelete, onCopy, onQuote, onR
         )}
         <div className="max-w-[80%] md:max-w-[70%]">
           <div className="flex justify-end gap-0.5 mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <ActionButton onClick={handleCopy} title="复制"><IconCopy /></ActionButton>
+            <ActionButton onClick={handleCopy} title={copied ? "已复制" : "复制"} hoverColor={copied ? "var(--success)" : undefined}>
+              {copied ? <IconCheck /> : <IconCopy />}
+            </ActionButton>
             <ActionButton onClick={handleQuote} title="引用回复" hoverColor="var(--accent-primary)"><IconQuote /></ActionButton>
             <ActionButton onClick={handleDelete} title="删除" hoverColor="var(--error)"><IconTrash /></ActionButton>
           </div>
@@ -245,7 +266,9 @@ export default function Message({ message, index, onDelete, onCopy, onQuote, onR
         <div className="flex items-center justify-between mt-1.5">
           <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatTime(message.time)}</div>
           <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            <ActionButton onClick={handleCopy} title="复制"><IconCopy /></ActionButton>
+            <ActionButton onClick={handleCopy} title={copied ? "已复制" : "复制"} hoverColor={copied ? "var(--success)" : undefined}>
+              {copied ? <IconCheck /> : <IconCopy />}
+            </ActionButton>
             <ActionButton onClick={handleQuote} title="引用回复" hoverColor="var(--accent-primary)"><IconQuote /></ActionButton>
             <ActionButton onClick={handleDelete} title="删除" hoverColor="var(--error)"><IconTrash /></ActionButton>
           </div>
