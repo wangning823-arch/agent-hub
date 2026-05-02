@@ -11,6 +11,7 @@ import SearchPanel from './components/SearchPanel'
 import { useToast } from './components/Toast'
 import { useTheme } from './components/ThemeContext'
 import Login from './components/Login'
+import UserManager from './components/UserManager'
 import {
   AgentPilotLogo,
   IconMenu,
@@ -71,6 +72,13 @@ interface CreateSessionOptions extends Record<string, any> {
   title?: string
 }
 
+interface UserInfo {
+  userId: string
+  username: string
+  role: 'admin' | 'user'
+  homeDir: string
+}
+
 interface SelectProjectResult {
   session: Session
   project: {
@@ -88,8 +96,10 @@ interface SelectProjectResult {
 export default function App() {
   const [accessToken, setAccessToken] = useState<string>(() => localStorage.getItem('access_token') || '')
   const [authChecked, setAuthChecked] = useState<boolean>(false)
+  const [user, setUser] = useState<UserInfo | null>(null)
+  const [showUserManager, setShowUserManager] = useState<boolean>(false)
   const [sessions, setSessions] = useState<Session[]>([])
-  const [activeSession, setActiveSession] = useState<string | null>(null)
+  const [activeSession, setActiveSession] = useState<string | null>(() => localStorage.getItem('activeSession'))
   const [sessionOptions, setSessionOptions] = useState<SessionOptions>({})
   const [showNewModal, setShowNewModal] = useState<boolean>(false)
   const [preselectedProject, setPreselectedProject] = useState<{ id: string; name: string; workdir: string; [key: string]: any } | null>(null)
@@ -111,8 +121,24 @@ export default function App() {
   const isMobileRef = useRef<boolean>(isMobile)
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
-  const [activeProjectWorkdir, setActiveProjectWorkdir] = useState<string | null>(null)
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(() => localStorage.getItem('activeProjectId'))
+  const [activeProjectWorkdir, setActiveProjectWorkdir] = useState<string | null>(() => localStorage.getItem('activeProjectWorkdir'))
+
+  // 持久化选中状态到 localStorage
+  useEffect(() => {
+    if (activeSession) localStorage.setItem('activeSession', activeSession)
+    else localStorage.removeItem('activeSession')
+  }, [activeSession])
+
+  useEffect(() => {
+    if (activeProjectId) localStorage.setItem('activeProjectId', activeProjectId)
+    else localStorage.removeItem('activeProjectId')
+  }, [activeProjectId])
+
+  useEffect(() => {
+    if (activeProjectWorkdir) localStorage.setItem('activeProjectWorkdir', activeProjectWorkdir)
+    else localStorage.removeItem('activeProjectWorkdir')
+  }, [activeProjectWorkdir])
 
   // 全局 fetch 拦截，自动加 token 和项目 ID
   useEffect(() => {
@@ -120,7 +146,7 @@ export default function App() {
     window.fetch = (url: RequestInfo | URL, opts: RequestInit = {}) => {
       const headers = { ...opts.headers } as Record<string, string>
       const token = localStorage.getItem('access_token')
-      if (token) headers['x-access-token'] = token
+      if (token) headers['Authorization'] = `Bearer ${token}`
       if (activeProjectId) headers['x-project-id'] = activeProjectId
       return origFetch(url, { ...opts, headers })
     }
@@ -131,16 +157,44 @@ export default function App() {
   useEffect(() => {
     const token = localStorage.getItem('access_token')
     if (!token) { setAuthChecked(true); return }
-    fetch('/api/auth/check', { headers: { 'x-access-token': token } })
-      .then(r => r.json())
+    fetch('/api/auth/me')
+      .then(r => {
+        if (!r.ok) throw new Error('unauthorized')
+        return r.json()
+      })
       .then(data => {
-        if (!data.valid) { localStorage.removeItem('access_token'); setAccessToken('') }
+        setUser(data)
         setAuthChecked(true)
       })
-      .catch(() => setAuthChecked(true))
+      .catch(() => {
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+        setAccessToken('')
+        setAuthChecked(true)
+      })
   }, [])
 
-  const handleLogin = (token: string): void => { setAccessToken(token) }
+  const handleLogin = (token: string): void => {
+    setAccessToken(token)
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(data => setUser(data))
+      .catch(console.error)
+  }
+
+  const handleLogout = (): void => {
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    localStorage.removeItem('activeSession')
+    localStorage.removeItem('activeProjectId')
+    localStorage.removeItem('activeProjectWorkdir')
+    setAccessToken('')
+    setUser(null)
+    setSessions([])
+    setActiveSession(null)
+    setActiveProjectId(null)
+    setActiveProjectWorkdir(null)
+  }
 
   const scrollToPanel = (panel: 'left' | 'main' | 'right'): void => {
     if (!scrollContainerRef.current) return
@@ -248,7 +302,7 @@ export default function App() {
       .then(data => {
         if (!Array.isArray(data)) { setSessions([]); return }
         setSessions(data)
-        // 加载所有session的options，不只是第一个
+        // 加载所有session的options
         const allOptions: SessionOptions = {}
         data.forEach((s: Session) => {
           if (s.options) {
@@ -256,6 +310,20 @@ export default function App() {
           }
         })
         setSessionOptions(prev => ({ ...allOptions, ...prev }))
+
+        // 恢复上次选中的 session
+        const savedSessionId = localStorage.getItem('activeSession')
+        if (savedSessionId) {
+          const found = data.find((s: Session) => s.id === savedSessionId)
+          if (found) {
+            setActiveSession(found.id)
+            setActiveProjectWorkdir(found.workdir)
+          } else {
+            // session 已不存在，清除
+            setActiveSession(null)
+            setActiveProjectWorkdir(null)
+          }
+        }
       })
       .catch(console.error)
   }, [])
@@ -506,6 +574,29 @@ export default function App() {
   const currentToken: string = localStorage.getItem('access_token') || accessToken
   if (!currentToken) return <Login onLogin={handleLogin} />
 
+  // 管理员：只显示管理界面
+  if (user?.role === 'admin') {
+    return (
+      <div className="overflow-hidden flex flex-col h-screen" style={{ background: 'var(--bg-primary)' }}>
+        <header className="flex items-center justify-between px-5 py-3 border-b" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-subtle)' }}>
+          <div className="flex items-center gap-3">
+            <span className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>AgentPilot 管理面板</span>
+            <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ background: 'var(--accent-primary-soft)', color: 'var(--accent-primary)' }}>Admin</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm" style={{ color: 'var(--text-muted)' }}>{user.username}</span>
+            <button onClick={handleLogout} className="text-sm px-3 py-1.5 rounded transition-colors" style={{ color: 'var(--error)', border: '1px solid var(--border-subtle)' }}>
+              退出登录
+            </button>
+          </div>
+        </header>
+        <div className="flex-1 overflow-auto">
+          <UserManager onClose={() => {}} fullPage />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       ref={scrollContainerRef}
@@ -519,6 +610,7 @@ export default function App() {
         <Sidebar
           sessions={sessions}
           activeSession={activeSession}
+          activeProjectId={activeProjectId}
           agentType={currentSession?.agentType || 'claude-code'}
           workdir={currentSession?.workdir || ''}
           sessionOptions={sessionOptions}
@@ -601,6 +693,39 @@ export default function App() {
             <button onClick={() => setShowSearch(true)} className="btn-icon" title="搜索 (Ctrl+K)">
               <IconSearch />
             </button>
+            <div className="relative group">
+              <button className="btn-icon flex items-center gap-1.5" title="用户菜单">
+                <span className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                  {user?.username || 'User'}
+                </span>
+                {user?.role === 'admin' && (
+                  <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-primary-soft)', color: 'var(--accent-primary)' }}>
+                    Admin
+                  </span>
+                )}
+              </button>
+              <div className="absolute right-0 top-full mt-1 hidden group-hover:block z-50" style={{
+                background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)',
+                borderRadius: 8, padding: 4, minWidth: 160, boxShadow: 'var(--shadow-lg)'
+              }}>
+                {user?.role === 'admin' && (
+                  <button
+                    onClick={() => setShowUserManager(true)}
+                    className="w-full text-left px-3 py-2 text-sm rounded hover:bg-[var(--bg-tertiary)]"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
+                    用户管理
+                  </button>
+                )}
+                <button
+                  onClick={handleLogout}
+                  className="w-full text-left px-3 py-2 text-sm rounded hover:bg-[var(--bg-tertiary)]"
+                  style={{ color: 'var(--error)' }}
+                >
+                  退出登录
+                </button>
+              </div>
+            </div>
             <button
               onClick={() => isMobile ? scrollToPanel('right') : setRightSidebarOpen(!rightSidebarOpen)}
               className={`btn-icon ${rightSidebarOpen ? 'active' : ''}`}
@@ -695,6 +820,7 @@ export default function App() {
           onSelectProject={handleSelectProject}
           onNewSession={(project: any) => { setPreselectedProject(project as any); setShowProjectManager(false); setShowNewModal(true) }}
           onClose={() => setShowProjectManager(false)}
+          homeDir={user?.homeDir}
         />
       )}
       {showContextManager && activeSession && (
@@ -716,6 +842,7 @@ export default function App() {
           onClose={() => setShowSearch(false)}
         />
       )}
+      {showUserManager && <UserManager onClose={() => setShowUserManager(false)} />}
     </div>
   )
 }

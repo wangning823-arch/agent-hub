@@ -4,6 +4,7 @@
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import * as path from 'path';
 import * as fs from 'fs';
+import crypto from 'crypto';
 
 const dataDir: string = path.join(__dirname, '..', '..', 'data');
 if (!fs.existsSync(dataDir)) {
@@ -176,6 +177,58 @@ async function initDb(): Promise<SqlJsDatabase> {
       config TEXT DEFAULT '{}'
     )
   `);
+
+  // ========== 用户管理表迁移 ==========
+  db.run(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'user',
+      home_dir TEXT NOT NULL,
+      display_name TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
+
+  try {
+    const cols = db.exec("PRAGMA table_info(projects)");
+    if (cols.length > 0) {
+      const colNames = cols[0].values.map((row: any[]) => row[1]);
+      if (!colNames.includes('user_id')) {
+        db.run('ALTER TABLE projects ADD COLUMN user_id TEXT DEFAULT NULL');
+        db.run('CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id)');
+        console.log('[数据库迁移] projects 表添加 user_id 列');
+      }
+    }
+  } catch (e) { }
+
+  try {
+    const cols = db.exec("PRAGMA table_info(sessions)");
+    if (cols.length > 0) {
+      const colNames = cols[0].values.map((row: any[]) => row[1]);
+      if (!colNames.includes('user_id')) {
+        db.run('ALTER TABLE sessions ADD COLUMN user_id TEXT DEFAULT NULL');
+        db.run('CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)');
+        console.log('[数据库迁移] sessions 表添加 user_id 列');
+      }
+    }
+  } catch (e) { }
+
+  try {
+    const cols = db.exec("PRAGMA table_info(workflow_templates)");
+    if (cols.length > 0) {
+      const colNames = cols[0].values.map((row: any[]) => row[1]);
+      if (!colNames.includes('user_id')) {
+        db.run('ALTER TABLE workflow_templates ADD COLUMN user_id TEXT DEFAULT NULL');
+        db.run('CREATE INDEX IF NOT EXISTS idx_workflow_templates_user_id ON workflow_templates(user_id)');
+        console.log('[数据库迁移] workflow_templates 表添加 user_id 列');
+      }
+    }
+  } catch (e) { }
 
   await migrateFromJson();
   await migrateProjectsFromJson();
@@ -432,6 +485,31 @@ async function initTokenStatsDb(): Promise<void> {
 
   tokenStatsDb.run(`CREATE INDEX IF NOT EXISTS idx_token_history_session_id ON token_history(session_id)`);
 
+  // 给 token_stats 和 token_history 表添加 user_id 列
+  try {
+    const tsCols = tokenStatsDb!.exec("PRAGMA table_info(token_stats)");
+    if (tsCols.length > 0) {
+      const tsColNames = tsCols[0].values.map((row: any[]) => row[1]);
+      if (!tsColNames.includes('user_id')) {
+        tokenStatsDb!.run('ALTER TABLE token_stats ADD COLUMN user_id TEXT DEFAULT NULL');
+        tokenStatsDb!.run('CREATE INDEX IF NOT EXISTS idx_token_stats_user_id ON token_stats(user_id)');
+        console.log('[数据库迁移] token_stats 表添加 user_id 列');
+      }
+    }
+  } catch (e) { }
+
+  try {
+    const thCols = tokenStatsDb!.exec("PRAGMA table_info(token_history)");
+    if (thCols.length > 0) {
+      const thColNames = thCols[0].values.map((row: any[]) => row[1]);
+      if (!thColNames.includes('user_id')) {
+        tokenStatsDb!.run('ALTER TABLE token_history ADD COLUMN user_id TEXT DEFAULT NULL');
+        tokenStatsDb!.run('CREATE INDEX IF NOT EXISTS idx_token_history_user_id ON token_history(user_id)');
+        console.log('[数据库迁移] token_history 表添加 user_id 列');
+      }
+    }
+  } catch (e) { }
+
   await migrateTokenStatsFromJson();
   saveTokenStatsToFile();
 
@@ -572,4 +650,17 @@ function saveTokenStats(): void {
   saveTokenStatsToFile();
 }
 
-export { initDb, getDb, saveToFile, getTokenStatsDb, saveTokenStats };
+const JWT_SECRET_PATH = path.join(dataDir, 'jwt-secret.json');
+
+function getJwtSecret(): string {
+  if (fs.existsSync(JWT_SECRET_PATH)) {
+    const data = JSON.parse(fs.readFileSync(JWT_SECRET_PATH, 'utf8'));
+    return data.secret;
+  }
+  const secret = crypto.randomBytes(64).toString('hex');
+  fs.writeFileSync(JWT_SECRET_PATH, JSON.stringify({ secret }, null, 2));
+  console.log('[JWT] 已生成新的 JWT 签名密钥');
+  return secret;
+}
+
+export { initDb, getDb, saveToFile, getTokenStatsDb, saveTokenStats, getJwtSecret };

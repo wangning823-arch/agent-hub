@@ -4,8 +4,19 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-export default (credentialManager: any) => { // TODO: type this
+export default (credentialManager: any, ALLOWED_ROOT?: string) => { // TODO: type this
   const router = Router();
+
+  function getUserRoot(req: Request): string {
+    return (req.user && req.user.role !== 'admin')
+      ? req.user.homeDir
+      : (ALLOWED_ROOT || process.env.HOME || '/root');
+  }
+
+  function validateWorkdir(workdir: string, userRoot: string): boolean {
+    const resolved = path.resolve(workdir);
+    return resolved.startsWith(userRoot);
+  }
 
   // 列出所有凭证（不含密钥）
   router.get('/', (_req: Request, res: Response) => {
@@ -66,6 +77,11 @@ export default (credentialManager: any) => { // TODO: type this
       const { workdir } = req.body;
       if (!workdir) {
         return res.status(400).json({ error: 'workdir是必需的' });
+      }
+
+      const userRoot = getUserRoot(req);
+      if (!validateWorkdir(workdir, userRoot)) {
+        return res.status(403).json({ error: '路径不在允许的范围内' });
       }
 
       const results: any[] = []; // TODO: type this
@@ -137,7 +153,7 @@ export default (credentialManager: any) => { // TODO: type this
         }
       }
 
-      // 2c. 检查 credential.helper store 的全局文件
+      // 2c. 检查 credential.helper store 的全局文件（仅限用户目录）
       let helperStore = '';
       try {
         helperStore = execSync('git config --global credential.helper', {
@@ -147,8 +163,8 @@ export default (credentialManager: any) => { // TODO: type this
       if (helperStore.startsWith('store')) {
         const storeMatch = helperStore.match(/store\s+--file=(.+)/);
         const storePath = storeMatch
-          ? storeMatch[1].replace('~', os.homedir())
-          : path.join(os.homedir(), '.git-credentials');
+          ? storeMatch[1].replace('~', userRoot)
+          : path.join(userRoot, '.git-credentials');
         if (fs.existsSync(storePath)) {
           const content = fs.readFileSync(storePath, 'utf8');
           for (const line of content.split('\n')) {
@@ -164,9 +180,9 @@ export default (credentialManager: any) => { // TODO: type this
         }
       }
 
-      // 2d. SSH 模式：检查 ssh config 和密钥
+      // 2d. SSH 模式：检查用户目录下的 ssh config 和密钥
       if (isSsh) {
-        const sshConfigPath = path.join(os.homedir(), '.ssh', 'config');
+        const sshConfigPath = path.join(userRoot, '.ssh', 'config');
         let identityFile: string | null = null;
         let sshUser = 'git';
 
@@ -180,7 +196,7 @@ export default (credentialManager: any) => { // TODO: type this
               for (const line of lines) {
                 const m = line.match(/^\s*IdentityFile\s+(.+)/i);
                 if (m) {
-                  const p = m[1].trim().replace('~', os.homedir());
+                  const p = m[1].trim().replace('~', userRoot);
                   if (fs.existsSync(p)) identityFile = p;
                 }
                 const um = line.match(/^\s*User\s+(.+)/i);
@@ -191,10 +207,10 @@ export default (credentialManager: any) => { // TODO: type this
           }
         }
 
-        // 如果 ssh config 没找到，检查默认密钥
+        // 如果 ssh config 没找到，检查用户目录下的默认密钥
         if (!identityFile) {
           for (const key of ['id_rsa', 'id_ed25519', 'id_ecdsa']) {
-            const kp = path.join(os.homedir(), '.ssh', key);
+            const kp = path.join(userRoot, '.ssh', key);
             if (fs.existsSync(kp)) { identityFile = kp; break; }
           }
         }

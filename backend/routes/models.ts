@@ -33,8 +33,8 @@ function readBackup(tool: string): Record<string, any> | null { // TODO: type th
   return JSON.parse(fs.readFileSync(backupPath, 'utf-8'));
 }
 
-function getConfigPaths(tool: string): string[] {
-  const homeDir = process.env.HOME || '/root';
+function getConfigPaths(tool: string, homeOverride?: string): string[] {
+  const homeDir = homeOverride || process.env.HOME || '/root';
   switch (tool) {
     case 'claude-code':
       return [path.join(homeDir, '.claude', 'settings.json')];
@@ -227,6 +227,9 @@ export default () => {
   router.post('/sync/claude-code', (req: Request, res: Response) => {
     const { providerId, modelConfig, workdir: projectWorkdir } = req.body;
     if (!providerId) return res.status(400).json({ error: 'providerId 必填' });
+    const syncHome = (req.user && req.user.role !== 'admin')
+      ? req.user.homeDir
+      : (process.env.HOME || '/root');
 
     const db = getDb();
     const result = db.exec(`SELECT base_url, base_url_anthropic, api_key FROM providers WHERE id = '${providerId.replace(/'/g, "''")}'`);
@@ -246,7 +249,7 @@ export default () => {
       // 解析相对路径为绝对路径
       const resolvedWorkdir = path.isAbsolute(projectWorkdir)
         ? projectWorkdir
-        : path.resolve(process.env.HOME || '/root', projectWorkdir);
+        : path.resolve(syncHome, projectWorkdir);
       settingsPath = path.join(resolvedWorkdir, '.claude', 'settings.json');
       // 确保 .claude 目录存在
       const settingsDir = path.dirname(settingsPath);
@@ -268,8 +271,7 @@ export default () => {
       }
     }
     if (!settingsPath!) {
-      const homeDir = process.env.HOME || '/root';
-      settingsPath = path.join(homeDir, '.claude', 'settings.json');
+      settingsPath = path.join(syncHome, '.claude', 'settings.json');
     }
 
     let settings: any = {}; // TODO: type this
@@ -312,8 +314,10 @@ export default () => {
     const { providerIds, defaultModel, smallModel } = req.body;
     const db = getDb();
 
-    const homeDir = process.env.HOME || '/root';
-    const configPath = path.join(homeDir, '.config', 'opencode', 'opencode.json');
+    const syncHome = (req.user && req.user.role !== 'admin')
+      ? req.user.homeDir
+      : (process.env.HOME || '/root');
+    const configPath = path.join(syncHome, '.config', 'opencode', 'opencode.json');
 
     let config: any = {}; // TODO: type this
     try {
@@ -380,6 +384,9 @@ export default () => {
   router.post('/sync/codex', (req: Request, res: Response) => {
     const { providerId, modelId } = req.body;
     if (!providerId || !modelId) return res.status(400).json({ error: 'providerId, modelId 必填' });
+    const syncHome = (req.user && req.user.role !== 'admin')
+      ? req.user.homeDir
+      : (process.env.HOME || '/root');
 
     const db = getDb();
     const pResult = db.exec(`SELECT base_url, api_key FROM providers WHERE id = '${providerId.replace(/'/g, "''")}'`);
@@ -388,8 +395,7 @@ export default () => {
     }
 
     const [baseUrl, apiKey] = pResult[0].values[0];
-    const homeDir = process.env.HOME || '/root';
-    const codexHome = process.env.CODEX_HOME || path.join(homeDir, '.codex');
+    const codexHome = process.env.CODEX_HOME || path.join(syncHome, '.codex');
     const configPath = path.join(codexHome, 'config.toml');
 
     try {
@@ -483,11 +489,14 @@ export default () => {
     // 按 workdir 过滤：有 workdir 时只恢复对应项目的备份，无 workdir 时只恢复全局备份
     let filteredBackup = backup;
     if (tool === 'claude-code' && undoWorkdir !== undefined) {
+      const undoHome = (req.user && req.user.role !== 'admin')
+        ? req.user.homeDir
+        : (process.env.HOME || '/root');
       const resolvedWorkdir = path.isAbsolute(undoWorkdir)
         ? undoWorkdir
-        : path.resolve(process.env.HOME || '/root', undoWorkdir);
+        : path.resolve(undoHome, undoWorkdir);
       const projectPrefix = path.join(resolvedWorkdir, '.claude');
-      const globalSettingsPath = path.join(process.env.HOME || '/root', '.claude', 'settings.json');
+      const globalSettingsPath = path.join(undoHome, '.claude', 'settings.json');
 
       filteredBackup = {};
       for (const [filePath, info] of Object.entries(backup)) {

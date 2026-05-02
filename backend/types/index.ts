@@ -300,3 +300,20 @@ export interface WorkflowTemplate {
   createdAt: number;
   usageCount: number;
 }
+
+// ==================== User Management Types ====================
+
+export interface UserContext {
+  userId: string;
+  username: string;
+  role: 'admin' | 'user';
+  homeDir: string;
+}
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: UserContext;
+    }
+  }
+}

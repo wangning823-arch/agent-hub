@@ -1,15 +1,33 @@
 import { Router, Request, Response } from 'express';
 
-export default (tokenTracker: any) => { // TODO: type this
+export default (tokenTracker: any, sessionManager?: any) => {
   const router = Router();
 
-  router.get('/', (_req: Request, res: Response) => {
-    const allStats = tokenTracker.getAllStats();
-    const totalStats = tokenTracker.getTotalStats();
-    res.json({
-      sessions: allStats,
-      total: totalStats
-    });
+  router.get('/', (req: Request, res: Response) => {
+    try {
+      const allStats = tokenTracker.getAllStats();
+      let filteredStats = allStats;
+
+      if (req.user && req.user.role !== 'admin' && sessionManager) {
+        const userSessionIds = new Set(
+          sessionManager.listSessions(req.user.userId).map((s: any) => s.id)
+        );
+        filteredStats = {};
+        for (const [sid, stats] of Object.entries(allStats)) {
+          if (userSessionIds.has(sid)) {
+            filteredStats[sid] = stats;
+          }
+        }
+      }
+
+      const totalStats = tokenTracker.getTotalStats();
+      res.json({
+        sessions: filteredStats,
+        total: totalStats
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   router.get('/:sessionId', (req: Request, res: Response) => {

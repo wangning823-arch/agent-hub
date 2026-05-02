@@ -6,5 +6,5 @@ export function getWebSocketUrl(sessionId: string): string {
   const host: string = window.location.host
   const token: string = localStorage.getItem('access_token') || ''
   const tokenParam: string = token ? `&token=${token}` : ''
-  return `${protocol}//${host}?session=${sessionId}${tokenParam}`
+  return `${protocol}//${host}/ws?session=${sessionId}${tokenParam}`
 }

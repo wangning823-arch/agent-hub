@@ -80,6 +80,7 @@ interface SessionInstance {
   subtasks: Subtask[];
   workflowDefs: WorkflowDefinition[];
   workflows: WorkflowInstance[];
+  userId?: string;
   toJSON(): SessionJSON;
 }
 
@@ -271,7 +272,7 @@ class SessionManager {
     const rows = db.exec(`
       SELECT id, workdir, agent_type, agent_name, conversation_id, title, options,
              is_pinned, is_archived, tags, created_at, updated_at, subtasks,
-             workflow_defs, workflows
+             workflow_defs, workflows, user_id
       FROM sessions ORDER BY updated_at DESC
     `);
 
@@ -333,6 +334,7 @@ class SessionManager {
         subtasks: JSON.parse((sessionData.subtasks as string) || '[]') as Subtask[],
         workflowDefs: JSON.parse((sessionData.workflow_defs as string) || '[]') as WorkflowDefinition[],
         workflows: JSON.parse((sessionData.workflows as string) || '[]') as WorkflowInstance[],
+        userId: (sessionData.user_id as string) || undefined,
         toJSON(): SessionJSON {
           return {
             id: this.id,
@@ -371,8 +373,8 @@ class SessionManager {
     try {
       db.run(
         `
-        INSERT OR REPLACE INTO sessions (id, workdir, agent_type, agent_name, conversation_id, title, options, is_pinned, is_archived, tags, created_at, updated_at, subtasks, workflow_defs, workflows)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO sessions (id, workdir, agent_type, agent_name, conversation_id, title, options, is_pinned, is_archived, tags, created_at, updated_at, subtasks, workflow_defs, workflows, user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
         [
           session.id,
@@ -394,6 +396,7 @@ class SessionManager {
           JSON.stringify(session.subtasks || []),
           JSON.stringify(session.workflowDefs || []),
           JSON.stringify(session.workflows || []),
+          session.userId || null,
         ],
       );
 
@@ -442,6 +445,7 @@ class SessionManager {
     workdir: string,
     agentType: AgentType = 'claude-code',
     options: SessionOptions = {},
+    userId?: string,
   ): Promise<SessionInstance | null> {
     const id = uuidv4();
 
@@ -482,6 +486,7 @@ class SessionManager {
       subtasks: [],
       workflowDefs: [],
       workflows: [],
+      userId,
       toJSON(): SessionJSON {
         return {
           id: this.id,
@@ -548,8 +553,12 @@ class SessionManager {
     this.saveSession(session);
   }
 
-  listSessions(): SessionJSON[] {
-    return Array.from(this.sessions.values()).map((s) => s.toJSON());
+  listSessions(userId?: string): SessionJSON[] {
+    let sessions = Array.from(this.sessions.values());
+    if (userId) {
+      sessions = sessions.filter(s => s.userId === userId || !s.userId);
+    }
+    return sessions.map((s) => s.toJSON());
   }
 
   isAgentRunning(sessionId: string): boolean {
@@ -941,9 +950,10 @@ class SessionManager {
     return session.toJSON();
   }
 
-  getAllTags(): string[] {
+  getAllTags(userId?: string): string[] {
     const tags = new Set<string>();
     for (const session of this.sessions.values()) {
+      if (userId && session.userId !== userId && session.userId) continue;
       if (session.tags) {
         session.tags.forEach((tag) => tags.add(tag));
       }
@@ -951,9 +961,10 @@ class SessionManager {
     return Array.from(tags);
   }
 
-  getSessionsByTag(tag: string): SessionJSON[] {
+  getSessionsByTag(tag: string, userId?: string): SessionJSON[] {
     const sessions: SessionJSON[] = [];
     for (const session of this.sessions.values()) {
+      if (userId && session.userId !== userId && session.userId) continue;
       if (session.tags && session.tags.includes(tag)) {
         sessions.push(session.toJSON());
       }

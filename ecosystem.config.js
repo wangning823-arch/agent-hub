@@ -1,11 +1,11 @@
 module.exports = {
   apps: [{
-    name: 'agent-hub',
+    name: 'agent-hub-mgmt',
     script: 'dist/server.js',
-    cwd: '/home/root1/agent-hub/backend',
+    cwd: '/home/root1/projects/agent-hub-user-mgmt/backend',
     env: {
       NODE_ENV: 'production',
-      PORT: 3001
+      PORT: 3002
     },
     max_memory_restart: '512M',
     restart_delay: 5000,

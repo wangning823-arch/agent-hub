@@ -17,10 +17,10 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 
 // 配置存储
 const storage = multer.diskStorage({
-  destination: (_req: Request, _file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
-    // 按日期组织文件夹
+  destination: (req: Request, _file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
     const today = new Date().toISOString().split('T')[0];
-    const dayDir = path.join(UPLOAD_DIR, today);
+    const userId = (req as any).user?.userId || 'anonymous';
+    const dayDir = path.join(UPLOAD_DIR, userId, today);
     if (!fs.existsSync(dayDir)) {
       fs.mkdirSync(dayDir, { recursive: true });
     }
@@ -94,16 +94,19 @@ function handleUpload(req: Request, res: Response): void {
       return;
     }
 
-    const uploadedFiles: UploadedFile[] = (req.files as Express.Multer.File[]).map(file => ({
-      id: uuidv4(),
-      originalName: file.originalname,
-      filename: file.filename,
-      path: file.path,
-      size: file.size,
-      mimetype: file.mimetype,
-      url: `/uploads/${path.basename(path.dirname(file.path))}/${file.filename}`,
-      uploadedAt: new Date().toISOString()
-    }));
+    const uploadedFiles: UploadedFile[] = (req.files as Express.Multer.File[]).map(file => {
+      const relPath = path.relative(UPLOAD_DIR, file.path);
+      return {
+        id: uuidv4(),
+        originalName: file.originalname,
+        filename: file.filename,
+        path: file.path,
+        size: file.size,
+        mimetype: file.mimetype,
+        url: `/uploads/${relPath.replace(/\\/g, '/')}`,
+        uploadedAt: new Date().toISOString()
+      };
+    });
 
     res.json({
       success: true,
@@ -144,7 +147,8 @@ function handlePasteImage(req: Request, res: Response): void {
 
     // 保存文件
     const today = new Date().toISOString().split('T')[0];
-    const dayDir = path.join(UPLOAD_DIR, today);
+    const userId = (req as any).user?.userId || 'anonymous';
+    const dayDir = path.join(UPLOAD_DIR, userId, today);
     if (!fs.existsSync(dayDir)) {
       fs.mkdirSync(dayDir, { recursive: true });
     }
@@ -159,7 +163,7 @@ function handlePasteImage(req: Request, res: Response): void {
       path: filePath,
       size: buffer.length,
       mimetype: mimeType,
-      url: `/uploads/${today}/${filename}`,
+      url: `/uploads/${userId}/${today}/${filename}`,
       uploadedAt: new Date().toISOString()
     };
 

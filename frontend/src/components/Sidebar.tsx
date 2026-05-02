@@ -88,6 +88,7 @@ interface IconChevronProps {
 interface SidebarProps {
   sessions: Session[]
   activeSession: string | null
+  activeProjectId?: string | null
   agentType?: string
   workdir?: string
   sessionOptions: SessionOptions
@@ -117,6 +118,7 @@ interface Project {
 export default function Sidebar({
   sessions,
   activeSession,
+  activeProjectId,
   agentType = 'claude-code',
   workdir = '',
   sessionOptions,
@@ -244,6 +246,13 @@ export default function Sidebar({
     loadSkills()
     loadProjects()
   }, [agentType, workdir])
+
+  // 同步父组件传入的 activeProjectId
+  useEffect(() => {
+    if (activeProjectId && Array.isArray(projects) && projects.some(p => p.id === activeProjectId)) {
+      setSelectedProjectId(activeProjectId)
+    }
+  }, [activeProjectId, projects])
 
   const loadProjects = async () => {
     try {

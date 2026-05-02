@@ -17,7 +17,7 @@ export default (sessionManager: any) => { // TODO: type this
         return res.status(400).json({ error: `不支持的Agent类型: ${agentType}` });
       }
 
-      const session = await sessionManager.createSession(workdir, agentType, { mode, model, effort, ...options });
+      const session = await sessionManager.createSession(workdir, agentType, { mode, model, effort, ...options }, req.user?.userId);
       res.json(session.toJSON());
     } catch (error: any) {
       console.error('创建会话失败:', error);
@@ -25,8 +25,9 @@ export default (sessionManager: any) => { // TODO: type this
     }
   });
 
-  router.get('/', (_req: Request, res: Response) => {
-    res.json(sessionManager.listSessions());
+  router.get('/', (req: Request, res: Response) => {
+    const userId = req.user?.role === 'admin' ? undefined : req.user?.userId;
+    res.json(sessionManager.listSessions(userId));
   });
 
   router.get('/:id', (req: Request, res: Response) => {

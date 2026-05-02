@@ -3,9 +3,10 @@ import { Router, Request, Response } from 'express';
 export default (sessionManager: any) => { // TODO: type this
   const router = Router();
 
-  router.get('/', (_req: Request, res: Response) => {
+  router.get('/', (req: Request, res: Response) => {
     try {
-      const tags = sessionManager.getAllTags();
+      const userId = req.user?.role === 'admin' ? undefined : req.user?.userId;
+      const tags = sessionManager.getAllTags(userId);
       res.json({ tags });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -49,7 +50,8 @@ export default (sessionManager: any) => { // TODO: type this
 
   router.get('/filter/:tag', (req: Request, res: Response) => {
     try {
-      const sessions = sessionManager.getSessionsByTag(req.params.tag);
+      const userId = req.user?.role === 'admin' ? undefined : req.user?.userId;
+      const sessions = sessionManager.getSessionsByTag(req.params.tag, userId);
       res.json(sessions);
     } catch (error: any) {
       res.status(500).json({ error: error.message });

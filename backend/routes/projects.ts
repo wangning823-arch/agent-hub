@@ -8,15 +8,16 @@ import { hashPassword } from '../crypto-utils';
 export default (projectManager: any, sessionManager: any) => { // TODO: type this
   const router = Router();
 
-  router.get('/', (_req: Request, res: Response) => {
-    res.json(projectManager.listProjects());
+  router.get('/', (req: Request, res: Response) => {
+    const userId = req.user?.role === 'admin' ? undefined : req.user?.userId;
+    res.json(projectManager.listProjects(userId));
   });
 
-  router.get('/recent', (_req: Request, res: Response) => {
+  router.get('/recent', (req: Request, res: Response) => {
     res.json(projectManager.getRecentProjects());
   });
 
-  router.get('/favorites', (_req: Request, res: Response) => {
+  router.get('/favorites', (req: Request, res: Response) => {
     res.json(projectManager.getFavoriteProjects());
   });
 
@@ -28,7 +29,14 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
         return res.status(400).json({ error: 'name和workdir是必需的' });
       }
 
-      const project = projectManager.addProject(name, workdir, password || undefined);
+      if (req.user && req.user.role !== 'admin') {
+        if (!projectManager.isPathWithinUserHome(workdir, req.user.homeDir)) {
+          return res.status(403).json({ error: '项目路径必须在用户目录内' });
+        }
+      }
+
+      const userId = req.user?.userId;
+      const project = projectManager.addProject(name, workdir, password || undefined, userId);
       res.json(project);
     } catch (error: any) {
       console.error('创建项目失败:', error);
@@ -82,7 +90,9 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
         });
       }
 
-      const baseDir = path.join(os.homedir(), 'projects');
+      // 使用用户目录作为克隆目标
+      const userHomeDir = req.user?.homeDir || path.join(os.homedir(), 'projects');
+      const baseDir = path.join(userHomeDir, 'projects');
       if (!fs.existsSync(baseDir)) {
         fs.mkdirSync(baseDir, { recursive: true });
       }
@@ -97,6 +107,12 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
           status: 'imported',
           message: `目录已存在，已导入项目 ${repoName}`
         });
+      }
+
+      if (req.user && req.user.role !== 'admin') {
+        if (!projectManager.isPathWithinUserHome(workdir, req.user.homeDir)) {
+          return res.status(403).json({ error: '克隆路径必须在用户目录内' });
+        }
       }
 
       console.log(`正在 clone ${cloneUrl} 到 ${workdir}...`);
@@ -128,7 +144,7 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
         });
       }
 
-      const project = projectManager.addProject(repoName, workdir, password || undefined);
+      const project = projectManager.addProject(repoName, workdir, password || undefined, req.user?.userId);
 
       res.json({
         project,
@@ -176,7 +192,8 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
 
   router.get('/search', (req: Request, res: Response) => {
     const query = req.query.q || '';
-    res.json(projectManager.searchProjects(query));
+    const userId = req.user?.role === 'admin' ? undefined : req.user?.userId;
+    res.json(projectManager.searchProjects(query, userId));
   });
 
   router.post('/:id/start', async (req: Request, res: Response) => {
@@ -206,7 +223,8 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
           mode,
           model,
           effort
-        }
+        },
+        req.user?.userId
       );
 
       // 更新项目的最后使用信息（可选）

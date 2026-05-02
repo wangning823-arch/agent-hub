@@ -5,13 +5,20 @@ import { execFileSync } from 'child_process';
 export default (ALLOWED_ROOT: string, permissionManager: any, projectManager?: any) => { // TODO: type this
   const router = Router();
 
+  function getUserRoot(req: Request): string {
+    return (req.user && req.user.role !== 'admin')
+      ? req.user.homeDir
+      : ALLOWED_ROOT;
+  }
+
   function requireProjectScope(req: Request, res: Response, next: Function) {
     const workdir = (req.query.path || req.body?.workdir) as string;
     const projectId = req.headers['x-project-id'] as string;
+    const userRoot = getUserRoot(req);
 
     if (!projectId || !workdir || !projectManager) {
       const resolved = path.resolve(workdir || '');
-      if (!resolved.startsWith(ALLOWED_ROOT)) {
+      if (!resolved.startsWith(userRoot)) {
         return res.status(403).json({ error: '路径不在允许的范围内' });
       }
       return next();
@@ -23,7 +30,7 @@ export default (ALLOWED_ROOT: string, permissionManager: any, projectManager?: a
     }
 
     const resolved = path.resolve(workdir);
-    if (!resolved.startsWith(ALLOWED_ROOT) || !resolved.startsWith(project.workdir)) {
+    if (!resolved.startsWith(userRoot) || !resolved.startsWith(project.workdir)) {
       return res.status(403).json({ error: '无权访问此项目目录外的文件' });
     }
 
@@ -37,7 +44,7 @@ export default (ALLOWED_ROOT: string, permissionManager: any, projectManager?: a
     }
 
     const resolved = path.resolve(workdir);
-    if (!resolved.startsWith(ALLOWED_ROOT)) {
+    if (!resolved.startsWith(getUserRoot(req))) {
       return res.status(403).json({ error: '路径不在允许的范围内' });
     }
 
@@ -80,7 +87,7 @@ export default (ALLOWED_ROOT: string, permissionManager: any, projectManager?: a
     }
 
     const resolved = path.resolve(workdir);
-    if (!resolved.startsWith(ALLOWED_ROOT)) {
+    if (!resolved.startsWith(getUserRoot(req))) {
       return res.status(403).json({ error: '路径不在允许的范围内' });
     }
 
@@ -116,7 +123,7 @@ export default (ALLOWED_ROOT: string, permissionManager: any, projectManager?: a
     }
 
     const resolved = path.resolve(workdir);
-    if (!resolved.startsWith(ALLOWED_ROOT)) {
+    if (!resolved.startsWith(getUserRoot(req))) {
       return res.status(403).json({ error: '路径不在允许的范围内' });
     }
 

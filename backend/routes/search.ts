@@ -16,7 +16,8 @@ export default (sessionManager: any) => { // TODO: type this
       const results: any[] = []; // TODO: type this
       const searchLower = query.toLowerCase();
 
-      const sessions = sessionManager.listSessions();
+      const userId = req.user?.role === 'admin' ? undefined : req.user?.userId;
+      const sessions = sessionManager.listSessions(userId);
 
       for (const session of sessions) {
         if (sessionId && session.id !== sessionId) continue;
@@ -77,7 +78,8 @@ export default (sessionManager: any) => { // TODO: type this
 
     try {
       const searchLower = query.toLowerCase();
-      const sessions = sessionManager.listSessions();
+      const userId = req.user?.role === 'admin' ? undefined : req.user?.userId;
+      const sessions = sessionManager.listSessions(userId);
 
       const results = sessions
         .filter((session: any) => { // TODO: type this

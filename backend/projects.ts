@@ -22,6 +22,7 @@ interface ProjectObj {
   gitHost?: string | null;
   gitConfigured?: boolean;
   passwordHash?: string;
+  userId?: string;
 }
 
 interface ProjectData {
@@ -303,6 +304,22 @@ class ProjectManager {
         this.projects = new Map();
         this.recentProjects = [];
       }
+
+      // 从 SQLite 补充 user_id
+      try {
+        const db = getDb();
+        const rows = db.exec('SELECT id, user_id FROM projects WHERE user_id IS NOT NULL');
+        if (rows.length > 0) {
+          for (const row of rows[0].values) {
+            const project = this.projects.get(row[0] as string);
+            if (project) {
+              project.userId = row[1] as string;
+            }
+          }
+        }
+      } catch (_e) {
+        // SQLite 可能还没有 user_id 列（首次运行）
+      }
     } catch (error) {
       console.error('加载项目数据失败:', error);
       this.projects = new Map();
@@ -326,7 +343,7 @@ class ProjectManager {
     }
   }
 
-  addProject(name: string, workdir: string, password?: string): ProjectObj {
+  addProject(name: string, workdir: string, password?: string, userId?: string): ProjectObj {
     const id = `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date().toISOString();
 
@@ -340,7 +357,8 @@ class ProjectManager {
       createdAt: now,
       updatedAt: now,
       favorite: false,
-      passwordHash: password ? hashPassword(password) : undefined
+      passwordHash: password ? hashPassword(password) : undefined,
+      userId,
     };
 
     // 为新项目目录初始化 .gitignore
@@ -368,9 +386,9 @@ class ProjectManager {
     try {
       const db = getDb();
       const stmt = db.prepare(
-        'INSERT OR IGNORE INTO projects (id, name, workdir, agent_type, mode, model, effort, created_at, updated_at, last_session_id, last_used_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT OR IGNORE INTO projects (id, name, workdir, agent_type, mode, model, effort, created_at, updated_at, last_session_id, last_used_at, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       );
-      stmt.run([id, name, workdir, 'claude-code', 'auto', null, 'medium', now, now, null, now]);
+      stmt.run([id, name, workdir, 'claude-code', 'auto', null, 'medium', now, now, null, now, userId || null]);
     } catch (e: any) {
       console.warn('同步项目到数据库失败:', e.message);
     }
@@ -415,13 +433,19 @@ class ProjectManager {
     return project;
   }
 
-  getProject(id: string): (Omit<ProjectObj, 'passwordHash'> & { hasPassword: boolean }) | null {
+  getProject(id: string, userId?: string): (Omit<ProjectObj, 'passwordHash'> & { hasPassword: boolean }) | null {
     const project = this.projects.get(id);
-    return project ? this.sanitizeProject(project) : null;
+    if (!project) return null;
+    if (userId && project.userId && project.userId !== userId) return null;
+    return this.sanitizeProject(project);
   }
 
-  listProjects(): (Omit<ProjectObj, 'passwordHash'> & { hasPassword: boolean })[] {
-    return Array.from(this.projects.values()).map(p => this.sanitizeProject(p));
+  listProjects(userId?: string): (Omit<ProjectObj, 'passwordHash'> & { hasPassword: boolean })[] {
+    let projects = Array.from(this.projects.values());
+    if (userId) {
+      projects = projects.filter(p => p.userId === userId);
+    }
+    return projects.map(p => this.sanitizeProject(p));
   }
 
   deleteProject(id: string): boolean {
@@ -464,14 +488,29 @@ class ProjectManager {
       .map(p => this.sanitizeProject(p));
   }
 
-  searchProjects(query: string): (Omit<ProjectObj, 'passwordHash'> & { hasPassword: boolean })[] {
+  searchProjects(query: string, userId?: string): (Omit<ProjectObj, 'passwordHash'> & { hasPassword: boolean })[] {
     const q = query.toLowerCase();
     return Array.from(this.projects.values())
-      .filter(p =>
-        p.name.toLowerCase().includes(q) ||
-        p.workdir.toLowerCase().includes(q)
-      )
+      .filter(p => {
+        if (userId && p.userId && p.userId !== userId) return false;
+        return p.name.toLowerCase().includes(q) || p.workdir.toLowerCase().includes(q);
+      })
       .map(p => this.sanitizeProject(p));
+  }
+
+  isPathWithinUserHome(workdir: string, homeDir: string): boolean {
+    try {
+      if (!fs.existsSync(workdir)) {
+        const resolved = path.resolve(workdir);
+        const resolvedHome = path.resolve(homeDir);
+        return resolved === resolvedHome || resolved.startsWith(resolvedHome + '/');
+      }
+      const resolved = fs.realpathSync(workdir);
+      const resolvedHome = fs.existsSync(homeDir) ? fs.realpathSync(homeDir) : path.resolve(homeDir);
+      return resolved === resolvedHome || resolved.startsWith(resolvedHome + '/');
+    } catch (_e) {
+      return false;
+    }
   }
 }
 

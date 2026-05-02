@@ -214,6 +214,7 @@ export default function ChatPanel({
   }, [options?.mode, options?.model, options?.effort])
 
   const wsRef = useRef<WebSocket | null>(null)
+  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -505,7 +506,16 @@ export default function ChatPanel({
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
+      // 连接超时：10秒内未建立连接则触发重连
+      connectTimeoutRef.current = setTimeout(() => {
+        if (ws.readyState === WebSocket.CONNECTING) {
+          console.log('WebSocket连接超时，尝试重连')
+          ws.close()
+        }
+      }, 10000)
+
        ws.onopen = () => {
+         if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current)
          setConnected(true)
          setConnecting(false)
          console.log('WebSocket已连接')
@@ -767,6 +777,7 @@ export default function ChatPanel({
       }
 
       ws.onclose = () => {
+        if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current)
         setConnected(false)
         console.log('WebSocket已断开')
 
@@ -795,6 +806,9 @@ export default function ChatPanel({
 
      return () => {
        isCleanedUp = true
+       if (connectTimeoutRef.current) {
+         clearTimeout(connectTimeoutRef.current)
+       }
        if (reconnectTimeout) {
          clearTimeout(reconnectTimeout)
        }

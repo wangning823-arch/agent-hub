@@ -5,13 +5,20 @@ import path from 'path';
 export default (ALLOWED_ROOT: string, projectManager?: any) => {
   const router = Router();
 
+  function getUserRoot(req: Request): string {
+    return (req.user && req.user.role !== 'admin')
+      ? req.user.homeDir
+      : ALLOWED_ROOT;
+  }
+
   function requireProjectScope(req: Request, res: Response, next: Function) {
     const projectId = req.headers['x-project-id'] as string || req.query.projectId as string;
     const filePath = (req.query.path || req.body?.path) as string;
+    const userRoot = getUserRoot(req);
 
     if (!projectId || !filePath || !projectManager) {
       const resolved = path.resolve(filePath || '');
-      if (!resolved.startsWith(ALLOWED_ROOT)) {
+      if (!resolved.startsWith(userRoot)) {
         return res.status(403).json({ error: '路径不在允许的范围内' });
       }
       return next();
@@ -24,7 +31,7 @@ export default (ALLOWED_ROOT: string, projectManager?: any) => {
 
     const resolved = path.resolve(filePath);
 
-    if (!resolved.startsWith(ALLOWED_ROOT)) {
+    if (!resolved.startsWith(userRoot)) {
       return res.status(403).json({ error: '路径不在允许的范围内' });
     }
     if (!resolved.startsWith(project.workdir)) {
@@ -40,8 +47,9 @@ export default (ALLOWED_ROOT: string, projectManager?: any) => {
       return res.status(400).json({ error: 'path参数是必需的' });
     }
 
+    const userRoot = getUserRoot(req);
     const resolved = path.resolve(dirPath);
-    if (!resolved.startsWith(ALLOWED_ROOT)) {
+    if (!resolved.startsWith(userRoot)) {
       return res.status(403).json({ error: '路径不在允许的范围内' });
     }
 
@@ -82,8 +90,9 @@ export default (ALLOWED_ROOT: string, projectManager?: any) => {
       return res.status(400).json({ error: 'path参数是必需的' });
     }
 
+    const userRoot = getUserRoot(req);
     const resolved = path.resolve(filePath);
-    if (!resolved.startsWith(ALLOWED_ROOT)) {
+    if (!resolved.startsWith(userRoot)) {
       return res.status(403).json({ error: '路径不在允许的范围内' });
     }
 
@@ -102,8 +111,9 @@ export default (ALLOWED_ROOT: string, projectManager?: any) => {
       return res.status(400).json({ error: 'path和content参数是必需的' });
     }
 
+    const userRoot = getUserRoot(req);
     const resolved = path.resolve(filePath);
-    if (!resolved.startsWith(ALLOWED_ROOT)) {
+    if (!resolved.startsWith(userRoot)) {
       return res.status(403).json({ error: '路径不在允许的范围内' });
     }
 

@@ -10,6 +10,11 @@ export default (sessionManager: any) => { // TODO: type this
         return res.status(404).json({ error: '会话不存在' });
       }
 
+      // 验证会话所有权
+      if (req.user && req.user.role !== 'admin' && session.userId && session.userId !== req.user.userId) {
+        return res.status(403).json({ error: '无权访问此会话' });
+      }
+
       const title = session.title || session.workdir.split('/').pop();
       const createdAt = new Date(session.createdAt).toLocaleString('zh-CN');
 
@@ -41,9 +46,10 @@ export default (sessionManager: any) => { // TODO: type this
     }
   });
 
-  router.get('/sessions', (_req: Request, res: Response) => {
+  router.get('/sessions', (req: Request, res: Response) => {
     try {
-      const sessions = sessionManager.listSessions();
+      const userId = req.user?.role === 'admin' ? undefined : req.user?.userId;
+      const sessions = sessionManager.listSessions(userId);
 
       const exportData = {
         exportedAt: new Date().toISOString(),
@@ -88,6 +94,7 @@ export default (sessionManager: any) => { // TODO: type this
       const existingSessions = sessionManager.listSessions();
 
       for (const sessionData of importedSessions) {
+        sessionData.userId = req.user?.userId;
         try {
           const exists = existingSessions.find((s: any) => // TODO: type this
             s.id === sessionData.id ||

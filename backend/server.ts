@@ -30,7 +30,9 @@ import WorkflowEngine from './workflow-engine';
 import wsHandler from './websocket/handler';
 import { initDb } from './db';
 import { UPLOAD_DIR } from './upload';
-import authMiddleware from './middleware/auth';
+import userAuth from './middleware/userAuth';
+import authRouter from './routes/auth';
+import usersRouter from './routes/users';
 import corsMiddleware from './middleware/cors';
 import errorHandlerMiddleware from './middleware/errorHandler';
 
@@ -47,9 +49,9 @@ process.on('unhandledRejection', (reason: unknown, p: Promise<unknown>) => {
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ server, path: '/ws' });
 
-const PORT: number = parseInt(process.env.PORT || '3001', 10);
+const PORT: number = parseInt(process.env.PORT || '3002', 10);
 const TOKEN_FILE: string = path.join(__dirname, '..', '..', '.token');
 const ALLOWED_ROOT: string = process.env.ALLOWED_ROOT || process.env.HOME || '/root';
 const DIST_PATH: string = path.join(__dirname, '..', '..', 'frontend', 'dist');
@@ -70,8 +72,7 @@ async function initApp(): Promise<void> {
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(DIST_PATH));
-app.use('/uploads', express.static(UPLOAD_DIR));
-app.use(authMiddleware(TOKEN_FILE));
+app.use(userAuth);
 app.use(corsMiddleware());
 
 // Error handler — Express requires exactly 4 parameters to recognize it as an error handler
@@ -127,6 +128,8 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   const wsConnectionHandler = wsHandler(sessionManager, TOKEN_FILE);
 
   // Register route factories
+  app.use('/api/auth', authRouter);
+  app.use('/api/users', usersRouter);
   app.use('/api/sessions', sessionsRouter(sessionManager));
   app.use('/api/tags', tagsRouter(sessionManager));
   app.use('/api/projects', projectsRouter(projectManager, sessionManager));
@@ -134,15 +137,29 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   app.use('/api/git', gitRouter(ALLOWED_ROOT, permissionManager, projectManager));
   app.use('/api/search', searchRouter(sessionManager));
   app.use('/api/permissions', permissionsRouter(permissionManager));
-  app.use('/api/tokens', tokensRouter(new TokenTracker()));
+  app.use('/api/tokens', tokensRouter(sessionManager.tokenTracker, sessionManager));
   app.use('/api/export', exportRouter(sessionManager));
   app.use('/api/health', healthRouter());
   app.use('/api/upload', uploadRouter());
   app.use('/api/options', optionsRouter());
-  app.use('/api/credentials', credentialsRouter(credentialManager));
+  app.use('/api/credentials', credentialsRouter(credentialManager, ALLOWED_ROOT));
   app.use('/api/skills', skillsRouter);
   app.use('/api/models', modelsRouter());
   app.use('/api', workflowsRouter(sessionManager, workflowEngine));
+
+  // Authenticated uploads route
+  app.get('/uploads/:userId/:date/:filename', (req: Request, res: Response) => {
+    const { userId, date, filename } = req.params;
+    const filePath = path.join(UPLOAD_DIR, userId, date, filename);
+
+    if (req.user && req.user.role !== 'admin' && req.user.userId !== userId) {
+      return res.status(403).json({ error: '无权访问此文件' });
+    }
+
+    res.sendFile(filePath, (err) => {
+      if (err) res.status(404).json({ error: '文件不存在' });
+    });
+  });
 
   wsConnectionHandler(wss);
 

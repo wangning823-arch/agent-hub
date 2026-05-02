@@ -19,6 +19,7 @@ interface ProjectManagerProps {
   onSelectProject: (result: any) => void
   onNewSession?: (project: Project) => void
   onClose: () => void
+  homeDir?: string
 }
 
 interface ProjectCardProps {
@@ -42,7 +43,7 @@ interface NewProjectForm {
   confirmPassword: string
 }
 
-export default function ProjectManager({ onSelectProject, onNewSession, onClose }: ProjectManagerProps) {
+export default function ProjectManager({ onSelectProject, onNewSession, onClose, homeDir }: ProjectManagerProps) {
   const [projects, setProjects] = useState<Project[]>([])
   const [recentProjects, setRecentProjects] = useState<Project[]>([])
   const [favoriteProjects, setFavoriteProjects] = useState<Project[]>([])
@@ -113,7 +114,7 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
        return
      }
      try {
-       const project = await fetch(`${API_BASE}/projects`, {
+       const res = await fetch(`${API_BASE}/projects`, {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
          body: JSON.stringify({
@@ -121,9 +122,13 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
            workdir: newProject.workdir,
            password: newProject.password || undefined
          })
-       }).then(r => r.json())
-
-       setProjects(prev => [...prev, project])
+       })
+       const data = await res.json()
+       if (!res.ok) {
+         toast.error(data.error || '创建项目失败')
+         return
+       }
+       setProjects(prev => [...prev, data])
        setShowCreateForm(false)
        setNewProject({ name: '', workdir: '', password: '', confirmPassword: '' })
      } catch (error: any) {
@@ -433,10 +438,12 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
                          value={newProject.name}
                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                            const name = e.target.value
+                           const slug = name.toLowerCase().replace(/\s+/g, '-')
+                           const baseDir = homeDir ? `${homeDir}/projects` : '~/projects'
                            setNewProject(prev => ({
                              ...prev,
                              name,
-                             workdir: name ? `~/projects/${name.toLowerCase().replace(/\s+/g, '-')}` : ''
+                             workdir: name ? `${baseDir}/${slug}` : ''
                            }))
                          }}
                          className="w-full px-3 py-2 rounded"
@@ -455,7 +462,7 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose 
                          style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}
                        />
                        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                         将创建在 ~/projects/ 目录下
+                         将创建在 {homeDir ? `${homeDir}/projects/` : '~/projects/'} 目录下
                        </p>
                      </div>
                    </>
