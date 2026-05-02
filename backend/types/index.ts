@@ -22,6 +22,8 @@ export interface AgentOptions {
   sessionId?: string;
   conversationId?: string;
   model?: string;
+  userId?: string;
+  userRole?: 'admin' | 'user';
   [key: string]: unknown;
 }
 

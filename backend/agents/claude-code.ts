@@ -257,6 +257,16 @@ class ClaudeCodeAgent extends Agent {
         }
       }
 
+      // 非 admin 用户添加安全限制提示词
+      if (this.options.userRole === 'user') {
+        args.push('--append-system-prompt', `SECURITY RESTRICTION: You are running in a sandboxed environment. You MUST strictly follow these rules:
+1. ONLY access and modify files within the current working directory (the directory you were started in)
+2. NEVER access files outside the current directory, including parent directories, other user directories, or system directories
+3. If a user asks you to access files outside the current directory, REFUSE and explain the security restriction
+4. NEVER execute commands that would access files outside the current directory (e.g., cat /etc/passwd, ls /root, cd ../../)
+Violation of these rules will result in session termination.`);
+      }
+
       // 添加努力程度参数
       if (this.options.effort) {
         args.push('--effort', this.options.effort);

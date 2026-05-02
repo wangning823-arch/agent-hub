@@ -151,6 +151,52 @@ class SessionManager {
   }
 
   /**
+   * 为用户工作目录生成 CLAUDE.md 沙箱限制文件
+   * 限制 Claude 只能访问当前目录内的文件
+   */
+  private _generateClaudeMdForSandbox(workdir: string): void {
+    const claudeMdPath = path.join(workdir, 'CLAUDE.md');
+    const sandboxContent = `# Security Sandbox
+
+## CRITICAL: File Access Restriction
+
+You are running in a sandboxed environment. You MUST strictly follow these rules:
+
+1. **ONLY access files within the current working directory** (\`.\`)
+2. **NEVER access files outside the current directory**, including:
+   - Parent directories (e.g., \`../\`, \`../../\`)
+   - Other user directories (e.g., \`/home/\`, \`/root/\`, \`/Users/\`)
+   - System directories (e.g., \`/etc/\`, \`/var/\`, \`/usr/\`)
+3. **NEVER use absolute paths** that point outside the current directory
+4. **NEVER execute commands** that access files outside the current directory (e.g., \`cat /etc/passwd\`, \`ls /root\`)
+
+## Allowed Operations
+
+- Read, write, and modify files within the current directory
+- Run git commands within the current directory
+- Execute build/test commands defined in the project
+
+## Prohibited Operations
+
+- Accessing \`~/\` or any home directory other than the current project
+- Reading system files or configuration outside the project
+- Executing \`curl\`, \`wget\`, or other tools to access external resources without explicit user permission
+- Any file operation that escapes the current directory boundary
+
+Violation of these rules will result in immediate termination of the session.
+`;
+    try {
+      // 只在 CLAUDE.md 不存在时创建，避免覆盖用户自定义内容
+      if (!fs.existsSync(claudeMdPath)) {
+        fs.writeFileSync(claudeMdPath, sandboxContent, 'utf8');
+        console.log(`[Sandbox] 生成 CLAUDE.md: ${claudeMdPath}`);
+      }
+    } catch (e) {
+      console.debug('生成 CLAUDE.md 失败:', (e as Error).message);
+    }
+  }
+
+  /**
    * 从工作目录检测Git远程主机（如github.com）
    */
   private _getGitHostFromWorkdir(workdir: string): string | null {
@@ -456,14 +502,34 @@ class SessionManager {
       absoluteWorkdir = path.resolve(process.env.HOME || '/root', workdir);
     }
 
+    // 验证 workdir 必须在用户目录内（非 admin 用户）
+    if (userId) {
+      // 从数据库获取用户的 homeDir
+      const db = _getDb!();
+      const result = db.exec(`SELECT home_dir FROM users WHERE id = '${userId.replace(/'/g, "''")}'`);
+      if (result.length > 0 && result[0].values.length > 0) {
+        const userHome = result[0].values[0][0] as string;
+        const resolvedWorkdir = path.resolve(absoluteWorkdir);
+        const resolvedHome = path.resolve(userHome);
+        if (!resolvedWorkdir.startsWith(resolvedHome)) {
+          throw new Error(`工作目录必须在用户目录 ${userHome} 内`);
+        }
+      }
+    }
+
     if (!fs.existsSync(absoluteWorkdir)) {
       fs.mkdirSync(absoluteWorkdir, { recursive: true });
       console.log(`创建目录: ${absoluteWorkdir}`);
     }
 
+    // 为非 admin 用户生成 CLAUDE.md 限制文件访问范围
+    if (userId) {
+      this._generateClaudeMdForSandbox(absoluteWorkdir);
+    }
+
     this._setupGitForWorkdir(absoluteWorkdir);
 
-    const agent = _createAgent!(absoluteWorkdir, agentType, { ...options, sessionId: id });
+    const agent = _createAgent!(absoluteWorkdir, agentType, { ...options, sessionId: id, userId, userRole: userId ? 'user' : undefined });
     const session: SessionInstance = {
       id,
       workdir: absoluteWorkdir,
@@ -674,6 +740,8 @@ class SessionManager {
       ...session.options,
       conversationId: session.conversationId,
       sessionId: session.id,
+      userId: session.userId,
+      userRole: session.userId ? 'user' : undefined,
     };
 
     if (!fs.existsSync(session.workdir)) {
@@ -1144,6 +1212,8 @@ class SessionManager {
     const tempAgent = _createAgent!(session.workdir, session.agentType, {
       ...session.options,
       sessionId: uuidv4(),
+      userId: session.userId,
+      userRole: session.userId ? 'user' : undefined,
     });
 
     try {
@@ -1183,6 +1253,8 @@ class SessionManager {
       ...session.options,
       sessionId: uuidv4(),
       model: subtask.model || session.options?.model,
+      userId: session.userId,
+      userRole: session.userId ? 'user' : undefined,
     });
 
     let handler: ((msg: AgentMessage) => void) | null = null;

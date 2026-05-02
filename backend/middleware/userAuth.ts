@@ -85,10 +85,7 @@ export default function userAuth(req: Request, res: Response, next: NextFunction
     return next();
   }
 
-  if (!LEGACY_TOKEN) {
-    return next();
-  }
-
+  // 没有认证信息，拒绝访问
   return res.status(401).json({ error: '未授权' });
 }
 
