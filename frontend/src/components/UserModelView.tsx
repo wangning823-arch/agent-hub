@@ -31,6 +31,18 @@ interface PersonalProviderForm {
   apiKey: string
 }
 
+interface ProjectData {
+  id: string
+  name: string
+  workdir: string
+}
+
+interface FlatModel {
+  id: string
+  name: string
+  providerName: string
+}
+
 export default function UserModelView() {
   const [providers, setProviders] = useState<ModelProvider[]>([])
   const [personalModels, setPersonalModels] = useState<Record<string, ModelData[]>>({})
@@ -46,20 +58,35 @@ export default function UserModelView() {
   const [discoverError, setDiscoverError] = useState<string | null>(null)
   const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[]>([])
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set())
-  const [discoverForProvider, setDiscoverForProvider] = useState<string | null>(null) // null = new provider, string = existing provider id
+  const [discoverForProvider, setDiscoverForProvider] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+
+  // 应用到项目
+  const [projects, setProjects] = useState<ProjectData[]>([])
+  const [showApplyModal, setShowApplyModal] = useState(false)
+  const [applyProjectId, setApplyProjectId] = useState('')
+  const [applyProviderId, setApplyProviderId] = useState('')
+  const [modelConfig, setModelConfig] = useState({ model: '', sonnetModel: '', opusModel: '', haikuModel: '' })
+  const [applying, setApplying] = useState(false)
+  const [applyMsg, setApplyMsg] = useState('')
 
   useEffect(() => { fetchData() }, [])
 
   const fetchData = async () => {
     try {
-      const res = await fetch(`${API_BASE}/options/my-models`)
-      const data = await res.json()
+      const [modelsRes, projRes] = await Promise.all([
+        fetch(`${API_BASE}/options/my-models`),
+        fetch(`${API_BASE}/projects`)
+      ])
+      const data = await modelsRes.json()
       setProviders(data.providers || [])
 
-      const personalProviders = (data.providers || []).filter((p: ModelProvider) => p.isPersonal)
-      for (const p of personalProviders) {
-        await fetchPersonalModels(p.id)
+      const projData = await projRes.json()
+      setProjects(Array.isArray(projData) ? projData : (projData.projects || []))
+
+      // 加载所有 provider 的模型（系统 + 个人）
+      for (const p of (data.providers || [])) {
+        await fetchProviderModels(p.id, p.isPersonal)
       }
     } catch (error) {
       console.error('加载模型失败:', error)
@@ -68,7 +95,7 @@ export default function UserModelView() {
     }
   }
 
-  const fetchPersonalModels = async (providerId: string) => {
+  const fetchProviderModels = async (providerId: string, _isPersonal: boolean) => {
     try {
       const res = await fetch(`${API_BASE}/my-models/providers/${providerId}/models`)
       const data = await res.json()
@@ -77,6 +104,19 @@ export default function UserModelView() {
       console.error('加载模型失败:', error)
     }
   }
+
+  // 选中 Provider 后的可用模型列表
+  const providerModels: FlatModel[] = applyProviderId
+    ? (personalModels[applyProviderId] || []).map(m => ({ id: m.id, name: m.name, providerName: '' }))
+    : []
+
+  // 切换 Provider 时确保模型已加载
+  useEffect(() => {
+    if (applyProviderId && (!personalModels[applyProviderId] || personalModels[applyProviderId].length === 0)) {
+      const p = providers.find(p => p.id === applyProviderId)
+      if (p) fetchProviderModels(applyProviderId, p.isPersonal)
+    }
+  }, [applyProviderId])
 
   const addProvider = async () => {
     if (!providerForm.id || !providerForm.name || !providerForm.baseUrl) return
@@ -117,7 +157,7 @@ export default function UserModelView() {
       if (res.ok) {
         setAddingModelTo(null)
         setModelForm({ id: '', name: '', contextLimit: 0, outputLimit: 0 })
-        fetchPersonalModels(providerId)
+        fetchProviderModels(providerId, true)
       }
     } catch (error) {
       console.error('添加模型失败:', error)
@@ -127,9 +167,40 @@ export default function UserModelView() {
   const deleteModel = async (providerId: string, modelId: string) => {
     try {
       const res = await fetch(`${API_BASE}/my-models/providers/${providerId}/models/${modelId}`, { method: 'DELETE' })
-      if (res.ok) fetchPersonalModels(providerId)
+      if (res.ok) fetchProviderModels(providerId, true)
     } catch (error) {
       console.error('删除模型失败:', error)
+    }
+  }
+
+  const handleApplyModel = async () => {
+    if (!applyProjectId) return
+    const { model, sonnetModel, opusModel, haikuModel } = modelConfig
+    if (!model && !sonnetModel && !opusModel && !haikuModel) {
+      setApplyMsg('请至少选择一个模型')
+      return
+    }
+    setApplying(true)
+    setApplyMsg('')
+    try {
+      const res = await fetch(`${API_BASE}/projects/${applyProjectId}/apply-model`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(modelConfig)
+      })
+      let data: any
+      try { data = await res.json() } catch { setApplyMsg('服务器返回异常'); return }
+      if (!res.ok) { setApplyMsg(data.error || '应用失败'); return }
+      setApplyMsg(data.message || '应用成功')
+      setShowApplyModal(false)
+      setApplyProjectId('')
+      setApplyProviderId('')
+      setModelConfig({ model: '', sonnetModel: '', opusModel: '', haikuModel: '' })
+      setTimeout(() => setApplyMsg(''), 3000)
+    } catch (error: any) {
+      setApplyMsg(error?.message || '网络请求失败')
+    } finally {
+      setApplying(false)
     }
   }
 
@@ -155,13 +226,11 @@ export default function UserModelView() {
     try {
       let res: Response
       if (discoverForProvider !== null) {
-        // 已有 Provider：后端从 DB 读取 baseUrl 和 apiKey
         res = await fetch(`${API_BASE}/my-models/providers/${discoverForProvider}/discover`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         })
       } else {
-        // 新 Provider：使用表单中的 baseUrl 和 apiKey
         if (!providerForm.baseUrl) {
           setDiscoverError('请先填写 Base URL')
           setDiscovering(false)
@@ -204,7 +273,7 @@ export default function UserModelView() {
   }
 
   const importSelectedModels = async () => {
-    if (discoverForProvider === null) return // 新 provider 还没创建，不能导入
+    if (discoverForProvider === null) return
     setImporting(true)
     try {
       const modelsToImport = discoveredModels
@@ -219,7 +288,7 @@ export default function UserModelView() {
       const data = await res.json()
       if (res.ok) {
         cancelDiscover()
-        fetchPersonalModels(discoverForProvider)
+        fetchProviderModels(discoverForProvider, true)
         fetchData()
       }
     } catch (error) {
@@ -236,8 +305,111 @@ export default function UserModelView() {
   const systemProviders = providers.filter(p => !p.isPersonal)
   const personalProviders = providers.filter(p => p.isPersonal)
 
+  const renderModelSelect = (label: string, value: string, onChange: (v: string) => void) => (
+    <div>
+      <label className="text-xs block mb-1" style={{ color: 'var(--text-secondary)' }}>{label}</label>
+      <select value={value} onChange={e => onChange(e.target.value)} className="select-field text-xs w-full">
+        <option value="">不设置</option>
+        {providerModels.map(m => (
+          <option key={m.id} value={m.id}>{m.name}</option>
+        ))}
+      </select>
+    </div>
+  )
+
   return (
     <div className="space-y-6">
+      {applyMsg && (
+        <div className="text-sm p-2 rounded" style={{
+          background: applyMsg.includes('失败') || applyMsg.includes('异常') ? 'var(--error-soft)' : 'var(--success-soft)',
+          color: applyMsg.includes('失败') || applyMsg.includes('异常') ? 'var(--error)' : 'var(--success)',
+        }}>
+          {applyMsg}
+        </div>
+      )}
+
+      {/* 应用模型到项目 */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Claude Code 模型配置</h3>
+        <button
+          onClick={() => { setShowApplyModal(true); setApplyMsg(''); setApplyProviderId(''); setModelConfig({ model: '', sonnetModel: '', opusModel: '', haikuModel: '' }) }}
+          className="text-sm px-3 py-1.5 rounded"
+          style={{ background: 'var(--success)', color: 'white', border: 'none', cursor: 'pointer' }}
+        >
+          应用到项目
+        </button>
+      </div>
+
+      {/* 应用到项目弹窗 */}
+      {showApplyModal && (
+        <div className="card" style={{ borderColor: 'var(--success)' }}>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>将模型应用到项目（Claude Code）</h4>
+            <button
+              onClick={() => setShowApplyModal(false)}
+              className="text-xs px-2 py-1 rounded"
+              style={{ color: 'var(--text-muted)', background: 'var(--bg-hover)', border: 'none', cursor: 'pointer' }}
+            >
+              关闭
+            </button>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs block mb-1" style={{ color: 'var(--text-secondary)' }}>目标项目</label>
+              <select
+                value={applyProjectId}
+                onChange={e => setApplyProjectId(e.target.value)}
+                className="select-field text-xs w-full"
+              >
+                <option value="">选择项目...</option>
+                {projects.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs block mb-1" style={{ color: 'var(--text-secondary)' }}>Provider</label>
+              <select
+                value={applyProviderId}
+                onChange={e => {
+                  setApplyProviderId(e.target.value)
+                  setModelConfig({ model: '', sonnetModel: '', opusModel: '', haikuModel: '' })
+                }}
+                className="select-field text-xs w-full"
+              >
+                <option value="">选择 Provider...</option>
+                {providers.map(p => (
+                  <option key={p.id} value={p.id}>{p.name} ({p.id})</option>
+                ))}
+              </select>
+            </div>
+            {applyProviderId && providerModels.length > 0 ? (
+              <div className="grid grid-cols-2 gap-2">
+                {renderModelSelect('默认模型 (ANTHROPIC_MODEL)', modelConfig.model, v => setModelConfig(c => ({ ...c, model: v })))}
+                {renderModelSelect('Sonnet 模型', modelConfig.sonnetModel, v => setModelConfig(c => ({ ...c, sonnetModel: v })))}
+                {renderModelSelect('Opus 模型', modelConfig.opusModel, v => setModelConfig(c => ({ ...c, opusModel: v })))}
+                {renderModelSelect('Haiku 模型', modelConfig.haikuModel, v => setModelConfig(c => ({ ...c, haikuModel: v })))}
+              </div>
+            ) : applyProviderId ? (
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>该 Provider 暂无模型</p>
+            ) : (
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>请先选择 Provider</p>
+            )}
+            <button
+              onClick={handleApplyModel}
+              disabled={!applyProjectId || !applyProviderId || applying}
+              className="btn-primary w-full py-2 text-sm"
+              style={{
+                cursor: (!applyProjectId || !applyProviderId || applying) ? 'not-allowed' : 'pointer',
+                opacity: (!applyProjectId || !applyProviderId || applying) ? 0.5 : 1,
+              }}
+            >
+              {applying ? '应用中...' : '应用到项目'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 系统 Provider（只读） */}
       {systemProviders.length > 0 && (
         <div>
@@ -330,7 +502,7 @@ export default function UserModelView() {
             importing={false}
             onDiscover={doDiscover}
             onToggle={toggleDiscoveredModel}
-            onImport={() => {}} // 新 provider 还没创建，不能导入
+            onImport={() => {}}
             onCancel={cancelDiscover}
             note="请先创建 Provider，然后在 Provider 中导入模型"
           />

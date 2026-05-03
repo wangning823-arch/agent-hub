@@ -351,5 +351,57 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
     }
   });
 
+  // 将模型应用到项目（写入 .claude/settings.json）
+  router.post('/:id/apply-model', (req: Request, res: Response) => {
+    try {
+      const project = projectManager.getProject(req.params.id);
+      if (!project) return res.status(404).json({ error: '项目不存在' });
+
+      const { model, sonnetModel, opusModel, haikuModel } = req.body;
+      if (!model && !sonnetModel && !opusModel && !haikuModel) {
+        return res.status(400).json({ error: '请至少设置一个模型' });
+      }
+
+      const workdir = project.workdir;
+      const claudeDir = path.join(workdir, '.claude');
+      const settingsPath = path.join(claudeDir, 'settings.json');
+
+      // 读取现有配置或创建新的
+      let settings: any = {};
+      if (fs.existsSync(settingsPath)) {
+        try {
+          settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+        } catch (e) {
+          settings = {};
+        }
+      }
+
+      // 确保 env 对象存在
+      if (!settings.env) settings.env = {};
+
+      // 设置模型（只覆盖传入的字段，不清除未传入的）
+      if (model) settings.env.ANTHROPIC_MODEL = model;
+      if (sonnetModel) settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL = sonnetModel;
+      if (opusModel) settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL = opusModel;
+      if (haikuModel) settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = haikuModel;
+
+      // 写入配置
+      if (!fs.existsSync(claudeDir)) {
+        fs.mkdirSync(claudeDir, { recursive: true });
+      }
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+
+      const setModels = [model && '默认', sonnetModel && 'Sonnet', opusModel && 'Opus', haikuModel && 'Haiku'].filter(Boolean).join('、');
+      res.json({
+        success: true,
+        message: `已将模型 (${setModels}) 应用到 ${project.name}`,
+        settingsPath
+      });
+    } catch (error: any) {
+      console.error('应用模型失败:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 };
