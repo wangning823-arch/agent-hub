@@ -18,6 +18,7 @@ interface UserRow {
   home_dir: string;
   display_name: string | null;
   is_active: number;
+  preferences: string;
 }
 
 function generateTokenPair(user: { id: string; username: string; role: string }) {
@@ -37,7 +38,7 @@ function generateTokenPair(user: { id: string; username: string; role: string })
 function getUserByUsername(username: string): UserRow | null {
   const db = getDb();
   const result = db.exec(
-    `SELECT id, username, password_hash, role, home_dir, display_name, is_active FROM users WHERE username = '${username.toLowerCase().replace(/'/g, "''")}'`
+    `SELECT id, username, password_hash, role, home_dir, display_name, is_active, preferences FROM users WHERE username = '${username.toLowerCase().replace(/'/g, "''")}'`
   );
   if (result.length === 0 || result[0].values.length === 0) return null;
   const row = result[0].values[0];
@@ -49,6 +50,7 @@ function getUserByUsername(username: string): UserRow | null {
     home_dir: row[4] as string,
     display_name: row[5] as string | null,
     is_active: row[6] as number,
+    preferences: row[7] as string || '{}',
   };
 }
 
@@ -211,11 +213,24 @@ router.get('/me', (req: Request, res: Response) => {
   if (!req.user) {
     return res.status(401).json({ error: '未认证' });
   }
+  const db = getDb();
+  const result = db.exec(
+    `SELECT preferences FROM users WHERE id = '${req.user.userId.replace(/'/g, "''")}'`
+  );
+  let preferences = {};
+  if (result.length > 0 && result[0].values.length > 0) {
+    try {
+      preferences = JSON.parse(result[0].values[0][0] as string || '{}');
+    } catch (_e) {
+      preferences = {};
+    }
+  }
   res.json({
     userId: req.user.userId,
     username: req.user.username,
     role: req.user.role,
     homeDir: req.user.homeDir,
+    preferences,
   });
 });
 
@@ -253,6 +268,27 @@ router.put('/password', (req: Request, res: Response) => {
 
 router.post('/logout', (_req: Request, res: Response) => {
   res.json({ success: true });
+});
+
+router.patch('/me/preferences', (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: '未认证' });
+    }
+    const { preferences } = req.body;
+    if (!preferences || typeof preferences !== 'object') {
+      return res.status(400).json({ error: 'preferences 必须是一个对象' });
+    }
+    const db = getDb();
+    const now = new Date().toISOString();
+    db.run(
+      `UPDATE users SET preferences = '${JSON.stringify(preferences).replace(/'/g, "''")}', updated_at = '${now}' WHERE id = '${req.user.userId.replace(/'/g, "''")}'`
+    );
+    saveToFile();
+    res.json({ success: true, preferences });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.get('/status', (_req: Request, res: Response) => {

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 
 type ThemeName = 'dark' | 'light' | 'midnight' | 'sakura'
 
@@ -48,6 +48,7 @@ interface ThemeContextValue {
   themeName: ThemeName
   themes: Themes
   changeTheme: (name: string) => void
+  syncUserTheme: (preferences?: { theme?: string }) => void
 }
 
 const themes: Themes = {
@@ -208,9 +209,33 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('agent-hub-theme', themeName)
   }, [themeName, theme])
 
+  const saveThemeToBackend = useCallback(async (theme: string) => {
+    try {
+      const token = localStorage.getItem('access_token')
+      if (!token) return
+      await fetch('/api/auth/me/preferences', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ preferences: { theme } }),
+      })
+    } catch (err) {
+      console.error('保存主题偏好失败:', err)
+    }
+  }, [])
+
+  const syncUserTheme = useCallback((preferences?: { theme?: string }) => {
+    if (preferences?.theme && themes[preferences.theme]) {
+      setThemeName(preferences.theme as ThemeName)
+    }
+  }, [])
+
   const changeTheme = (name: string): void => {
     if (themes[name]) {
       setThemeName(name as ThemeName)
+      saveThemeToBackend(name)
     }
   }
 
@@ -219,7 +244,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       theme,
       themeName,
       themes,
-      changeTheme
+      changeTheme,
+      syncUserTheme
     }}>
       {children}
     </ThemeContext.Provider>

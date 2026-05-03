@@ -95,7 +95,7 @@ export default function App() {
   const [preselectedProject, setPreselectedProject] = useState<{ id: string; name: string; workdir: string; [key: string]: any } | null>(null)
   const [showSettings, setShowSettings] = useState<boolean>(false)
   const toast = useToast()
-  const { themeName } = useTheme()
+  const { themeName, syncUserTheme } = useTheme()
   const [showContextManager, setShowContextManager] = useState<boolean>(false)
   const [agents, setAgents] = useState<Agent[]>([])
 
@@ -154,6 +154,10 @@ export default function App() {
       .then(data => {
         setUser(data)
         setAuthChecked(true)
+        // 同步用户主题偏好
+        if (data.preferences) {
+          syncUserTheme(data.preferences)
+        }
       })
       .catch(() => {
         localStorage.removeItem('access_token')
@@ -167,7 +171,13 @@ export default function App() {
     setAccessToken(token)
     fetch('/api/auth/me')
       .then(r => r.json())
-      .then(data => setUser(data))
+      .then(data => {
+        setUser(data)
+        // 同步用户主题偏好
+        if (data.preferences) {
+          syncUserTheme(data.preferences)
+        }
+      })
       .catch(console.error)
   }
 
@@ -177,6 +187,7 @@ export default function App() {
     localStorage.removeItem('activeSession')
     localStorage.removeItem('activeProjectId')
     localStorage.removeItem('activeProjectWorkdir')
+    localStorage.removeItem('agent-hub-theme')
     setAccessToken('')
     setUser(null)
     setSessions([])

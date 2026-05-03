@@ -199,6 +199,18 @@ async function initDb(): Promise<SqlJsDatabase> {
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
 
+  // 增量迁移：给 users 表添加 preferences 列
+  try {
+    const cols = db.exec("PRAGMA table_info(users)");
+    if (cols.length > 0) {
+      const colNames = cols[0].values.map((row: any[]) => row[1]);
+      if (!colNames.includes('preferences')) {
+        db.run('ALTER TABLE users ADD COLUMN preferences TEXT DEFAULT \'{}\'');
+        console.log('[数据库迁移] users 表添加 preferences 列');
+      }
+    }
+  } catch (e) { }
+
   // 模型权限表：管理系统 Provider 分配给用户
   db.run(`
     CREATE TABLE IF NOT EXISTS user_providers (
