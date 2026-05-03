@@ -185,6 +185,7 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
 │    POST /api/permissions/check          │
 │    GET  /api/files                      │
 │    GET  /api/files/content              │
+│    GET  /api/files/properties           │
 └─────────────────────────────────────────┘
     `);
   });

@@ -182,6 +182,8 @@ export default function Sidebar({
   const [newProject, setNewProject] = useState({ name: '', workdir: '', password: '', confirmPassword: '' })
   const [gitUrl, setGitUrl] = useState('')
   const [importing, setImporting] = useState(false)
+  const [credentials, setCredentials] = useState<Array<{ id: string; host: string; type: string; username?: string; isPersonal?: boolean }>>([])
+  const [selectedCredentialId, setSelectedCredentialId] = useState('')
 
   const skillDescriptionTranslations: Record<string, string> = {
     // 通用命令
@@ -330,14 +332,28 @@ export default function Sidebar({
     } catch (error: any) { toast.error('创建失败: ' + error.message) }
   }
 
+  const fetchCredentials = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/my-credentials`)
+      const data = await res.json()
+      const list = Array.isArray(data) ? data : (data.credentials || [])
+      setCredentials(list)
+      if (list.length > 0 && !selectedCredentialId) {
+        setSelectedCredentialId(list[0].id)
+      }
+    } catch (e) { console.error('加载凭证失败:', e) }
+  }
+
   const importFromGit = async () => {
     if (!gitUrl.trim()) { toast.warning('请输入 Git 仓库地址'); return }
     setImporting(true)
     try {
+      const body: any = { gitUrl: gitUrl.trim(), password: newProject.password || undefined }
+      if (selectedCredentialId) body.credentialId = selectedCredentialId
       const result = await fetch(`${API_BASE}/projects/import-git`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gitUrl: gitUrl.trim(), password: newProject.password || undefined })
+        body: JSON.stringify(body)
       }).then(r => r.json())
       if (result.error) { toast.error(result.error); return }
       if (result.status === 'existing') {
@@ -637,7 +653,7 @@ export default function Sidebar({
               </div>
               <div className="border-t px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}>
                 <button
-                  onClick={() => { setShowProjectPopover(false); setShowCreateProject(true) }}
+                  onClick={() => { setShowProjectPopover(false); setShowCreateProject(true); fetchCredentials() }}
                   className="w-full text-left px-2 py-1.5 rounded text-xs transition-colors"
                   style={{ color: 'var(--accent-primary)' }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-tertiary)' }}
@@ -1101,21 +1117,40 @@ export default function Sidebar({
 
             <div className="space-y-4">
               {createMode === 'git' ? (
-                <div>
-                  <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>Git 仓库地址 *</label>
-                  <input
-                    type="text"
-                    value={gitUrl}
-                    onChange={(e) => setGitUrl(e.target.value)}
-                    className="w-full px-3 py-2 rounded"
-                    style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
-                    placeholder="https://github.com/user/repo 或 user/repo"
-                    onKeyDown={(e) => { if (e.key === 'Enter') importFromGit() }}
-                  />
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                    支持 GitHub/GitLab/Bitbucket，本地已有则直接进入
-                  </p>
-                </div>
+                <>
+                  <div>
+                    <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>Git 仓库地址 *</label>
+                    <input
+                      type="text"
+                      value={gitUrl}
+                      onChange={(e) => setGitUrl(e.target.value)}
+                      className="w-full px-3 py-2 rounded"
+                      style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+                      placeholder="https://github.com/user/repo 或 user/repo"
+                      onKeyDown={(e) => { if (e.key === 'Enter') importFromGit() }}
+                    />
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                      支持 GitHub/GitLab/Bitbucket，本地已有则直接进入
+                    </p>
+                  </div>
+                  {credentials.length > 0 && (
+                    <div>
+                      <label className="block text-sm mb-1" style={{ color: 'var(--text-muted)' }}>使用凭证</label>
+                      <select
+                        value={selectedCredentialId}
+                        onChange={(e) => setSelectedCredentialId(e.target.value)}
+                        className="w-full px-3 py-2 rounded text-sm"
+                        style={{ background: 'var(--bg-primary)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+                      >
+                        {credentials.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.username ? c.username + '@' : ''}{c.host} ({c.type === 'token' ? 'Token' : 'SSH'}){c.isPersonal ? ' [个人]' : ' [系统]'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </>
               ) : (
                 <>
                   <div>

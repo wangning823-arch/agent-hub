@@ -104,6 +104,39 @@ export default (ALLOWED_ROOT: string, projectManager?: any) => {
     }
   });
 
+  router.get('/properties', requireProjectScope, (req: Request, res: Response) => {
+    const filePath = req.query.path as string;
+    if (!filePath) {
+      return res.status(400).json({ error: 'path参数是必需的' });
+    }
+
+    const userRoot = getUserRoot(req);
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(userRoot)) {
+      return res.status(403).json({ error: '路径不在允许的范围内' });
+    }
+
+    try {
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: '文件不存在' });
+      }
+      const stat = fs.statSync(filePath);
+      const ext = path.extname(filePath);
+      res.json({
+        name: path.basename(filePath),
+        path: filePath,
+        size: stat.size,
+        isDirectory: stat.isDirectory(),
+        extension: ext || null,
+        created: stat.birthtime.toISOString(),
+        modified: stat.mtime.toISOString(),
+        permissions: (stat.mode & 0o777).toString(8)
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   router.put('/content', requireProjectScope, (req: Request, res: Response) => {
     const { path: filePath, content } = req.body;
 

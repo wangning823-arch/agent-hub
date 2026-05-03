@@ -46,7 +46,7 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
 
   router.post('/import-git', async (req: Request, res: Response) => {
     try {
-      const { gitUrl, password } = req.body;
+      const { gitUrl, password, credentialId } = req.body;
 
       if (!gitUrl) {
         return res.status(400).json({ error: 'gitUrl 是必需的' });
@@ -54,6 +54,14 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
 
       let repoName = '';
       let cloneUrl = gitUrl.trim();
+      let targetBranch = '';
+
+      // 提取分支名并去除 /tree/branch 等后缀
+      const branchMatch = cloneUrl.match(/\/tree\/([^/?#]+)/);
+      if (branchMatch) {
+        targetBranch = branchMatch[1];
+      }
+      cloneUrl = cloneUrl.replace(/\/(tree|blob|pull|issues|actions|releases|wiki)\/.*$/, '');
 
       const patterns = [
         /github\.com[:/]([^/]+)\/([^/.]+)(?:\.git)?$/,
@@ -124,9 +132,79 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
         cloneUrl = cloneUrl + '.git';
       }
 
+      // 尝试使用存储的凭证进行 clone
+      const hostMatch = cloneUrl.match(/https?:\/\/([^/]+)/) || cloneUrl.match(/git@([^:]+):/);
+      if (hostMatch) {
+        const host = hostMatch[1];
+        const credentialManager = require('../credentialManager').default;
+        let cred = null;
+
+        if (credentialId) {
+          // 使用用户指定的凭证
+          cred = credentialManager.getCredentialById(credentialId);
+          console.log(`使用指定凭证 ${credentialId}: ${cred ? '找到' : '未找到'}`);
+        } else {
+          // 自动查找可用凭证
+          const userId = req.user?.userId;
+          cred = userId
+            ? credentialManager.getAvailableCredentialForHost(host, userId)
+            : credentialManager.getSystemCredentialForHost(host);
+        }
+
+        if (!cred) {
+          // 没有凭证时，使用 GIT_TERMINAL_PROMPT=0 防止 git 挂起等待输入
+          console.log(`未找到 ${host} 的凭证，尝试匿名 clone...`);
+        }
+
+        if (cred) {
+          if (cred.type === 'token' && cred.secret) {
+            // HTTPS + token: https://token@github.com/user/repo.git
+            const username = cred.username || 'oauth2';
+            cloneUrl = cloneUrl.replace('https://', `https://${username}:${cred.secret}@`);
+          } else if (cred.type === 'ssh' && cred.key_data) {
+            // SSH 模式: 写临时密钥文件
+            const tmpKeyPath = path.join(os.tmpdir(), `agent-hub-tmp-key-${Date.now()}`);
+            fs.writeFileSync(tmpKeyPath, cred.key_data, { encoding: 'utf8', mode: 0o600 });
+            // 转换为 SSH URL
+            const sshMatch = cloneUrl.match(/https?:\/\/github\.com\/(.+?)(?:\.git)?$/);
+            if (sshMatch) {
+              cloneUrl = `git@github.com:${sshMatch[1]}.git`;
+            }
+            // 使用临时密钥进行 clone
+            try {
+              await new Promise<void>((resolve, reject) => {
+                const branchArg = targetBranch ? `-b ${targetBranch}` : '';
+                exec(`GIT_SSH_COMMAND="ssh -i ${tmpKeyPath} -o StrictHostKeyChecking=no" git clone --depth 1 ${branchArg} "${cloneUrl}" "${workdir}"`, {
+                  timeout: 300000,
+                  maxBuffer: 1024 * 1024
+                }, (error, stdout, stderr) => {
+                  if (error) reject(new Error(stderr || error.message));
+                  else resolve();
+                });
+              });
+              // clone 成功后清理临时密钥
+              try { fs.unlinkSync(tmpKeyPath); } catch {}
+              const project = projectManager.addProject(repoName, workdir, password || undefined, req.user?.userId);
+              return res.json({
+                project,
+                status: 'cloned',
+                message: `成功 clone 并创建项目 ${repoName}`
+              });
+            } catch (cloneError: any) {
+              try { fs.unlinkSync(tmpKeyPath); } catch {}
+              try { fs.rmSync(workdir, { recursive: true, force: true }); } catch {}
+              return res.status(500).json({
+                error: `Git clone 失败: ${cloneError.stderr?.toString() || cloneError.message}`
+              });
+            }
+          }
+        }
+      }
+
       try {
         await new Promise<void>((resolve, reject) => {
-          exec(`git clone --depth 1 "${cloneUrl}" "${workdir}"`, {
+          const branchArg = targetBranch ? `-b ${targetBranch}` : '';
+          exec(`GIT_TERMINAL_PROMPT=0 git clone --depth 1 ${branchArg} "${cloneUrl}" "${workdir}"`, {
             timeout: 300000,
             maxBuffer: 1024 * 1024
           }, (error, stdout, stderr) => {

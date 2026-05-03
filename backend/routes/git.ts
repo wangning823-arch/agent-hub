@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import path from 'path';
+import fs from 'fs';
 import { execFileSync } from 'child_process';
 
 export default (ALLOWED_ROOT: string, permissionManager: any, projectManager?: any) => { // TODO: type this
@@ -140,6 +141,49 @@ export default (ALLOWED_ROOT: string, permissionManager: any, projectManager?: a
       });
 
       res.json({ success: true, output: output.trim() });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post('/gitignore', requireProjectScope, async (req: Request, res: Response) => {
+    const { workdir, filePath, action } = req.body;
+    if (!workdir || !filePath || !action) {
+      return res.status(400).json({ error: 'workdir, filePath, action 是必需的' });
+    }
+
+    const resolvedWorkdir = path.resolve(workdir);
+    if (!resolvedWorkdir.startsWith(getUserRoot(req))) {
+      return res.status(403).json({ error: '路径不在允许的范围内' });
+    }
+
+    const gitignorePath = path.join(workdir, '.gitignore');
+    const relPath = path.relative(workdir, filePath);
+
+    try {
+      let content = '';
+      if (fs.existsSync(gitignorePath)) {
+        content = fs.readFileSync(gitignorePath, 'utf8');
+      }
+      const lines = content.split('\n');
+
+      if (action === 'add') {
+        if (lines.includes(relPath)) {
+          return res.json({ success: true, message: '已存在于 .gitignore 中' });
+        }
+        lines.push(relPath);
+        fs.writeFileSync(gitignorePath, lines.join('\n'), 'utf8');
+        res.json({ success: true, message: `已添加 ${relPath} 到 .gitignore` });
+      } else if (action === 'remove') {
+        const newLines = lines.filter(l => l !== relPath);
+        if (newLines.length === lines.length) {
+          return res.json({ success: true, message: '.gitignore 中未找到该条目' });
+        }
+        fs.writeFileSync(gitignorePath, newLines.join('\n'), 'utf8');
+        res.json({ success: true, message: `已从 .gitignore 移除 ${relPath}` });
+      } else {
+        res.status(400).json({ error: 'action 必须是 add 或 remove' });
+      }
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

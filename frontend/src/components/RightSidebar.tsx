@@ -33,6 +33,26 @@ interface RightSidebarProps {
   onViewFile?: (filePath: string) => void
 }
 
+interface ContextMenuState {
+  visible: boolean
+  x: number
+  y: number
+  filePath: string
+  fileName: string
+  isDirectory: boolean
+}
+
+interface FileProperties {
+  name: string
+  path: string
+  size: number
+  isDirectory: boolean
+  extension: string | null
+  created: string
+  modified: string
+  permissions: string
+}
+
 interface SectionHeaderProps {
   icon: React.ReactNode
   label: string
@@ -52,6 +72,8 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
   const [commitMessage, setCommitMessage] = useState('')
   const [gitOutput, setGitOutput] = useState('')
   const [gitError, setGitError] = useState('')
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, filePath: '', fileName: '', isDirectory: false })
+  const [fileProperties, setFileProperties] = useState<{ visible: boolean; data: FileProperties | null }>({ visible: false, data: null })
 
   const loadFiles = async (dirPath: string) => {
     setLoading(true)
@@ -104,6 +126,52 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
 
   const viewFile = (filePath: string) => { if (onViewFile) onViewFile(filePath) }
 
+  const handleContextMenu = (e: React.MouseEvent, filePath: string, fileName: string, isDirectory: boolean) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ visible: true, x: e.clientX, y: e.clientY, filePath, fileName, isDirectory })
+  }
+
+  const closeContextMenu = () => setContextMenu(prev => ({ ...prev, visible: false }))
+
+  useEffect(() => {
+    if (contextMenu.visible) {
+      const handler = () => closeContextMenu()
+      document.addEventListener('click', handler)
+      document.addEventListener('contextmenu', handler)
+      return () => {
+        document.removeEventListener('click', handler)
+        document.removeEventListener('contextmenu', handler)
+      }
+    }
+  }, [contextMenu.visible])
+
+  const addToGitignore = async (filePath: string) => {
+    if (!workdir) return
+    closeContextMenu()
+    try {
+      const res = await fetch(`${API_BASE}/git/gitignore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workdir, filePath, action: 'add' })
+      })
+      const data = await res.json()
+      if (data.error) { setGitError(data.error); setGitOutput('') }
+      else { setGitOutput(data.message || '已添加到 .gitignore'); setGitError('') }
+      loadGitStatus()
+      loadFiles(currentPath)
+    } catch (error: any) { setGitError('操作失败: ' + error.message); setGitOutput('') }
+  }
+
+  const showFileProperties = async (filePath: string) => {
+    closeContextMenu()
+    try {
+      const data = await fetch(`${API_BASE}/files/properties?path=${encodeURIComponent(filePath)}`).then(r => r.json())
+      if (data.error) { setGitError(data.error); setGitOutput('') }
+      else { setFileProperties({ visible: true, data }) }
+    } catch (error: any) { setGitError('获取属性失败: ' + error.message); setGitOutput('') }
+  }
+
   const runGitCommand = async (command: string) => {
     if (!workdir) { setGitError('未设置工作目录'); return }
     setGitOutput('执行中...'); setGitError('')
@@ -114,7 +182,7 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
         body: JSON.stringify({ workdir, command })
       })
       const data = await res.json()
-      if (data.error && !data.output) { setGitError(data.error); setGitOutput('') }
+      if (data.error) { setGitError(data.output || data.error); setGitOutput('') }
       else { setGitOutput(data.output || '命令执行成功（无输出）'); setGitError('') }
       loadGitStatus()
     } catch (error: any) { setGitError('请求失败: ' + error.message); setGitOutput('') }
@@ -231,6 +299,7 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
                   <div
                     key={idx}
                     onClick={() => file.isDirectory ? enterDirectory(file.path) : viewFile(file.path)}
+                    onContextMenu={(e) => handleContextMenu(e, file.path, file.name, file.isDirectory)}
                     className="px-3 py-2 cursor-pointer flex items-center gap-2 transition-colors"
                     style={{ color: 'var(--text-secondary)' }}
                     onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
@@ -300,8 +369,9 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
                 <div className="text-xs mb-2" style={{ color: 'var(--warning)' }}>📝 已修改 ({gitStatus!.modified!.length})</div>
                 <div className="max-h-32 overflow-y-auto space-y-0.5">
                   {gitStatus!.modified!.map((file, idx) => (
-                    <div key={idx} className="px-2 py-1 text-xs flex items-center gap-2 rounded"
-                      style={{ color: 'var(--warning)', background: 'var(--warning-soft)' }}>
+                    <div key={idx} className="px-2 py-1 text-xs flex items-center gap-2 rounded cursor-pointer"
+                      style={{ color: 'var(--warning)', background: 'var(--warning-soft)' }}
+                      onContextMenu={(e) => handleContextMenu(e, workdir ? `${workdir}/${file}` : file, file.split('/').pop() || file, false)}>
                       <span>●</span>
                       <span className="truncate">{file}</span>
                     </div>
@@ -316,8 +386,9 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
                 <div className="text-xs mb-2" style={{ color: 'var(--success)' }}>✅ 已暂存 ({gitStatus!.staged!.length})</div>
                 <div className="max-h-32 overflow-y-auto space-y-0.5">
                   {gitStatus!.staged!.map((file, idx) => (
-                    <div key={idx} className="px-2 py-1 text-xs flex items-center gap-2 rounded"
-                      style={{ color: 'var(--success)', background: 'var(--success-soft)' }}>
+                    <div key={idx} className="px-2 py-1 text-xs flex items-center gap-2 rounded cursor-pointer"
+                      style={{ color: 'var(--success)', background: 'var(--success-soft)' }}
+                      onContextMenu={(e) => handleContextMenu(e, workdir ? `${workdir}/${file}` : file, file.split('/').pop() || file, false)}>
                       <span>●</span>
                       <span className="truncate">{file}</span>
                     </div>
@@ -332,8 +403,9 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
                 <div className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>❓ 未跟踪 ({gitStatus!.untracked!.length})</div>
                 <div className="max-h-32 overflow-y-auto space-y-0.5">
                   {gitStatus!.untracked!.map((file, idx) => (
-                    <div key={idx} className="px-2 py-1 text-xs flex items-center gap-2"
-                      style={{ color: 'var(--text-muted)' }}>
+                    <div key={idx} className="px-2 py-1 text-xs flex items-center gap-2 cursor-pointer"
+                      style={{ color: 'var(--text-muted)' }}
+                      onContextMenu={(e) => handleContextMenu(e, workdir ? `${workdir}/${file}` : file, file.split('/').pop() || file, false)}>
                       <span>●</span>
                       <span className="truncate">{file}</span>
                     </div>
@@ -400,6 +472,49 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
           </div>
         )}
       </div>
+
+      {/* Context menu */}
+      {contextMenu.visible && (
+        <div className="context-menu" style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}>
+          <div className="context-menu-item" onClick={() => addToGitignore(contextMenu.filePath)}>
+            <span>🚫</span> 添加到 .gitignore
+          </div>
+          <div className="context-menu-item" onClick={() => showFileProperties(contextMenu.filePath)}>
+            <span>ℹ️</span> 文件属性
+          </div>
+        </div>
+      )}
+
+      {/* File properties modal */}
+      {fileProperties.visible && fileProperties.data && (
+        <div className="modal-overlay" onClick={() => setFileProperties({ visible: false, data: null })}>
+          <div className="file-properties-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>文件属性</h3>
+              <button onClick={() => setFileProperties({ visible: false, data: null })} className="btn-icon w-6 h-6">
+                <IconClear />
+              </button>
+            </div>
+            <div className="space-y-3">
+              {[
+                { label: '文件名', value: fileProperties.data.name },
+                { label: '路径', value: fileProperties.data.path },
+                { label: '类型', value: fileProperties.data.isDirectory ? '目录' : (fileProperties.data.extension || '未知') },
+                { label: '大小', value: fileProperties.data.isDirectory ? '-' : formatFileSize(fileProperties.data.size) },
+                { label: '创建时间', value: new Date(fileProperties.data.created).toLocaleString() },
+                { label: '修改时间', value: new Date(fileProperties.data.modified).toLocaleString() },
+                { label: '权限', value: fileProperties.data.permissions },
+              ].map((item) => (
+                <div key={item.label} className="flex flex-col gap-1">
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{item.label}</span>
+                  <span className="text-xs break-all" style={{ color: 'var(--text-secondary)' }}>{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
