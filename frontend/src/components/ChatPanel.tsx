@@ -1845,33 +1845,30 @@ export default function ChatPanel({
                 </select>
               )}
               <div className="flex-1" />
-              {isWorking && (
-                <button
-                  onClick={async () => {
-                    try {
-                      const res = await fetch(`${API_BASE}/sessions/${sessionId}/interrupt`, { method: 'POST' })
-                      if (res.ok) {
-                        onWorkingChange!(false)
-                      }
-                    } catch (e) {
-                      console.error('中断任务失败:', e)
-                    }
-                  }}
-                  className="p-1.5 rounded-lg transition-colors text-xs flex items-center gap-1"
-                  style={{ background: 'var(--error, #ef4444)', color: 'white' }}
-                  title="中断当前任务"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-                </button>
-              )}
               <button
-                onClick={sendMessage}
-                disabled={!connected || isWorking || isStarting || splitAnalyzing || (input.trim() === '' && attachments.length === 0)}
+                onClick={isWorking ? async () => {
+                  try {
+                    const res = await fetch(`${API_BASE}/sessions/${sessionId}/interrupt`, { method: 'POST' })
+                    if (res.ok) {
+                      onWorkingChange!(false)
+                    }
+                  } catch (e) {
+                    console.error('中断任务失败:', e)
+                  }
+                } : sendMessage}
+                disabled={!isWorking && (!connected || isStarting || splitAnalyzing || (input.trim() === '' && attachments.length === 0))}
                 className="p-1.5 rounded-lg transition-colors"
-                style={{ background: 'var(--accent-primary)', color: 'white', opacity: (!connected || isWorking || isStarting || splitAnalyzing || (input.trim() === '' && attachments.length === 0)) ? 0.4 : 1 }}
-                title="发送"
+                style={{
+                  background: isWorking ? 'var(--error, #ef4444)' : 'var(--accent-primary)',
+                  color: 'white',
+                  opacity: (!isWorking && (!connected || isStarting || splitAnalyzing || (input.trim() === '' && attachments.length === 0))) ? 0.4 : 1
+                }}
+                title={isWorking ? '中断当前任务' : '发送'}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                {isWorking
+                  ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                  : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                }
               </button>
             </div>
           </div>
