@@ -1,5 +1,6 @@
 import express, { Router, Request, Response } from 'express';
 import type { SessionData, AgentBase } from '../types/index';
+import { getDb } from '../db';
 
 export default (sessionManager: any) => { // TODO: type this
   const router = Router();
@@ -15,6 +16,16 @@ export default (sessionManager: any) => { // TODO: type this
       const validAgentTypes = ['claude-code', 'opencode', 'codex'];
       if (!validAgentTypes.includes(agentType)) {
         return res.status(400).json({ error: `不支持的Agent类型: ${agentType}` });
+      }
+
+      // 检查用户是否有权使用该 agent 类型
+      if (req.user && req.user.role !== 'admin') {
+        const db = getDb();
+        const uid = req.user.userId.replace(/'/g, "''");
+        const result = db.exec(`SELECT 1 FROM user_agent_types WHERE user_id = '${uid}' AND agent_type = '${agentType.replace(/'/g, "''")}'`);
+        if (result.length === 0 || result[0].values.length === 0) {
+          return res.status(403).json({ error: `无权使用 ${agentType} 类型的 Agent` });
+        }
       }
 
       const session = await sessionManager.createSession(workdir, agentType, { mode, model, effort, ...options }, req.user?.userId);

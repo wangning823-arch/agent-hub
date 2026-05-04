@@ -29,11 +29,14 @@ export default function AccessControlManager() {
   const [selectedUserId, setSelectedUserId] = useState<string>('')
   const [assignedProviderIds, setAssignedProviderIds] = useState<Set<string>>(new Set())
   const [assignedCredentialIds, setAssignedCredentialIds] = useState<Set<string>>(new Set())
+  const [assignedAgentTypes, setAssignedAgentTypes] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [savingProviders, setSavingProviders] = useState(false)
   const [savingCredentials, setSavingCredentials] = useState(false)
+  const [savingAgentTypes, setSavingAgentTypes] = useState(false)
   const [providerMessage, setProviderMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [credentialMessage, setCredentialMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [agentTypeMessage, setAgentTypeMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     fetchData()
@@ -43,6 +46,7 @@ export default function AccessControlManager() {
     if (selectedUserId) {
       fetchUserProviders(selectedUserId)
       fetchUserCredentials(selectedUserId)
+      fetchUserAgentTypes(selectedUserId)
     }
   }, [selectedUserId])
 
@@ -83,6 +87,16 @@ export default function AccessControlManager() {
       setAssignedCredentialIds(new Set(data.credentials.map((c: Credential) => c.id)))
     } catch (error) {
       console.error('加载用户凭证失败:', error)
+    }
+  }
+
+  const fetchUserAgentTypes = async (userId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/users/${userId}/agent-types`)
+      const data = await res.json()
+      setAssignedAgentTypes(new Set(data.agentTypes || []))
+    } catch (error) {
+      console.error('加载用户 Agent 类型失败:', error)
     }
   }
 
@@ -157,6 +171,47 @@ export default function AccessControlManager() {
   }
 
   const typeIcon = (type: string): string => type === 'ssh' ? '🔑' : '🎫'
+
+  // ── Agent 类型操作 ──
+
+  const ALL_AGENT_TYPES = [
+    { id: 'claude-code', name: 'Claude Code', desc: 'Anthropic 官方 CLI Agent' },
+    { id: 'opencode', name: 'OpenCode', desc: '开源多模型 CLI Agent' },
+    { id: 'codex', name: 'Codex', desc: 'OpenAI Codex CLI Agent' },
+  ]
+
+  const toggleAgentType = (agentType: string) => {
+    setAssignedAgentTypes(prev => {
+      const next = new Set(prev)
+      if (next.has(agentType)) next.delete(agentType)
+      else next.add(agentType)
+      return next
+    })
+    setAgentTypeMessage(null)
+  }
+
+  const selectAllAgentTypes = () => setAssignedAgentTypes(new Set(ALL_AGENT_TYPES.map(a => a.id)))
+  const selectNoneAgentTypes = () => setAssignedAgentTypes(new Set())
+
+  const saveAgentTypes = async () => {
+    if (!selectedUserId) return
+    setSavingAgentTypes(true)
+    setAgentTypeMessage(null)
+    try {
+      const res = await fetch(`${API_BASE}/users/${selectedUserId}/agent-types`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentTypes: [...assignedAgentTypes] }),
+      })
+      const data = await res.json()
+      if (res.ok) setAgentTypeMessage({ type: 'success', text: '保存成功' })
+      else setAgentTypeMessage({ type: 'error', text: data.error || '保存失败' })
+    } catch {
+      setAgentTypeMessage({ type: 'error', text: '保存失败' })
+    } finally {
+      setSavingAgentTypes(false)
+    }
+  }
 
   if (loading) {
     return <div className="text-center py-8" style={{ color: 'var(--text-muted)' }}>加载中...</div>
@@ -293,6 +348,57 @@ export default function AccessControlManager() {
             {credentialMessage && (
               <span className="text-sm" style={{ color: credentialMessage.type === 'success' ? 'var(--success)' : 'var(--error)' }}>
                 {credentialMessage.text}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Agent 类型列表 */}
+      {selectedUserId && (
+        <div className="card">
+          <div className="flex items-center justify-between mb-3">
+            <label className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+              Agent 类型（{assignedAgentTypes.size}/{ALL_AGENT_TYPES.length} 已选择）
+            </label>
+            <div className="flex gap-2">
+              <button onClick={selectAllAgentTypes} className="text-xs px-2 py-1 rounded" style={{ color: 'var(--accent-primary)', background: 'var(--accent-primary-soft)', border: 'none', cursor: 'pointer' }}>全选</button>
+              <button onClick={selectNoneAgentTypes} className="text-xs px-2 py-1 rounded" style={{ color: 'var(--text-muted)', background: 'var(--bg-hover)', border: 'none', cursor: 'pointer' }}>全不选</button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {ALL_AGENT_TYPES.map(a => (
+              <label
+                key={a.id}
+                className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors"
+                style={{
+                  background: assignedAgentTypes.has(a.id) ? 'var(--accent-primary-soft)' : 'var(--bg-secondary)',
+                  border: `1px solid ${assignedAgentTypes.has(a.id) ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={assignedAgentTypes.has(a.id)}
+                  onChange={() => toggleAgentType(a.id)}
+                  className="w-4 h-4 rounded"
+                  style={{ accentColor: 'var(--accent-primary)' }}
+                />
+                <div className="flex-1">
+                  <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{a.name}</div>
+                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{a.desc}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3 mt-3">
+            <button onClick={saveAgentTypes} disabled={savingAgentTypes} className="btn-primary px-4 py-1.5 text-sm" style={{ opacity: savingAgentTypes ? 0.6 : 1 }}>
+              {savingAgentTypes ? '保存中...' : '保存 Agent 类型'}
+            </button>
+            {agentTypeMessage && (
+              <span className="text-sm" style={{ color: agentTypeMessage.type === 'success' ? 'var(--success)' : 'var(--error)' }}>
+                {agentTypeMessage.text}
               </span>
             )}
           </div>

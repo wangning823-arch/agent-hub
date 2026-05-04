@@ -27,7 +27,7 @@ import modelsRouter from './routes/models';
 import workflowsRouter from './routes/workflows';
 import WorkflowEngine from './workflow-engine';
 import wsHandler from './websocket/handler';
-import { initDb } from './db';
+import { initDb, getDb } from './db';
 import { UPLOAD_DIR } from './upload';
 import userAuth from './middleware/userAuth';
 import authRouter from './routes/auth';
@@ -85,14 +85,33 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.get('/api/agents', (_req: Request, res: Response) => {
-  res.json({
-    agents: [
-      { id: 'claude-code', name: 'Claude Code', available: true },
-      { id: 'opencode', name: 'OpenCode', available: true },
-      { id: 'codex', name: 'Codex', available: true },
-    ],
-  });
+app.get('/api/agents', (req: Request, res: Response) => {
+  const allAgents = [
+    { id: 'claude-code', name: 'Claude Code', available: true },
+    { id: 'opencode', name: 'OpenCode', available: true },
+    { id: 'codex', name: 'Codex', available: true },
+  ];
+
+  // 管理员返回全部
+  if (!req.user || req.user.role === 'admin') {
+    return res.json({ agents: allAgents });
+  }
+
+  // 普通用户：查询 user_agent_types 过滤
+  try {
+    const db = getDb();
+    const uid = req.user.userId.replace(/'/g, "''");
+    const result = db.exec(`SELECT agent_type FROM user_agent_types WHERE user_id = '${uid}'`);
+    if (result.length > 0 && result[0].values.length > 0) {
+      const allowed = new Set(result[0].values.map((row: any[]) => row[0] as string));
+      const filtered = allAgents.filter(a => allowed.has(a.id));
+      return res.json({ agents: filtered });
+    }
+    // 没有分配记录，向后兼容返回全部
+    res.json({ agents: allAgents });
+  } catch (error: any) {
+    res.json({ agents: allAgents });
+  }
 });
 
 app.get('/api/auth/check', (req: Request, res: Response) => {

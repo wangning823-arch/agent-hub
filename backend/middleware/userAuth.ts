@@ -8,7 +8,6 @@ import { UserContext } from '../types';
 const WHITELIST_PATHS = [
   '/',
   '/api/health',
-  '/api/agents',
   '/api/permissions',
   '/api/auth/login',
   '/api/auth/register',

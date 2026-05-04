@@ -349,4 +349,62 @@ router.put('/:id/credentials', (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════
+// Agent 类型权限管理
+// ═══════════════════════════════════════
+
+router.get('/:id/agent-types', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.params.id.replace(/'/g, "''");
+
+    const existing = db.exec(`SELECT id FROM users WHERE id = '${userId}'`);
+    if (existing.length === 0 || existing[0].values.length === 0) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
+    const result = db.exec(
+      `SELECT agent_type FROM user_agent_types WHERE user_id = '${userId}' ORDER BY agent_type`
+    );
+    const agentTypes = result.length > 0 ? result[0].values.map((row: any[]) => row[0] as string) : [];
+
+    res.json({ agentTypes });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/:id/agent-types', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.params.id.replace(/'/g, "''");
+    const { agentTypes } = req.body;
+
+    if (!Array.isArray(agentTypes)) {
+      return res.status(400).json({ error: 'agentTypes 必须是数组' });
+    }
+
+    const existing = db.exec(`SELECT id FROM users WHERE id = '${userId}'`);
+    if (existing.length === 0 || existing[0].values.length === 0) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
+    const validTypes = ['claude-code', 'opencode', 'codex'];
+    const now = new Date().toISOString();
+    db.run(`DELETE FROM user_agent_types WHERE user_id = '${userId}'`);
+    for (const at of agentTypes) {
+      if (!validTypes.includes(at)) continue;
+      db.run(
+        `INSERT OR IGNORE INTO user_agent_types (user_id, agent_type, created_at) VALUES ('${userId}', '${at}', '${now}')`
+      );
+    }
+    saveToFile();
+
+    console.log(`[管理员分配 Agent 类型] 用户 ${userId} -> ${agentTypes.join(', ')} by ${req.user!.username}`);
+    res.json({ success: true, message: `已分配 ${agentTypes.length} 个 Agent 类型` });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

@@ -254,6 +254,17 @@ async function initDb(): Promise<SqlJsDatabase> {
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_user_credentials_credential_id ON user_credentials(credential_id)`);
 
+  // ========== Agent 类型权限表 ==========
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_agent_types (
+      user_id TEXT NOT NULL,
+      agent_type TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, agent_type),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
   // 向后兼容：从 JSON 迁移旧凭证到 SQLite
   await migrateCredentialsFromJson();
 
@@ -291,6 +302,24 @@ async function initDb(): Promise<SqlJsDatabase> {
           db.run("INSERT OR IGNORE INTO user_providers (user_id, provider_id, created_at) VALUES (?, ?, ?)", [adminId, pid, now]);
         }
         console.log(`[数据库迁移] 自动分配 ${providerResult[0].values.length} 个系统 Provider 给管理员 ${adminId}`);
+      }
+    }
+  } catch (e) { }
+
+  // 向后兼容：如果 user_agent_types 为空且只有一个 admin，自动分配所有 agent 类型给该 admin
+  try {
+    const adminResult = db.exec("SELECT id FROM users WHERE role = 'admin' AND is_active = 1");
+    if (adminResult.length > 0 && adminResult[0].values.length === 1) {
+      const permResult = db.exec("SELECT COUNT(*) FROM user_agent_types");
+      const permCount = permResult[0]?.values[0][0] as number;
+      if (permCount === 0) {
+        const adminId = adminResult[0].values[0][0] as string;
+        const now = new Date().toISOString();
+        const allAgentTypes = ['claude-code', 'opencode', 'codex'];
+        for (const at of allAgentTypes) {
+          db.run("INSERT OR IGNORE INTO user_agent_types (user_id, agent_type, created_at) VALUES (?, ?, ?)", [adminId, at, now]);
+        }
+        console.log(`[数据库迁移] 自动分配所有 Agent 类型给管理员 ${adminId}`);
       }
     }
   } catch (e) { }
