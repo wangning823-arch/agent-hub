@@ -125,23 +125,27 @@ export default function SearchPanel({ onSelectSession, onClose }: SearchPanelPro
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-20">
-      <div className="w-full max-w-2xl bg-gray-900 rounded-xl shadow-2xl border border-gray-800 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20" style={{ background: 'rgba(0,0,0,0.6)' }}>
+      <div className="w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)' }}>
         {/* 搜索框 */}
-        <div className="p-4 border-b border-gray-800">
+        <div className="p-4" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
           <div className="flex items-center gap-3">
-            <span className="text-gray-400">🔍</span>
+            <span style={{ color: 'var(--text-muted)' }}>🔍</span>
             <input
               ref={inputRef}
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索消息或会话..."
-              className="flex-1 bg-transparent text-white text-lg outline-none placeholder-gray-500"
+              className="flex-1 bg-transparent text-lg outline-none"
+              style={{ color: 'var(--text-primary)' }}
             />
             <button
               onClick={onClose}
-              className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg"
+              className="p-2 rounded-lg transition-colors"
+              style={{ color: 'var(--text-muted)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.background = 'var(--bg-hover)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent' }}
             >
               ✕
             </button>
@@ -151,21 +155,21 @@ export default function SearchPanel({ onSelectSession, onClose }: SearchPanelPro
           <div className="flex gap-2 mt-3">
             <button
               onClick={() => setSearchType('messages')}
-              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                searchType === 'messages'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:text-white'
-              }`}
+              className="px-3 py-1.5 text-sm rounded-lg transition-colors"
+              style={{
+                background: searchType === 'messages' ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+                color: searchType === 'messages' ? 'white' : 'var(--text-muted)'
+              }}
             >
               💬 消息
             </button>
             <button
               onClick={() => setSearchType('sessions')}
-              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                searchType === 'sessions'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:text-white'
-              }`}
+              className="px-3 py-1.5 text-sm rounded-lg transition-colors"
+              style={{
+                background: searchType === 'sessions' ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+                color: searchType === 'sessions' ? 'white' : 'var(--text-muted)'
+              }}
             >
               📁 会话
             </button>
@@ -175,42 +179,47 @@ export default function SearchPanel({ onSelectSession, onClose }: SearchPanelPro
         {/* 搜索结果 */}
         <div className="max-h-96 overflow-y-auto">
           {loading ? (
-            <div className="p-8 text-center text-gray-500">
+            <div className="p-8 text-center" style={{ color: 'var(--text-muted)' }}>
               <div className="animate-spin text-2xl mb-2">⏳</div>
               搜索中...
             </div>
           ) : !query.trim() ? (
-            <div className="p-8 text-center text-gray-500">
+            <div className="p-8 text-center" style={{ color: 'var(--text-muted)' }}>
               输入关键词开始搜索
             </div>
           ) : results.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
+            <div className="p-8 text-center" style={{ color: 'var(--text-muted)' }}>
               没有找到匹配的结果
             </div>
           ) : (
-            <div className="divide-y divide-gray-800">
+            <div>
               {results.map((result, idx) => (
                 <div
                   key={idx}
                   onClick={() => handleResultClick(result)}
-                  className="p-4 hover:bg-gray-800/50 cursor-pointer transition-colors"
+                  className="p-4 cursor-pointer transition-colors"
+                  style={{ borderBottom: '1px solid var(--border-subtle)' }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
                   {searchType === 'messages' ? (
                     <>
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm text-blue-400">{(result as MessageResult).sessionTitle}</span>
-                        <span className="text-xs text-gray-500">{formatTime((result as MessageResult).timestamp)}</span>
+                        <span className="text-sm" style={{ color: 'var(--accent-primary)' }}>{(result as MessageResult).sessionTitle}</span>
+                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatTime((result as MessageResult).timestamp)}</span>
                       </div>
-                      <div className="text-sm text-gray-300">
-                        <span className={`inline-block px-1.5 py-0.5 text-xs rounded mr-2 ${
-                          (result as MessageResult).role === 'user' ? 'bg-blue-900/50 text-blue-300' : 'bg-gray-700 text-gray-400'
-                        }`}>
+                      <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                        <span className={`inline-block px-1.5 py-0.5 text-xs rounded mr-2`}
+                          style={{
+                            background: (result as MessageResult).role === 'user' ? 'var(--accent-primary-soft)' : 'var(--bg-tertiary)',
+                            color: (result as MessageResult).role === 'user' ? 'var(--accent-primary)' : 'var(--text-muted)'
+                          }}>
                           {(result as MessageResult).role === 'user' ? '用户' : '助手'}
                         </span>
                         {highlightMatch((result as MessageResult).snippet, query)}
                       </div>
                       {(result as MessageResult).matchCount > 1 && (
-                        <div className="text-xs text-gray-500 mt-1">
+                        <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                           {(result as MessageResult).matchCount} 处匹配
                         </div>
                       )}
@@ -218,13 +227,13 @@ export default function SearchPanel({ onSelectSession, onClose }: SearchPanelPro
                   ) : (
                     <>
                       <div className="flex items-center gap-2">
-                        {(result as SessionResult).isPinned && <span className="text-yellow-500">📌</span>}
-                        <span className="text-white">{highlightMatch((result as SessionResult).title, query)}</span>
+                        {(result as SessionResult).isPinned && <span>📌</span>}
+                        <span style={{ color: 'var(--text-primary)' }}>{highlightMatch((result as SessionResult).title, query)}</span>
                       </div>
-                      <div className="text-sm text-gray-500 mt-1 truncate">
+                      <div className="text-sm mt-1 truncate" style={{ color: 'var(--text-muted)' }}>
                         {highlightMatch((result as SessionResult).workdir, query)}
                       </div>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                      <div className="flex items-center gap-3 mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
                         <span>{(result as SessionResult).messageCount} 条消息</span>
                         <span>{formatTime((result as SessionResult).lastMessageAt)}</span>
                       </div>
@@ -238,7 +247,7 @@ export default function SearchPanel({ onSelectSession, onClose }: SearchPanelPro
 
         {/* 底部状态栏 */}
         {query.trim() && !loading && (
-          <div className="px-4 py-2 border-t border-gray-800 text-xs text-gray-500 flex items-center justify-between">
+          <div className="px-4 py-2 text-xs flex items-center justify-between" style={{ borderTop: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
             <span>{total} 个结果</span>
             <span>ESC 关闭</span>
           </div>

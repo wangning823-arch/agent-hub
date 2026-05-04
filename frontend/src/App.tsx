@@ -662,7 +662,7 @@ export default function App() {
             <button onClick={() => setShowSettings(true)} className="btn-icon" title="设置">
               <IconSettings />
             </button>
-            <button onClick={() => setShowSearch(true)} className="btn-icon" title="搜索 (Ctrl+K)">
+            <button onClick={() => setShowSearch(!showSearch)} className={`btn-icon ${showSearch ? 'active' : ''}`} title="搜索 (Ctrl+K)">
               <IconSearch />
             </button>
             <button
