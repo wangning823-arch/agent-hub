@@ -7,6 +7,16 @@
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 MODE="${1:-prod}"
 
+# 加载 .env 配置
+if [ -f "$PROJECT_ROOT/.env" ]; then
+  set -a
+  . "$PROJECT_ROOT/.env"
+  set +a
+fi
+
+PORT="${PORT:-3002}"
+VITE_DEV_PORT="${VITE_DEV_PORT:-5173}"
+
 # 检查依赖是否安装
 if [ ! -d "$PROJECT_ROOT/backend/node_modules" ]; then
   echo "📦 安装后端依赖..."
@@ -33,8 +43,8 @@ if [ "$MODE" = "dev" ]; then
   echo "┌─────────────────────────────────────────┐"
   echo "│     Agent Hub 已启动 (开发模式)          │"
   echo "│─────────────────────────────────────────│"
-  echo "│  前端: http://localhost:5173             │"
-  echo "│  后端: http://localhost:3001             │"
+  echo "│  前端: http://localhost:${VITE_DEV_PORT}             │"
+  echo "│  后端: http://localhost:${PORT}             │"
   echo "│─────────────────────────────────────────│"
   echo "│  按 Ctrl+C 停止服务                      │"
   echo "└─────────────────────────────────────────┘"
@@ -57,7 +67,7 @@ else
   echo "┌─────────────────────────────────────────┐"
   echo "│         Agent Hub 已启动!                │"
   echo "│─────────────────────────────────────────│"
-  echo "│  访问: http://localhost:3001             │"
+  echo "│  访问: http://localhost:${PORT}             │"
   echo "│─────────────────────────────────────────│"
   echo "│  按 Ctrl+C 停止服务                      │"
   echo "└─────────────────────────────────────────┘"

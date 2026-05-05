@@ -1,5 +1,9 @@
 /// <reference types="node" />
 
+import dotenv from 'dotenv';
+import { resolve } from 'path';
+dotenv.config({ path: resolve(__dirname, '../../.env') });
+
 import express, { Request, Response, NextFunction } from 'express';
 import * as http from 'http';
 import WebSocket from 'ws';
