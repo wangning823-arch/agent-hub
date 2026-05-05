@@ -176,7 +176,10 @@ export default function App() {
   const handleLogin = (token: string): void => {
     setAccessToken(token)
     fetch('/api/auth/me')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error('unauthorized')
+        return r.json()
+      })
       .then(data => {
         setUser(data)
         // 同步用户主题偏好
@@ -184,7 +187,11 @@ export default function App() {
           syncUserTheme(data.preferences)
         }
       })
-      .catch(console.error)
+      .catch(() => {
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+        setAccessToken('')
+      })
   }
 
   const handleLogout = (): void => {
@@ -824,7 +831,7 @@ function AdminPanel({ user, onLogout }: { user: { username: string; role: string
           <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ background: 'var(--accent-primary-soft)', color: 'var(--accent-primary)' }}>Admin</span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm" style={{ color: 'var(--text-muted)' }}>{user.username}</span>
+          <span className="text-sm" style={{ color: 'var(--text-muted)' }}>{user?.username}</span>
           <button onClick={onLogout} className="text-sm px-3 py-1.5 rounded transition-colors" style={{ color: 'var(--error)', border: '1px solid var(--border-subtle)' }}>
             退出登录
           </button>
