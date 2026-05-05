@@ -162,5 +162,33 @@ export default (ALLOWED_ROOT: string, projectManager?: any) => {
     }
   });
 
+  router.delete('/', requireProjectScope, (req: Request, res: Response) => {
+    const filePath = req.query.path as string;
+    if (!filePath) {
+      return res.status(400).json({ error: 'path参数是必需的' });
+    }
+
+    const userRoot = getUserRoot(req);
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(userRoot)) {
+      return res.status(403).json({ error: '路径不在允许的范围内' });
+    }
+
+    try {
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: '文件不存在' });
+      }
+      const stat = fs.statSync(filePath);
+      if (stat.isDirectory()) {
+        fs.rmSync(filePath, { recursive: true });
+      } else {
+        fs.unlinkSync(filePath);
+      }
+      res.json({ success: true, message: '已删除' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return router;
 };

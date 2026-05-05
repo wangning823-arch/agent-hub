@@ -749,6 +749,18 @@ code {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
+.context-menu-divider {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border-subtle);
+}
+.context-menu-danger {
+  color: var(--error);
+}
+.context-menu-danger:hover {
+  background: var(--error-soft);
+  color: var(--error);
+}
 
 /* File properties modal */
 .file-properties-modal {

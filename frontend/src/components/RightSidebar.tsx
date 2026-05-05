@@ -74,6 +74,7 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
   const [gitError, setGitError] = useState('')
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, filePath: '', fileName: '', isDirectory: false })
   const [fileProperties, setFileProperties] = useState<{ visible: boolean; data: FileProperties | null }>({ visible: false, data: null })
+  const [deleteConfirm, setDeleteConfirm] = useState<{ visible: boolean; filePath: string; fileName: string }>({ visible: false, filePath: '', fileName: '' })
 
   const loadFiles = async (dirPath: string) => {
     setLoading(true)
@@ -170,6 +171,25 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
       if (data.error) { setGitError(data.error); setGitOutput('') }
       else { setFileProperties({ visible: true, data }) }
     } catch (error: any) { setGitError('获取属性失败: ' + error.message); setGitOutput('') }
+  }
+
+  const confirmDeleteFile = (filePath: string, fileName: string) => {
+    closeContextMenu()
+    setDeleteConfirm({ visible: true, filePath, fileName })
+  }
+
+  const deleteFile = async () => {
+    const { filePath } = deleteConfirm
+    setDeleteConfirm({ visible: false, filePath: '', fileName: '' })
+    if (!filePath) return
+    try {
+      const res = await fetch(`${API_BASE}/files?path=${encodeURIComponent(filePath)}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.error) { setGitError(data.error); setGitOutput('') }
+      else { setGitOutput(data.message || '已删除'); setGitError('') }
+      loadFiles(currentPath)
+      loadGitStatus()
+    } catch (error: any) { setGitError('删除失败: ' + error.message); setGitOutput('') }
   }
 
   const runGitCommand = async (command: string) => {
@@ -483,6 +503,10 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
           <div className="context-menu-item" onClick={() => showFileProperties(contextMenu.filePath)}>
             <span>ℹ️</span> 文件属性
           </div>
+          <div className="context-menu-divider" />
+          <div className="context-menu-item context-menu-danger" onClick={() => confirmDeleteFile(contextMenu.filePath, contextMenu.fileName)}>
+            <span>🗑️</span> 删除
+          </div>
         </div>
       )}
 
@@ -511,6 +535,29 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
                   <span className="text-xs break-all" style={{ color: 'var(--text-secondary)' }}>{item.value}</span>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation dialog */}
+      {deleteConfirm.visible && (
+        <div className="modal-overlay" onClick={() => setDeleteConfirm({ visible: false, filePath: '', fileName: '' })}>
+          <div className="file-properties-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-primary)' }}>确认删除</h3>
+            <p className="text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
+              确定要删除 <strong>{deleteConfirm.fileName}</strong> 吗？此操作不可撤销。
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setDeleteConfirm({ visible: false, filePath: '', fileName: '' })}
+                className="btn-secondary px-4 py-1.5 text-xs">
+                取消
+              </button>
+              <button onClick={deleteFile}
+                className="px-4 py-1.5 text-xs rounded-lg font-medium"
+                style={{ background: 'var(--error)', color: '#fff' }}>
+                删除
+              </button>
             </div>
           </div>
         </div>
