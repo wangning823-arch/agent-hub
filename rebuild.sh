@@ -28,7 +28,8 @@ echo "✅ 服务已停止"
 # 2. 拉取最新代码
 echo ""
 echo ">>> 步骤 2/5: 拉取最新代码..."
-git pull
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+git pull origin "$BRANCH"
 echo "✅ 代码已更新"
 
 # 3. 安装后端依赖并编译
