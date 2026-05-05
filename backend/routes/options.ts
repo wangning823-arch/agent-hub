@@ -34,7 +34,8 @@ export default () => {
       const allPids = new Set([...assignedPids, ...personalPids]);
 
       if (allPids.size === 0) {
-        models = [];
+        // 保留动态获取的免费模型
+        models = models.filter((m: any) => !!m.free);
       } else {
         // 获取这些 Provider 下所有 Model IDs
         const pidList = [...allPids].map(id => `'${id.replace(/'/g, "''")}'`).join(',');
@@ -45,6 +46,8 @@ export default () => {
         }
 
         models = models.filter((m: any) => {
+          // 动态获取的免费模型不受 provider 权限限制
+          if (m.free) return true;
           // 对于 opencode，model ID 格式是 "provider/model"
           if (agentType === 'opencode') {
             const parts = m.id.split('/');

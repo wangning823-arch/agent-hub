@@ -25,6 +25,7 @@ interface ModelOption {
   name: string;
   description: string;
   contextLimit?: number;
+  free?: boolean;
 }
 
 interface EffortOption {
@@ -220,7 +221,8 @@ function loadOpenCodeModels(): ModelOption[] {
                 models.push({
                   id: fullId,
                   name: model.name || model.id,
-                  description: `免费${ctx ? ' · ' + ctx + ' ctx' : ''}${caps.length ? ' · ' + caps.join('/') : ''}`
+                  description: `免费${ctx ? ' · ' + ctx + ' ctx' : ''}${caps.length ? ' · ' + caps.join('/') : ''}`,
+                  free: true
                 });
                 seen.add(fullId);
               }
@@ -235,10 +237,10 @@ function loadOpenCodeModels(): ModelOption[] {
     console.warn('[OpenCode] 动态读取模型失败，使用硬编码列表:', e.message);
     // 降级：硬编码的免费模型
     const fallback = [
-      { id: 'opencode/gpt-5-nano', name: 'GPT-5 Nano', description: '免费 · 400K ctx · 推理' },
-      { id: 'opencode/big-pickle', name: 'Big Pickle', description: '免费 · 200K ctx · 推理' },
-      { id: 'opencode/minimax-m2.5-free', name: 'MiniMax M2.5 Free', description: '免费 · 204K ctx' },
-      { id: 'opencode/nemotron-3-super-free', name: 'Nemotron 3 Super Free', description: '免费 · 204K ctx' },
+      { id: 'opencode/gpt-5-nano', name: 'GPT-5 Nano', description: '免费 · 400K ctx · 推理', free: true },
+      { id: 'opencode/big-pickle', name: 'Big Pickle', description: '免费 · 200K ctx · 推理', free: true },
+      { id: 'opencode/minimax-m2.5-free', name: 'MiniMax M2.5 Free', description: '免费 · 204K ctx', free: true },
+      { id: 'opencode/nemotron-3-super-free', name: 'Nemotron 3 Super Free', description: '免费 · 204K ctx', free: true },
     ];
     for (const m of fallback) {
       if (!seen.has(m.id)) {
