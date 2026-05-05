@@ -28,6 +28,12 @@ echo "✅ 服务已停止"
 # 2. 拉取最新代码
 echo ""
 echo ">>> 步骤 2/5: 拉取最新代码..."
+REMOTE_URL="${GIT_REMOTE_URL:-git@github.com:wangning823-arch/agent-hub.git}"
+CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
+if [ "$CURRENT_REMOTE" != "$REMOTE_URL" ]; then
+  echo "  配置远程仓库: $REMOTE_URL"
+  git remote set-url origin "$REMOTE_URL" 2>/dev/null || git remote add origin "$REMOTE_URL"
+fi
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 git pull origin "$BRANCH"
 echo "✅ 代码已更新"
