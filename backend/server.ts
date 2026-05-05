@@ -107,10 +107,10 @@ app.get('/api/agents', (req: Request, res: Response) => {
       const filtered = allAgents.filter(a => allowed.has(a.id));
       return res.json({ agents: filtered });
     }
-    // 没有分配记录，向后兼容返回全部
-    res.json({ agents: allAgents });
+    // 没有分配记录，返回空列表（管理员未分配任何 agent 类型）
+    res.json({ agents: [] });
   } catch (error: any) {
-    res.json({ agents: allAgents });
+    res.json({ agents: [] });
   }
 });
 

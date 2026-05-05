@@ -518,7 +518,7 @@ export default function Sidebar({
           if (!s) return false
           if (showArchived ? !s.isArchived : s.isArchived) return false
           const project = Array.isArray(projects) ? projects.find(p => p.id === selectedProjectId) : undefined
-          if (project && !s.workdir.startsWith(project.workdir)) return false
+          if (project && !(s.workdir || '').startsWith(project.workdir)) return false
           if (selectedTags.length > 0) {
             const sessionTags = s.tags || []
             return selectedTags.some(tag => sessionTags.includes(tag))

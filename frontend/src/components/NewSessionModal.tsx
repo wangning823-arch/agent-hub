@@ -139,23 +139,29 @@ export default function NewSessionModal({ agents, onCreate, onClose, preselected
             {/* Agent 类型 */}
             <div className="mb-4">
               <label className="block text-sm mb-2" style={{ color: 'var(--text-muted)' }}>Agent 类型</label>
-              <div className="grid grid-cols-2 gap-2">
-                {agents.map(agent => (
-                  <button
-                    key={agent.id}
-                    type="button"
-                    onClick={() => setAgentType(agent.id)}
-                    className="p-2.5 rounded-xl text-left transition-all text-sm"
-                    style={{
-                      border: `2px solid ${agent.id === agentType ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
-                      background: agent.id === agentType ? 'var(--accent-primary-soft)' : 'var(--bg-tertiary)',
-                      color: 'var(--text-primary)',
-                    }}
-                  >
-                    <div className="font-medium">{agent.name}</div>
-                  </button>
-                ))}
-              </div>
+              {agents.length === 0 ? (
+                <div className="px-3 py-4 rounded-xl text-center text-sm" style={{ background: 'var(--warning-soft, rgba(251,191,36,0.1))', color: 'var(--warning, #f59e0b)', border: '1px solid var(--warning, #f59e0b)' }}>
+                  权限不足，请联系管理员！
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {agents.map(agent => (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      onClick={() => setAgentType(agent.id)}
+                      className="p-2.5 rounded-xl text-left transition-all text-sm"
+                      style={{
+                        border: `2px solid ${agent.id === agentType ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
+                        background: agent.id === agentType ? 'var(--accent-primary-soft)' : 'var(--bg-tertiary)',
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      <div className="font-medium">{agent.name}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* 错误提示 */}
@@ -170,7 +176,7 @@ export default function NewSessionModal({ agents, onCreate, onClose, preselected
               <button type="button" onClick={onClose} className="btn-secondary flex-1 py-2.5">取消</button>
               <button
                 type="submit"
-                disabled={loading || !selectedProject}
+                disabled={loading || !selectedProject || agents.length === 0}
                 className="btn-primary flex-1 py-2.5"
               >
                 {loading ? '⏳ 创建中...' : '创建'}
