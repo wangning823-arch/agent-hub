@@ -35,8 +35,11 @@ if [ "$CURRENT_REMOTE" != "$REMOTE_URL" ]; then
   git remote set-url origin "$REMOTE_URL" 2>/dev/null || git remote add origin "$REMOTE_URL"
 fi
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
-git pull origin "$BRANCH"
-echo "✅ 代码已更新"
+if timeout 30 git pull origin "$BRANCH"; then
+  echo "✅ 代码已更新"
+else
+  echo "⚠️  git pull 超时或失败，跳过更新，使用当前代码继续构建"
+fi
 
 # 3. 安装后端依赖并编译
 echo ""
