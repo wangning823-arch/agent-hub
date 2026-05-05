@@ -1,11 +1,16 @@
+const dotenv = require('dotenv');
+const { resolve } = require('path');
+
+dotenv.config({ path: resolve(__dirname, '.env') });
+
 module.exports = {
   apps: [{
-    name: 'agent-hub-mgmt',
+    name: 'agent-pilot',
     script: 'dist/server.js',
-    cwd: '/home/root1/projects/agent-hub-user-mgmt/backend',
+    cwd: resolve(__dirname, 'backend'),
     env: {
       NODE_ENV: 'production',
-      PORT: 3002
+      PORT: parseInt(process.env.PORT || '3003', 10)
     },
     max_memory_restart: '512M',
     restart_delay: 5000,
