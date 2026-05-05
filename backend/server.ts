@@ -191,6 +191,13 @@ function projectPreviewHandler(req: Request, res: Response, next: NextFunction):
     }
 
     if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+      // 子目录也优先尝试 serve index.html
+      const indexPath = path.join(resolved, 'index.html');
+      const resolvedIndex = path.resolve(indexPath);
+      if (resolvedIndex.startsWith(path.resolve(workdir)) && fs.existsSync(resolvedIndex)) {
+        res.sendFile(resolvedIndex);
+        return;
+      }
       const baseUrl = `/${username}/${projectName}/${filePath}`.replace(/\/+$/, '');
       res.send(renderDirectoryListing(resolved, filePath, baseUrl));
       return;
