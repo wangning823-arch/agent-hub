@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { exec, execSync } from 'child_process';
 import { hashPassword } from '../crypto-utils';
+import { getDb } from '../db';
 
 export default (projectManager: any, sessionManager: any) => { // TODO: type this
   const router = Router();
@@ -435,7 +436,7 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
       const project = projectManager.getProject(req.params.id);
       if (!project) return res.status(404).json({ error: '项目不存在' });
 
-      const { model, sonnetModel, opusModel, haikuModel } = req.body;
+      const { model, sonnetModel, opusModel, haikuModel, providerId } = req.body;
       if (!model && !sonnetModel && !opusModel && !haikuModel) {
         return res.status(400).json({ error: '请至少设置一个模型' });
       }
@@ -456,6 +457,24 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
 
       // 确保 env 对象存在
       if (!settings.env) settings.env = {};
+
+      // 从 Provider 读取连接信息并写入 env
+      if (providerId) {
+        const db = getDb();
+        const uid = req.user!.userId.replace(/'/g, "''");
+        const pid = providerId.replace(/'/g, "''");
+        // 检查用户有权访问该 Provider（系统分配或个人）
+        const result = db.exec(
+          `SELECT base_url, base_url_anthropic, api_key FROM providers WHERE id = '${pid}' AND (owner_id IS NULL OR owner_id = '${uid}')`
+        );
+        if (result.length > 0 && result[0].values.length > 0) {
+          const [baseUrl, baseUrlAnthropic, apiKey] = result[0].values[0];
+          // Claude Code 使用 anthropic 协议的 base_url
+          const anthropicUrl = baseUrlAnthropic || baseUrl;
+          if (anthropicUrl) settings.env.ANTHROPIC_BASE_URL = anthropicUrl;
+          if (apiKey) settings.env.ANTHROPIC_AUTH_TOKEN = apiKey;
+        }
+      }
 
       // 设置模型（只覆盖传入的字段，不清除未传入的）
       if (model) settings.env.ANTHROPIC_MODEL = model;

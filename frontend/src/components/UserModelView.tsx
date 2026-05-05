@@ -186,7 +186,7 @@ export default function UserModelView() {
       const res = await fetch(`${API_BASE}/projects/${applyProjectId}/apply-model`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(modelConfig)
+        body: JSON.stringify({ ...modelConfig, providerId: applyProviderId })
       })
       let data: any
       try { data = await res.json() } catch { setApplyMsg('服务器返回异常'); return }
