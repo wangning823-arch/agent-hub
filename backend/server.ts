@@ -96,13 +96,14 @@ function renderDirectoryListing(dirPath: string, urlPath: string, baseUrl: strin
     let size = '';
     if (!entry.isDirectory()) {
       try {
-        size = ` (${(fs.statSync(path.join(dirPath, entry.name)).size / 1024).toFixed(1)} KB)`;
+        const stat = fs.statSync(path.join(dirPath, entry.name));
+        size = ` (${(stat.size / 1024).toFixed(1)} KB)`;
       } catch {
-        size = ' (未知)';
+        return null;
       }
     }
     return `<tr><td>${icon}</td><td><a href="${href}">${name}</a></td><td>${size}</td></tr>`;
-  }).join('\n');
+  }).filter(Boolean).join('\n');
 
   const parentLink = urlPath
     ? `<tr><td></td><td><a href="${path.dirname(baseUrl)}">../</a></td><td></td></tr>`
