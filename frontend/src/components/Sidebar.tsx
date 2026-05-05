@@ -119,6 +119,7 @@ interface SidebarProps {
   onProjectChange?: (project: Project | null) => void
   onLogout?: () => void
   onShowUserManager?: () => void
+  onShowAdminPanel?: () => void
 }
 
 interface Project {
@@ -151,7 +152,8 @@ export default function Sidebar({
   onRestoringMemoryChange,
   onProjectChange,
   onLogout,
-  onShowUserManager
+  onShowUserManager,
+  onShowAdminPanel
 }: SidebarProps) {
   const toast = useToast()
   const [expandedSection, setExpandedSection] = useState<string>('sessions')
@@ -407,6 +409,7 @@ export default function Sidebar({
       if (res.valid) {
         setVerifiedProjectIds(prev => new Set([...prev, projectPasswordPrompt.project.id]))
         setSelectedProjectId(projectPasswordPrompt.project.id)
+        if (onProjectChange) onProjectChange(projectPasswordPrompt.project)
         setProjectPasswordPrompt(null)
       } else {
         setProjectPasswordPrompt(prev => prev ? { ...prev, loading: false, error: '密码错误' } : null)
@@ -1042,6 +1045,16 @@ export default function Sidebar({
               title="用户管理"
             >
               <IconSettings />
+            </button>
+          )}
+          {user?.role === 'admin' && onShowAdminPanel && (
+            <button
+              onClick={onShowAdminPanel}
+              className="btn-icon"
+              style={{ width: 28, height: 28 }}
+              title="管理面板"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             </button>
           )}
           {onLogout && (

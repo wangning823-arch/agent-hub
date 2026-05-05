@@ -88,6 +88,7 @@ export default function App() {
   const [authChecked, setAuthChecked] = useState<boolean>(false)
   const [user, setUser] = useState<UserInfo | null>(null)
   const [showUserManager, setShowUserManager] = useState<boolean>(false)
+  const [showAdminPanel, setShowAdminPanel] = useState<boolean>(false)
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeSession, setActiveSession] = useState<string | null>(() => localStorage.getItem('activeSession'))
   const [sessionOptions, setSessionOptions] = useState<SessionOptions>({})
@@ -201,6 +202,7 @@ export default function App() {
     setActiveSession(null)
     setActiveProjectId(null)
     setActiveProjectWorkdir(null)
+    setActiveProjectName(null)
   }
 
   const scrollToPanel = (panel: 'left' | 'main' | 'right'): void => {
@@ -331,6 +333,12 @@ export default function App() {
             setActiveSession(null)
             setActiveProjectWorkdir(null)
           }
+        }
+
+        // 恢复上次选中的项目
+        const savedProjectId = localStorage.getItem('activeProjectId')
+        if (savedProjectId) {
+          setActiveProjectId(savedProjectId)
         }
       })
       .catch(console.error)
@@ -571,10 +579,7 @@ export default function App() {
   const currentToken: string = localStorage.getItem('access_token') || accessToken
   if (!currentToken) return <Login onLogin={handleLogin} />
 
-  // 管理员：显示管理界面
-  if (user?.role === 'admin') {
-    return <AdminPanel user={user} onLogout={handleLogout} />
-  }
+  // 管理员不走独立面板，使用与普通用户相同的 Sidebar 界面
 
   return (
     <div
@@ -597,6 +602,7 @@ export default function App() {
           user={user}
           onLogout={handleLogout}
           onShowUserManager={() => setShowUserManager(true)}
+          onShowAdminPanel={() => setShowAdminPanel(true)}
           onSetLoading={(id: string | null) => setLoadingSessionId(id)}
           onSelectSession={(id: string) => {
             if (id === activeSession) {
@@ -793,13 +799,14 @@ export default function App() {
         />
       )}
       {showUserManager && <UserManager onClose={() => setShowUserManager(false)} />}
+      {showAdminPanel && <AdminPanel user={user!} onLogout={handleLogout} onClose={() => setShowAdminPanel(false)} />}
     </div>
   )
 }
 
 // ===================== 管理员面板 =====================
 
-function AdminPanel({ user, onLogout }: { user: { username: string; role: string }; onLogout: () => void }) {
+function AdminPanel({ user, onLogout, onClose }: { user: { username: string; role: string }; onLogout: () => void; onClose: () => void }) {
   const [activeTab, setActiveTab] = useState('users')
 
   const tabs = [
@@ -810,9 +817,12 @@ function AdminPanel({ user, onLogout }: { user: { username: string; role: string
   ]
 
   return (
-    <div className="overflow-hidden flex flex-col h-screen" style={{ background: 'var(--bg-primary)' }}>
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'var(--bg-primary)' }}>
       <header className="flex items-center justify-between px-5 py-3 border-b" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-subtle)' }}>
         <div className="flex items-center gap-3">
+          <button onClick={onClose} className="btn-icon" title="关闭">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+          </button>
           <span className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>AgentPilot 管理面板</span>
           <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ background: 'var(--accent-primary-soft)', color: 'var(--accent-primary)' }}>Admin</span>
         </div>
