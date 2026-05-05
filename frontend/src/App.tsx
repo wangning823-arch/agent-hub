@@ -112,6 +112,7 @@ export default function App() {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => localStorage.getItem('activeProjectId'))
   const [activeProjectWorkdir, setActiveProjectWorkdir] = useState<string | null>(() => localStorage.getItem('activeProjectWorkdir'))
+  const [activeProjectName, setActiveProjectName] = useState<string | null>(() => localStorage.getItem('activeProjectName'))
 
   // 持久化选中状态到 localStorage
   useEffect(() => {
@@ -128,6 +129,11 @@ export default function App() {
     if (activeProjectWorkdir) localStorage.setItem('activeProjectWorkdir', activeProjectWorkdir)
     else localStorage.removeItem('activeProjectWorkdir')
   }, [activeProjectWorkdir])
+
+  useEffect(() => {
+    if (activeProjectName) localStorage.setItem('activeProjectName', activeProjectName)
+    else localStorage.removeItem('activeProjectName')
+  }, [activeProjectName])
 
   // 全局 fetch 拦截，自动加 token 和项目 ID
   useEffect(() => {
@@ -187,6 +193,7 @@ export default function App() {
     localStorage.removeItem('activeSession')
     localStorage.removeItem('activeProjectId')
     localStorage.removeItem('activeProjectWorkdir')
+    localStorage.removeItem('activeProjectName')
     localStorage.removeItem('agent-hub-theme')
     setAccessToken('')
     setUser(null)
@@ -490,10 +497,11 @@ export default function App() {
     }).catch(err => console.error('更新session选项失败:', err))
   }
 
-  const handleProjectChange = (project: { id?: string; workdir?: string } | null): void => {
+  const handleProjectChange = (project: { id?: string; workdir?: string; name?: string } | null): void => {
     if (project) {
       // 先设置 projectId，再设置 workdir，确保 fetch 拦截器使用正确的 projectId
       setActiveProjectId(project.id || null)
+      setActiveProjectName(project.name || null)
       setTimeout(() => {
         setActiveProjectWorkdir(project.workdir || null)
         setActiveSession(null)
@@ -501,6 +509,7 @@ export default function App() {
     } else {
       setActiveProjectId(null)
       setActiveProjectWorkdir(null)
+      setActiveProjectName(null)
       setActiveSession(null)
     }
   }
@@ -627,11 +636,26 @@ export default function App() {
               <IconMenu />
             </button>
 
-            {activeSession && (
+            {(activeSession || activeProjectId) && (
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                  {currentSession?.workdir?.split('/').pop() || '未知'}
-                </span>
+                <button
+                  className="text-sm font-medium hover:underline cursor-pointer"
+                  style={{ color: 'var(--text-primary)', background: 'none', border: 'none', padding: 0 }}
+                  title="在新窗口中预览项目"
+                  onClick={async () => {
+                    if (!activeProjectId) return
+                    try {
+                      const res = await fetch(`${API_BASE}/projects/${activeProjectId}/preview-url`)
+                      const data = await res.json()
+                      if (import.meta.env.DEV && data.apiUrl) window.open(data.apiUrl, '_blank')
+                      else if (data.url) window.open(data.url, '_blank')
+                    } catch (e) {
+                      toast.error('获取预览地址失败')
+                    }
+                  }}
+                >
+                  {activeProjectName || currentSession?.workdir?.split('/').pop() || '未知'}
+                </button>
               </div>
             )}
           </div>
