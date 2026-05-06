@@ -395,12 +395,12 @@ export default () => {
       : (process.env.HOME || '/root');
 
     const db = getDb();
-    const pResult = db.exec(`SELECT base_url, api_key FROM providers WHERE id = '${providerId.replace(/'/g, "''")}'`);
+    const pResult = db.exec(`SELECT base_url, api_key, name FROM providers WHERE id = '${providerId.replace(/'/g, "''")}'`);
     if (pResult.length === 0 || pResult[0].values.length === 0) {
       return res.status(404).json({ error: 'Provider 不存在' });
     }
 
-    const [baseUrl, apiKey] = pResult[0].values[0];
+    const [baseUrl, apiKey, providerName] = pResult[0].values[0];
     const codexHome = process.env.CODEX_HOME || path.join(syncHome, '.codex');
     const configPath = path.join(codexHome, 'config.toml');
 
@@ -420,14 +420,30 @@ export default () => {
       const newLines: string[] = [];
       let foundModel = false;
       let foundProvider = false;
+      let foundProviderSection = false;
+      const sectionHeader = `[model_providers.${providerId}]`;
 
-      for (const line of lines) {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
         if (line.match(/^model\s*=/)) {
           newLines.push(`model = "${modelId}"`);
           foundModel = true;
         } else if (line.match(/^model_provider\s*=/)) {
           newLines.push(`model_provider = "${providerId}"`);
           foundProvider = true;
+        } else if (line.trim() === sectionHeader) {
+          // 替换整个 [model_providers.xxx] 段落
+          newLines.push(sectionHeader);
+          newLines.push(`name = "${providerId}"`);
+          newLines.push(`env_key = "${providerId.toUpperCase().replace(/-/g, '_')}_API_KEY"`);
+          newLines.push(`base_url = "${baseUrl}"`);
+          newLines.push(`wire_api = "chat"`);
+          foundProviderSection = true;
+          // 跳过旧的段落内容（直到下一个 [section] 或文件结束）
+          while (i + 1 < lines.length && !lines[i + 1].trim().startsWith('[')) {
+            i++;
+          }
         } else {
           newLines.push(line);
         }
@@ -435,6 +451,14 @@ export default () => {
 
       if (!foundModel) newLines.push(`model = "${modelId}"`);
       if (!foundProvider) newLines.push(`model_provider = "${providerId}"`);
+      if (!foundProviderSection) {
+        newLines.push('');
+        newLines.push(sectionHeader);
+        newLines.push(`name = "${providerId}"`);
+        newLines.push(`env_key = "${providerId.toUpperCase().replace(/-/g, '_')}_API_KEY"`);
+        newLines.push(`base_url = "${baseUrl}"`);
+        newLines.push(`wire_api = "chat"`);
+      }
 
       fs.writeFileSync(configPath, newLines.join('\n'));
 

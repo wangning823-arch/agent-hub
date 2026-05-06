@@ -48,13 +48,111 @@ function getNpmGlobalBin(): string | null {
   }
 }
 
-// 确保 PATH 包含 npm 全局目录
-function getEnvWithPath(): NodeJS.ProcessEnv {
+/**
+ * 根据当前选择的模型更新全局 config.toml
+ * 确保 model_provider 和对应的 [model_providers.xxx] section 匹配当前模型的 provider
+ * 注意：Node.js 单线程，write 和 spawn 在同一事件循环中，不会被中断
+ */
+function updateCodexConfig(model: string): void {
+  if (!model || !model.includes('/')) return;
+  const [providerId, ...modelParts] = model.split('/');
+  const modelId = modelParts.join('/');
+  if (!providerId || !modelId) return;
+
+  try {
+    const { getDb } = require('../db');
+    const db = getDb();
+    if (!db) return;
+
+    const result = db.exec(`SELECT base_url FROM providers WHERE id = '${providerId.replace(/'/g, "''")}'`);
+    if (result.length === 0 || result[0].values.length === 0) return;
+    const baseUrl = result[0].values[0][0] as string;
+
+    const codexHome = process.env.CODEX_HOME || path.join(process.env.HOME || '/root', '.codex');
+    const configPath = path.join(codexHome, 'config.toml');
+    if (!fs.existsSync(configPath)) return;
+
+    let content = fs.readFileSync(configPath, 'utf-8');
+    const lines = content.split('\n');
+    const newLines: string[] = [];
+    const sectionHeader = `[model_providers.${providerId}]`;
+
+    let foundModel = false;
+    let foundProvider = false;
+    let foundProviderSection = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.match(/^model\s*=/)) {
+        newLines.push(`model = "${modelId}"`);
+        foundModel = true;
+      } else if (line.match(/^model_provider\s*=/)) {
+        newLines.push(`model_provider = "${providerId}"`);
+        foundProvider = true;
+      } else if (line.trim() === sectionHeader) {
+        newLines.push(sectionHeader);
+        newLines.push(`name = "${providerId}"`);
+        newLines.push(`env_key = "${providerId.toUpperCase().replace(/-/g, '_')}_API_KEY"`);
+        newLines.push(`base_url = "${baseUrl}"`);
+        newLines.push(`wire_api = "chat"`);
+        foundProviderSection = true;
+        // 跳过旧 section 的内容行（直到下一个 [section] 或文件结束）
+        while (i + 1 < lines.length && !lines[i + 1].trim().startsWith('[')) {
+          i++;
+        }
+      } else {
+        newLines.push(line);
+      }
+    }
+
+    if (!foundModel) newLines.push(`model = "${modelId}"`);
+    if (!foundProvider) newLines.push(`model_provider = "${providerId}"`);
+    if (!foundProviderSection) {
+      newLines.push('');
+      newLines.push(sectionHeader);
+      newLines.push(`name = "${providerId}"`);
+      newLines.push(`env_key = "${providerId.toUpperCase().replace(/-/g, '_')}_API_KEY"`);
+      newLines.push(`base_url = "${baseUrl}"`);
+      newLines.push(`wire_api = "chat"`);
+    }
+
+    fs.writeFileSync(configPath, newLines.join('\n'));
+  } catch (e) {
+    console.error('[Codex] 更新 config.toml 失败:', (e as Error).message);
+  }
+}
+
+// 构建 Codex 运行环境变量（包含 PATH 和所有 provider 的 API key）
+// Codex 根据 config.toml 中的 model_provider 读取对应的 env_key，
+// 所以需要设置所有可能的 provider API key，确保无论 config.toml 怎么配都能找到
+function getCodexEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
   const npmBin = getNpmGlobalBin();
   if (npmBin && env.PATH && !env.PATH.includes(npmBin)) {
     env.PATH = npmBin + ':' + env.PATH;
   }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getDb } = require('../db');
+    const db = getDb();
+    if (db) {
+      // 获取所有 provider 的 API key，全部设置到环境变量
+      const result = db.exec("SELECT id, api_key FROM providers WHERE api_key IS NOT NULL AND api_key != ''");
+      if (result.length > 0) {
+        for (const row of result[0].values) {
+          const [providerId, apiKey] = row;
+          if (providerId && apiKey) {
+            const envVarName = `${(providerId as string).toUpperCase().replace(/-/g, '_')}_API_KEY`;
+            env[envVarName] = apiKey as string;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[Codex] 设置 API key 环境变量失败:', (e as Error).message);
+  }
+
   return env;
 }
 
@@ -129,9 +227,17 @@ class CodexAgent extends Agent {
         args.push('--full-auto');
       }
 
-      // 指定模型
-      if (this.options.model) {
-        args.push('--model', this.options.model);
+      // 指定模型（模型 ID 格式: provider_id/model_id）
+      const fullModel = this.options.model || '';
+      // 根据当前选择的模型动态更新 config.toml 的 model_provider 和 section
+      updateCodexConfig(fullModel);
+      // 提取 model_id 部分传给 --model 参数
+      let modelId = fullModel;
+      if (modelId.includes('/')) {
+        modelId = modelId.split('/').slice(1).join('/');
+      }
+      if (modelId) {
+        args.push('--model', modelId);
       }
 
       // 添加用户消息（长度截断，防止超大输入导致崩溃）
@@ -143,10 +249,11 @@ class CodexAgent extends Agent {
       }
       args.push(userMessage);
 
+      // 设置所有 provider 的 API key 环境变量
       const proc: ChildProcess = spawn(codexPath, args, {
         cwd: this.workdir,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: getEnvWithPath()
+        env: getCodexEnv()
       });
       this.activeProc = proc;
 

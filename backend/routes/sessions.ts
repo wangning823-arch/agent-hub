@@ -29,6 +29,9 @@ export default (sessionManager: any) => { // TODO: type this
       }
 
       const session = await sessionManager.createSession(workdir, agentType, { mode, model, effort, ...options }, req.user?.userId);
+      if (!session) {
+        return res.status(500).json({ error: 'Agent 启动失败，请检查配置后重试' });
+      }
       res.json(session.toJSON());
     } catch (error: any) {
       console.error('创建会话失败:', error);

@@ -48,8 +48,8 @@ export default () => {
         models = models.filter((m: any) => {
           // 动态获取的免费模型不受 provider 权限限制
           if (m.free) return true;
-          // 对于 opencode，model ID 格式是 "provider/model"
-          if (agentType === 'opencode') {
+          // 对于 opencode 和 codex，model ID 格式是 "provider_id/model_id"
+          if (agentType === 'opencode' || agentType === 'codex') {
             const parts = m.id.split('/');
             return allPids.has(parts[0]) || allowedModelIds.has(m.id);
           }

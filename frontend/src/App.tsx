@@ -407,7 +407,12 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workdir, agentType, ...options })
       })
-      const session: Session = await res.json()
+      const data: any = await res.json()
+      if (!res.ok || data.error) {
+        toast.error(data.error || '创建会话失败')
+        return
+      }
+      const session: Session = data
       // 如果传了 title，更新会话标题
       if (options.title && session.id) {
         await fetch(`${API_BASE}/sessions/${session.id}/rename`, {

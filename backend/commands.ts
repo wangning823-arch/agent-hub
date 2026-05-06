@@ -319,22 +319,46 @@ function getNpmBinPath(): string {
   }
 }
 
-// Codex - 从 ~/.codex/config.yaml 或环境变量读取
+// Codex - 从数据库获取用户可用的模型
 function loadCodexModels(): ModelOption[] {
-  // Codex 通常使用 OPENAI_MODEL 环境变量
-  const envModel = process.env.OPENAI_MODEL;
-  const models: ModelOption[] = [];
-  if (envModel) {
-    models.push({ id: envModel, name: envModel, description: '环境变量默认模型' });
-  }
-  // Codex 支持的常见模型
-  const defaults = ['o4-mini', 'o3', 'o3-mini', 'gpt-4.1', 'gpt-4.1-mini'];
-  for (const m of defaults) {
-    if (m !== envModel) {
-      models.push({ id: m, name: m, description: '' });
+  try {
+    const { getDb } = require('./db');
+    const db = getDb();
+    if (!db) return getDefaultCodexModels();
+
+    // 获取所有 provider 及其 model
+    const result = db.exec(`
+      SELECT m.id, m.name, m.provider_id, m.context_limit, m.output_limit, p.name as provider_name
+      FROM models m
+      JOIN providers p ON m.provider_id = p.id
+      WHERE p.owner_id IS NULL
+      ORDER BY p.name, m.name
+    `);
+
+    if (!result.length || !result[0].values.length) {
+      return getDefaultCodexModels();
     }
+
+    const models: ModelOption[] = [];
+    for (const row of result[0].values) {
+      const [modelId, modelName, providerId, contextLimit, outputLimit, providerName] = row;
+      // 模型 ID 格式: provider_id/model_id（方便后续查找 provider 和 API key）
+      const fullId = `${providerId}/${modelId}`;
+      const ctx = contextLimit ? (contextLimit >= 1000000 ? `${(contextLimit / 1000000).toFixed(0)}M` : `${Math.round(contextLimit / 1000)}K`) : '';
+      const desc = ctx ? `${providerName} · ${ctx}` : (providerName as string);
+      models.push({ id: fullId, name: modelName as string, description: desc });
+    }
+
+    return models.length > 0 ? models : getDefaultCodexModels();
+  } catch (e: any) {
+    console.warn('读取 Codex 模型列表失败:', e.message);
+    return getDefaultCodexModels();
   }
-  return models;
+}
+
+function getDefaultCodexModels(): ModelOption[] {
+  const defaults = ['o4-mini', 'o3', 'o3-mini', 'gpt-4.1', 'gpt-4.1-mini'];
+  return defaults.map(m => ({ id: m, name: m, description: '' }));
 }
 
 // 按 agentType 获取模型列表

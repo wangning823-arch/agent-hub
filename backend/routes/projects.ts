@@ -306,6 +306,10 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
         req.user?.userId
       );
 
+      if (!session) {
+        return res.status(500).json({ error: 'Agent 启动失败，请检查配置后重试' });
+      }
+
       // 更新项目的最后使用信息（可选）
       try {
         projectManager.updateProject(project.id, {
