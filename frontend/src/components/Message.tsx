@@ -145,6 +145,26 @@ export default function Message({ message, index, onDelete, onCopy, onQuote, onR
             <ActionButton onClick={handleQuote} title="引用回复" hoverColor="var(--accent-primary)"><IconQuote /></ActionButton>
             <ActionButton onClick={handleDelete} title="删除" hoverColor="var(--error)"><IconTrash /></ActionButton>
           </div>
+          {(message as any).quote && (
+            <div style={{
+              background: 'var(--bg-tertiary)',
+              borderLeft: '3px solid var(--accent-primary)',
+              borderRadius: '6px',
+              padding: '0.4rem 0.6rem',
+              marginBottom: '0.4rem',
+              fontSize: '0.8rem',
+              color: 'var(--text-muted)',
+              maxHeight: '3.6rem',
+              overflow: 'hidden',
+              textAlign: 'left',
+            }}>
+              <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>
+                {(message as any).quote.role === 'user' ? '用户' : '助手'}：
+              </span>
+              {((message as any).quote.content || '').slice(0, 100)}
+              {((message as any).quote.content || '').length > 100 ? '...' : ''}
+            </div>
+          )}
           <div className="bubble-user">
             {content && <div className="whitespace-pre-wrap break-words">{content}</div>}
             {attachments && attachments.length > 0 && (

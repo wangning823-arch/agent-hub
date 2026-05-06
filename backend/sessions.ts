@@ -633,7 +633,7 @@ Violation of these rules will result in immediate termination of the session.
     return !!(session.isActive && session.agent && session.agent.isRunning);
   }
 
-  async sendMessage(sessionId: string, message: string): Promise<void> {
+  async sendMessage(sessionId: string, message: string, quote?: { role: string; content: string; timestamp: number } | null): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) {
       throw new Error(`会话不存在: ${sessionId}`);
@@ -657,7 +657,7 @@ Violation of these rules will result in immediate termination of the session.
     // 处理图片引用：将 /uploads/ 路径复制到项目 workdir 内
     message = await this._processUploadRefs(message, session.workdir);
 
-    session.messages.push({ role: 'user', content: message, time: Date.now() });
+    session.messages.push({ role: 'user', content: message, time: Date.now(), ...(quote ? { quote } : {}) });
     this.saveSession(session);
 
     session.isWorking = true;

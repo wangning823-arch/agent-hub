@@ -161,7 +161,13 @@ export default (sessionManager: SessionManager, TOKEN_FILE: string) => {
              ws.send(JSON.stringify({ type: 'pong', timestamp: msg.timestamp }));
              return;
            } else if (msg.type === 'user_input') {
-             await sessionManager.sendMessage(sessionId, msg.content);
+             let content = msg.content;
+             let quote = msg.quote || null;
+             if (quote && quote.content) {
+               const roleLabel = quote.role === 'user' ? '用户' : '助手';
+               content = `[引用${roleLabel}消息]: ${quote.content}\n\n${msg.content}`;
+             }
+             await sessionManager.sendMessage(sessionId, content, quote);
            } else if (msg.type === 'command') {
              await handleCommand(sessionId, msg.command, msg.params);
            }
