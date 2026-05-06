@@ -80,7 +80,7 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
     setLoading(true)
     try {
       const data = await fetch(`${API_BASE}/files?path=${encodeURIComponent(dirPath)}`).then(r => r.json())
-      setFiles(data.files || [])
+      setFiles((data.files || []).filter((f: FileItem) => f.name !== '.claude' && f.name !== '.git'))
     } catch (error) { console.error('加载文件失败:', error) }
     setLoading(false)
   }
