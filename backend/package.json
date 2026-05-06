@@ -1,6 +1,6 @@
 {
   "name": "agentpilot-backend",
-  "version": "0.2.20260506.0001",
+  "version": "0.3.20260506.0001",
   "description": "AgentPilot - 后端服务",
   "main": "dist/server.js",
   "scripts": {
