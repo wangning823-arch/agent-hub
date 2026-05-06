@@ -3,6 +3,7 @@ import { marked } from 'marked'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
 import { IconCopy, IconQuote, IconTrash, IconResend, IconCheck } from './Icons'
+import { Sparkles } from 'lucide-react'
 
 // ---- 类型定义 ----
 
@@ -38,6 +39,7 @@ interface MessageProps {
   onCopy?: () => void
   onQuote?: (quote: { role: string; content: string; timestamp: number }) => void
   onResend?: (content: string) => void
+  onBeautify?: (code: string) => void
 }
 
 interface ActionButtonProps {
@@ -52,7 +54,7 @@ interface AttachmentPreviewProps {
   isUser: boolean
 }
 
-export default function Message({ message, index, onDelete, onCopy, onQuote, onResend }: MessageProps) {
+export default function Message({ message, index, onDelete, onCopy, onQuote, onResend, onBeautify }: MessageProps) {
   const { type, content: rawContent, metadata, attachments, replace } = message
   // 确保 content 始终是字符串，防止 React 崩溃
   const content: string = rawContent != null ? (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent)) : ''
@@ -143,6 +145,9 @@ export default function Message({ message, index, onDelete, onCopy, onQuote, onR
               {copied ? <IconCheck /> : <IconCopy />}
             </ActionButton>
             <ActionButton onClick={handleQuote} title="引用回复" hoverColor="var(--accent-primary)"><IconQuote /></ActionButton>
+            {onBeautify && content && (
+              <ActionButton onClick={() => onBeautify(content)} title="AI 美化" hoverColor="var(--accent-primary)"><Sparkles size={14} /></ActionButton>
+            )}
             <ActionButton onClick={handleDelete} title="删除" hoverColor="var(--error)"><IconTrash /></ActionButton>
           </div>
           {(message as any).quote && (
@@ -290,6 +295,9 @@ export default function Message({ message, index, onDelete, onCopy, onQuote, onR
               {copied ? <IconCheck /> : <IconCopy />}
             </ActionButton>
             <ActionButton onClick={handleQuote} title="引用回复" hoverColor="var(--accent-primary)"><IconQuote /></ActionButton>
+            {onBeautify && content && (
+              <ActionButton onClick={() => onBeautify(content)} title="AI 美化" hoverColor="var(--accent-primary)"><Sparkles size={14} /></ActionButton>
+            )}
             <ActionButton onClick={handleDelete} title="删除" hoverColor="var(--error)"><IconTrash /></ActionButton>
           </div>
         </div>

@@ -8,6 +8,10 @@ import WorkflowEditor from './WorkflowEditor'
 import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
 import { API_BASE, getWebSocketUrl } from '../config'
+import { Blocks, FileText, Sparkles } from 'lucide-react'
+import ComponentLibPanel from './ComponentLibPanel'
+import PromptTemplatePanel from './PromptTemplatePanel'
+import CodeBeautifyModal from './CodeBeautifyModal'
 
 // ---- 类型定义 ----
 
@@ -136,6 +140,7 @@ export default function ChatPanel({
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const [isLoadingSession, setIsLoadingSession] = useState(false)
+  const [showComponentLib, setShowComponentLib] = useState(false)
 
   // 分页状态
   const [hasMore, setHasMore] = useState(true)
@@ -169,6 +174,7 @@ export default function ChatPanel({
   const [subtasks, setSubtasks] = useState<SubtaskData[]>([])
   const [showSubtaskPanel, setShowSubtaskPanel] = useState(false)
   const [splitAnalyzing, setSplitAnalyzing] = useState(false)
+  const [showTemplatePanel, setShowTemplatePanel] = useState(false)
   const [activeTab, setActiveTab] = useState<'main' | 'subtasks' | 'workflow'>('main')
   const [viewingSubtaskId, setViewingSubtaskId] = useState<string | null>(null)
   const subtaskScrollRef = useRef<HTMLDivElement>(null)
@@ -197,6 +203,11 @@ export default function ChatPanel({
   const [workflowDefs, setWorkflowDefs] = useState<any[]>([])
   const [workflowTemplates, setWorkflowTemplates] = useState<any[]>([])
   const [showWorkflowDropdown, setShowWorkflowDropdown] = useState(false)
+
+  // 代码美化状态
+  const [showBeautifyModal, setShowBeautifyModal] = useState(false)
+  const [beautifyCode, setBeautifyCode] = useState('')
+  const [beautifyLanguage, setBeautifyLanguage] = useState('')
 
   // 上下文使用情况（从 localStorage 恢复）
   const [contextUsage, setContextUsage] = useState<ContextUsage>(() => {
@@ -1532,6 +1543,10 @@ export default function ChatPanel({
                     onDelete={(deleteIndex) => handleDeleteMessage(msg.time)}
                     onQuote={setQuoteReply}
                     onResend={handleResend}
+                    onBeautify={(code) => {
+                      setBeautifyCode(code)
+                      setShowBeautifyModal(true)
+                    }}
                   />
                 </div>
               )
@@ -1699,6 +1714,25 @@ export default function ChatPanel({
       </div>
       )}
 
+      {/* Code Beautify Modal */}
+      {showBeautifyModal && (
+        <CodeBeautifyModal
+          originalCode={beautifyCode}
+          language={beautifyLanguage || undefined}
+          onClose={() => {
+            setShowBeautifyModal(false)
+            setBeautifyCode('')
+            setBeautifyLanguage('')
+          }}
+          onApply={(beautifiedCode) => {
+            setInput(beautifiedCode)
+            setShowBeautifyModal(false)
+            setBeautifyCode('')
+            setBeautifyLanguage('')
+          }}
+        />
+      )}
+
       {/* Workflow Editor Modal */}
       {showWorkflowEditor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}
@@ -1757,6 +1791,33 @@ export default function ChatPanel({
           </div>
         )}
 
+        {/* Component library panel */}
+        {showComponentLib && (
+          <div className="px-3 pt-3">
+            <ComponentLibPanel
+              workdir={workdir}
+              onSelect={(code) => {
+                setInput((prev) => (prev ? prev + '\n' + code : code))
+                setShowComponentLib(false)
+              }}
+              onClose={() => setShowComponentLib(false)}
+            />
+          </div>
+        )}
+
+        {/* Prompt Template Panel */}
+        {showTemplatePanel && (
+          <div className="px-3 pb-2">
+            <PromptTemplatePanel
+              onSelect={(content) => {
+                setInput((prev) => (prev ? prev + '\n' + content : content))
+                setShowTemplatePanel(false)
+              }}
+              onClose={() => setShowTemplatePanel(false)}
+            />
+          </div>
+        )}
+
         {/* Input area - 所有控件都在输入框里 */}
         <div className="p-3">
           <div className="rounded-2xl border overflow-hidden" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-primary)' }}>
@@ -1811,6 +1872,33 @@ export default function ChatPanel({
                 style={{ color: 'var(--text-muted)', opacity: (isWorking || isStarting || splitAnalyzing) ? 0.4 : 1 }}
                 title="上传文件"
               >{uploading ? '⏳' : '📎'}</button>
+              <button
+                onClick={() => setShowComponentLib(!showComponentLib)}
+                className="p-1.5 rounded-lg transition-colors"
+                style={{ color: showComponentLib ? 'var(--accent-primary)' : 'var(--text-muted)' }}
+                title="组件库"
+              >
+                <Blocks size={16} />
+              </button>
+              <button
+                onClick={() => setShowTemplatePanel(!showTemplatePanel)}
+                className="p-1.5 rounded-lg transition-colors"
+                style={{ color: showTemplatePanel ? 'var(--accent-primary)' : 'var(--text-muted)' }}
+                title="Prompt 模板"
+              >
+                <FileText size={16} />
+              </button>
+              <button
+                onClick={() => {
+                  setBeautifyCode(input)
+                  setShowBeautifyModal(true)
+                }}
+                className="p-1.5 rounded-lg transition-colors"
+                style={{ color: 'var(--accent-primary)' }}
+                title="AI 美化"
+              >
+                <Sparkles size={16} />
+              </button>
               <select
                 value={currentMode}
                 onChange={(e) => updateOption('mode', e.target.value)}

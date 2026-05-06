@@ -8,6 +8,9 @@ import {
   IconFile,
   IconUp
 } from './Icons'
+import { Sparkles } from 'lucide-react'
+import CodeBeautifyModal from './CodeBeautifyModal'
+import { useToast } from './Toast'
 
 const API_BASE = '/api'
 
@@ -64,6 +67,7 @@ interface IconChevronProps {
 }
 
 export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSidebarProps) {
+  const toast = useToast()
   const [expandedSection, setExpandedSection] = useState<string>('files')
   const [files, setFiles] = useState<FileItem[]>([])
   const [currentPath, setCurrentPath] = useState(workdir || '~')
@@ -75,6 +79,7 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, filePath: '', fileName: '', isDirectory: false })
   const [fileProperties, setFileProperties] = useState<{ visible: boolean; data: FileProperties | null }>({ visible: false, data: null })
   const [deleteConfirm, setDeleteConfirm] = useState<{ visible: boolean; filePath: string; fileName: string }>({ visible: false, filePath: '', fileName: '' })
+  const [beautifyModal, setBeautifyModal] = useState<{ visible: boolean; code: string; language: string; fileName: string; filePath: string }>({ visible: false, code: '', language: '', fileName: '', filePath: '' })
 
   const loadFiles = async (dirPath: string) => {
     setLoading(true)
@@ -171,6 +176,25 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
       if (data.error) { setGitError(data.error); setGitOutput('') }
       else { setFileProperties({ visible: true, data }) }
     } catch (error: any) { setGitError('获取属性失败: ' + error.message); setGitOutput('') }
+  }
+
+  const detectLanguage = (fileName: string): string => {
+    const ext = fileName.split('.').pop()?.toLowerCase() || ''
+    const map: Record<string, string> = {
+      tsx: 'tsx', jsx: 'jsx', ts: 'typescript', js: 'javascript',
+      html: 'html', css: 'css', vue: 'vue', json: 'json',
+      py: 'python', rb: 'ruby', go: 'go', rs: 'rust',
+    }
+    return map[ext] || ''
+  }
+
+  const handleBeautifyFile = async (filePath: string, fileName: string) => {
+    closeContextMenu()
+    try {
+      const data = await fetch(`${API_BASE}/files/content?path=${encodeURIComponent(filePath)}`).then(r => r.json())
+      if (data.error) { setGitError(data.error); setGitOutput(''); return }
+      setBeautifyModal({ visible: true, code: data.content || '', language: detectLanguage(fileName), fileName, filePath })
+    } catch (error: any) { setGitError('读取文件失败: ' + error.message); setGitOutput('') }
   }
 
   const confirmDeleteFile = (filePath: string, fileName: string) => {
@@ -503,6 +527,11 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
           <div className="context-menu-item" onClick={() => showFileProperties(contextMenu.filePath)}>
             <span>ℹ️</span> 文件属性
           </div>
+          {!contextMenu.isDirectory && (
+            <div className="context-menu-item" onClick={() => handleBeautifyFile(contextMenu.filePath, contextMenu.fileName)}>
+              <span style={{ color: 'var(--accent-primary)' }}><Sparkles size={14} /></span> AI 美化
+            </div>
+          )}
           <div className="context-menu-divider" />
           <div className="context-menu-item context-menu-danger" onClick={() => confirmDeleteFile(contextMenu.filePath, contextMenu.fileName)}>
             <span>🗑️</span> 删除
@@ -561,6 +590,43 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
             </div>
           </div>
         </div>
+      )}
+
+      {/* AI Beautify modal */}
+      {beautifyModal.visible && (
+        <CodeBeautifyModal
+          originalCode={beautifyModal.code}
+          language={beautifyModal.language || undefined}
+          filePath={beautifyModal.filePath || undefined}
+          onClose={() => setBeautifyModal({ visible: false, code: '', language: '', fileName: '', filePath: '' })}
+          onApply={(beautifiedCode) => {
+            setBeautifyModal(prev => ({ ...prev, visible: false }))
+            navigator.clipboard.writeText(beautifiedCode).then(() => {
+              toast.success('美化后的代码已复制到剪贴板')
+            }).catch(() => {
+              toast.error('复制失败，请手动复制')
+            })
+          }}
+          onSaveFile={beautifyModal.filePath ? async (beautifiedCode) => {
+            try {
+              const res = await fetch(`${API_BASE}/files/content`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: beautifyModal.filePath, content: beautifiedCode }),
+              })
+              const data = await res.json()
+              if (data.error) {
+                toast.error('保存失败: ' + data.error)
+              } else {
+                toast.success('已保存到文件')
+                setBeautifyModal(prev => ({ ...prev, visible: false }))
+                loadFiles(currentPath)
+              }
+            } catch (e: any) {
+              toast.error('保存失败: ' + e.message)
+            }
+          } : undefined}
+        />
       )}
     </div>
   )

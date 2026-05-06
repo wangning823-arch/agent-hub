@@ -146,6 +146,46 @@ async function initDb(): Promise<SqlJsDatabase> {
     )
   `);
 
+  // ========== Prompt 模板表 ==========
+  db.run(`
+    CREATE TABLE IF NOT EXISTS prompt_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'general',
+      content TEXT NOT NULL,
+      is_builtin INTEGER DEFAULT 0,
+      owner_id TEXT,
+      created_at INTEGER,
+      updated_at INTEGER,
+      usage_count INTEGER DEFAULT 0
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_prompt_templates_category ON prompt_templates(category)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_prompt_templates_owner_id ON prompt_templates(owner_id)`);
+
+  // ========== 设计规范表 ==========
+  db.run(`
+    CREATE TABLE IF NOT EXISTS design_specs (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT 'Default Spec',
+      owner_id TEXT,
+      ui_library TEXT DEFAULT 'tailwind',
+      design_style TEXT DEFAULT 'modern',
+      primary_color TEXT DEFAULT '#6366f1',
+      border_radius TEXT DEFAULT 'medium',
+      font_family TEXT DEFAULT 'system',
+      font_size TEXT DEFAULT 'medium',
+      spacing TEXT DEFAULT 'normal',
+      dark_mode INTEGER DEFAULT 1,
+      animations INTEGER DEFAULT 1,
+      custom_css TEXT DEFAULT '',
+      created_at INTEGER,
+      updated_at INTEGER
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_design_specs_owner_id ON design_specs(owner_id)`);
+
   // 增量迁移：清理从 Claude Code 自动迁移的 claude-custom provider
   try {
     const ccResult = db.exec("SELECT id FROM providers WHERE id = 'claude-custom'");

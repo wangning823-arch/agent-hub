@@ -32,6 +32,10 @@ import workflowsRouter from './routes/workflows';
 import WorkflowEngine from './workflow-engine';
 import wsHandler from './websocket/handler';
 import { initDb, getDb } from './db';
+import promptTemplatesRouter from './routes/prompt-templates';
+import designSpecsRouter from './routes/design-specs';
+import beautifyRouter from './routes/beautify';
+import componentLibsRouter from './routes/component-libs';
 import { UPLOAD_DIR } from './upload';
 import userAuth from './middleware/userAuth';
 import authRouter from './routes/auth';
@@ -354,6 +358,10 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   app.use('/api/models', modelsSystemRouter);
   app.use('/api/my-models', myModelsRouter);
   app.use('/api', workflowsRouter(sessionManager, workflowEngine));
+  app.use('/api/prompt-templates', promptTemplatesRouter());
+  app.use('/api/design-specs', designSpecsRouter());
+  app.use('/api/ai', beautifyRouter());
+  app.use('/api/component-libs', componentLibsRouter());
 
   // Authenticated uploads route
   app.get('/uploads/:userId/:date/:filename', (req: Request, res: Response) => {

@@ -3,6 +3,7 @@ import { useTheme, ThemeConfig } from './ThemeContext'
 import { useNotification } from '../hooks/useNotification'
 import UserCredentialView from './UserCredentialView'
 import UserModelView from './UserModelView'
+import DesignSpecPanel from './DesignSpecPanel'
 
 const API_BASE = '/api'
 
@@ -94,7 +95,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   return (
     <div className="modal-overlay" onMouseDown={onClose}>
-      <div className="modal-content" onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}>
+      <div className="modal-content" style={{ maxWidth: '48rem' }} onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}>
         {/* Header */}
         <div className="modal-header">
           <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>设置</h2>
@@ -111,6 +112,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
             { key: 'models', icon: '🤖', label: '模型' },
             { key: 'permissions', icon: '🔐', label: '权限' },
             { key: 'notifications', icon: '🔔', label: '通知' },
+            { key: 'design-spec', icon: '🎯', label: '设计规范' },
           ].map(tab => (
             <button
               key={tab.key}
@@ -147,6 +149,8 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
           {activeTab === 'credentials' && <UserCredentialView />}
 
           {activeTab === 'models' && <UserModelView />}
+
+          {activeTab === 'design-spec' && <DesignSpecPanel />}
 
           {activeTab === 'permissions' && (
             <>
