@@ -4,9 +4,10 @@ import NewSessionModal from './components/NewSessionModal'
 import SettingsPanel from './components/SettingsPanel'
 import Sidebar from './components/Sidebar'
 import RightSidebar from './components/RightSidebar'
-import ContextManager from './components/ContextManager'
 import FileViewer from './components/FileViewer'
 import SearchPanel from './components/SearchPanel'
+import ChangelogModal from './components/ChangelogModal'
+import HelpModal from './components/HelpModal'
 import { useToast } from './components/Toast'
 import { useTheme } from './components/ThemeContext'
 import Login from './components/Login'
@@ -19,8 +20,9 @@ import {
   IconMenu,
   IconSearch,
   IconSettings,
-  IconChart,
-  IconPanel
+  IconPanel,
+  IconHelp,
+  IconChangelog
 } from './components/Icons'
 
 const API_BASE = '/api'
@@ -96,7 +98,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState<boolean>(false)
   const toast = useToast()
   const { themeName, syncUserTheme } = useTheme()
-  const [showContextManager, setShowContextManager] = useState<boolean>(false)
+  const [showChangelog, setShowChangelog] = useState<boolean>(false)
+  const [showHelp, setShowHelp] = useState<boolean>(false)
   const [agents, setAgents] = useState<Agent[]>([])
 
   const [viewingFile, setViewingFile] = useState<ViewingFile | null>(null)
@@ -680,8 +683,11 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-1">
-            <button onClick={() => setShowContextManager(true)} disabled={!activeSession} className="btn-icon" title="上下文与Token">
-              <IconChart />
+            <button onClick={() => setShowHelp(true)} className="btn-icon" title="帮助">
+              <IconHelp />
+            </button>
+            <button onClick={() => setShowChangelog(true)} className="btn-icon" title="更新日志">
+              <IconChangelog />
             </button>
             {subtaskInfo.total > 0 && (
               <button
@@ -792,12 +798,8 @@ export default function App() {
         />
       )}
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
-      {showContextManager && activeSession && (
-        <ContextManager
-          sessionId={activeSession}
-          onClose={() => setShowContextManager(false)}
-        />
-      )}
+      {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
       {showSearch && (
         <SearchPanel
           onSelectSession={(id: string) => {
