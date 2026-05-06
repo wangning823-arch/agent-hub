@@ -745,8 +745,8 @@ export default function App() {
             />
           ) : (
             <div className="h-full flex items-center justify-center p-4">
-              <div className="text-center max-w-md" style={{ animation: 'slideUp 0.5s ease' }}>
-                <div className="mb-6" style={{ filter: 'drop-shadow(0 0 20px rgba(99,102,241,0.3))' }}><AgentPilotLogo size={80} /></div>
+              <div className="text-center max-w-md mx-auto" style={{ animation: 'slideUp 0.5s ease' }}>
+                <div className="mb-6 flex justify-center" style={{ filter: 'drop-shadow(0 0 20px rgba(99,102,241,0.3))' }}><AgentPilotLogo size={80} /></div>
                 <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>AgentPilot</h2>
                 <p className="mb-8" style={{ color: 'var(--text-muted)' }}>多 Agent 协作开发平台</p>
                 <div className="flex flex-col gap-3 max-w-xs mx-auto">
