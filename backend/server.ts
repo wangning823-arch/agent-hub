@@ -173,6 +173,11 @@ function projectPreviewHandler(req: Request, res: Response, next: NextFunction):
     const workdir = projectResult[0].values[0][0] as string;
 
     if (!filePath) {
+      // 项目根目录无尾部斜杠时重定向，确保浏览器正确解析相对路径
+      if (!req.url.endsWith('/')) {
+        res.redirect(301, req.url + '/');
+        return;
+      }
       const indexPath = path.join(workdir, 'index.html');
       const resolvedIndex = path.resolve(indexPath);
       if (resolvedIndex.startsWith(path.resolve(workdir)) && fs.existsSync(resolvedIndex)) {
@@ -192,6 +197,11 @@ function projectPreviewHandler(req: Request, res: Response, next: NextFunction):
     }
 
     if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+      // 目录无尾部斜杠时重定向，确保浏览器正确解析相对路径
+      if (!req.url.endsWith('/')) {
+        res.redirect(301, req.url + '/');
+        return;
+      }
       // 子目录也优先尝试 serve index.html
       const indexPath = path.join(resolved, 'index.html');
       const resolvedIndex = path.resolve(indexPath);
