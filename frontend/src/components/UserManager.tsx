@@ -181,12 +181,12 @@ export default function UserManager({ onClose, fullPage }: UserManagerProps) {
                       onClick={() => handleToggleActive(u.id, u.isActive)}
                       className="text-xs px-2 py-1 rounded"
                       style={{
-                        background: u.isActive ? 'var(--error-soft)' : 'var(--success-soft)',
-                        color: u.isActive ? 'var(--error)' : 'var(--success)',
+                        background: u.isActive ? 'var(--success-soft)' : 'var(--error-soft)',
+                        color: u.isActive ? 'var(--success)' : 'var(--error)',
                         border: 'none', cursor: 'pointer',
                       }}
                     >
-                      {u.isActive ? '停用' : '启用'}
+                      {u.isActive ? '已启用' : '已停用'}
                     </button>
 
                     <button
