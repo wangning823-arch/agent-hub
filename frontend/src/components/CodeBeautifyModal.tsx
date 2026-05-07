@@ -4,7 +4,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { API_BASE } from '../config'
 
 interface CodeBeautifyModalProps {
-  originalCode: string
+  originalCode?: string
   language?: string
   filePath?: string
   onClose: () => void
@@ -58,6 +58,7 @@ const CodeBeautifyModal: React.FC<CodeBeautifyModalProps> = ({
   const [level, setLevel] = useState<BeautifyLevel>('moderate')
   const [style, setStyle] = useState<string>('')
   const [preserveFunctionality, setPreserveFunctionality] = useState(true)
+  const [editableCode, setEditableCode] = useState<string>(originalCode || '')
   const [beautifiedCode, setBeautifiedCode] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
@@ -67,9 +68,10 @@ const CodeBeautifyModal: React.FC<CodeBeautifyModalProps> = ({
   const [saving, setSaving] = useState(false)
 
   // Content-based detection takes priority — a .tsx file may contain pure HTML
-  const effectiveLanguage = detectLanguage(originalCode)
+  const effectiveLanguage = detectLanguage(editableCode)
 
   const handleBeautify = useCallback(async () => {
+    if (!editableCode.trim()) return
     setLoading(true)
     setError('')
     setBeautifiedCode('')
@@ -79,7 +81,7 @@ const CodeBeautifyModal: React.FC<CodeBeautifyModalProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          code: originalCode,
+          code: editableCode,
           language: effectiveLanguage,
           level,
           style: style || undefined,
@@ -99,7 +101,7 @@ const CodeBeautifyModal: React.FC<CodeBeautifyModalProps> = ({
     } finally {
       setLoading(false)
     }
-  }, [originalCode, effectiveLanguage, level, style, preserveFunctionality])
+  }, [editableCode, effectiveLanguage, level, style, preserveFunctionality])
 
   const handleCopy = async () => {
     try {
@@ -267,7 +269,7 @@ const CodeBeautifyModal: React.FC<CodeBeautifyModalProps> = ({
           {/* Beautify button */}
           <button
             onClick={handleBeautify}
-            disabled={loading}
+            disabled={loading || !editableCode.trim()}
             className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-medium transition-all"
             style={{
               background: loading ? 'var(--bg-hover)' : 'var(--accent-primary)',
@@ -330,43 +332,42 @@ const CodeBeautifyModal: React.FC<CodeBeautifyModalProps> = ({
                 )}
               </div>
               <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {originalCode.split('\n').length} lines
+                {editableCode.split('\n').length} lines
               </span>
             </div>
             <div className="flex-1 overflow-auto">
               {leftTab === 'preview' && isPreviewable ? (
                 <iframe
                   srcDoc={effectiveLanguage === 'css'
-                    ? `<html><head><style>${originalCode}</style></head><body><div class="preview-container"><h1>Heading</h1><p>Paragraph text</p><button>Button</button><input placeholder="Input field"/></div></body></html>`
-                    : originalCode
+                    ? `<html><head><style>${editableCode}</style></head><body><div class="preview-container"><h1>Heading</h1><p>Paragraph text</p><button>Button</button><input placeholder="Input field"/></div></body></html>`
+                    : editableCode
                   }
                   sandbox="allow-same-origin"
                   style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
                   title="Original Preview"
                 />
               ) : (
-                <SyntaxHighlighter
-                  language={effectiveLanguage}
-                  style={oneDark}
-                  showLineNumbers
-                  wrapLongLines
-                  customStyle={{
+                <textarea
+                  value={editableCode}
+                  onChange={(e) => setEditableCode(e.target.value)}
+                  placeholder="在此粘贴或输入代码..."
+                  spellCheck={false}
+                  style={{
+                    width: '100%',
+                    height: '100%',
                     margin: 0,
-                    borderRadius: 0,
+                    padding: '0.75rem',
+                    border: 'none',
+                    outline: 'none',
+                    resize: 'none',
                     background: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
                     fontSize: '13px',
                     lineHeight: '1.5',
-                    minHeight: '100%',
+                    fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+                    tabSize: 2,
                   }}
-                  lineNumberStyle={{
-                    minWidth: '3em',
-                    paddingRight: '1em',
-                    color: 'var(--text-muted)',
-                    opacity: 0.5,
-                  }}
-                >
-                  {originalCode}
-                </SyntaxHighlighter>
+                />
               )}
             </div>
           </div>
