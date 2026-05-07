@@ -195,9 +195,100 @@ const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
           </p>
           <ul style={{ color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: '1.25rem' }}>
             <li>点击文件可查看内容，支持代码高亮</li>
-            <li>右键文件可执行删除等操作</li>
+            <li>右键文件可执行删除、AI 美化等操作</li>
             <li>使用 <kbd style={{ background: 'var(--bg-tertiary)', padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>Ctrl+S</kbd> 保存文件修改</li>
           </ul>
+        </div>
+      ),
+    },
+    {
+      id: 'ai-beautify',
+      title: 'AI 美化',
+      icon: (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707" />
+          <circle cx="12" cy="12" r="4" />
+        </svg>
+      ),
+      content: (
+        <div>
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8, marginBottom: '1rem' }}>
+            AI 美化功能可以使用 AI 自动优化你的代码格式和样式，支持 HTML、CSS、JavaScript 等多种语言。
+          </p>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>使用方式</h4>
+          <ul style={{ color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: '1.25rem', marginBottom: '1rem' }}>
+            <li><strong>聊天工具栏</strong>：点击工具栏的 AI 美化按钮，可粘贴代码进行美化</li>
+            <li><strong>文件右键菜单</strong>：在文件浏览器中右键文件，选择"AI 美化"</li>
+          </ul>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>功能特点</h4>
+          <ul style={{ color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: '1.25rem' }}>
+            <li>支持代码和实时预览两种视图（HTML/CSS 文件）</li>
+            <li>美化前后代码对比，支持独立预览</li>
+            <li>可直接保存美化结果到文件</li>
+            <li>自动检测代码语言，支持手动切换</li>
+          </ul>
+        </div>
+      ),
+    },
+    {
+      id: 'design-systems',
+      title: '设计系统',
+      icon: (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="7" height="7" />
+          <rect x="14" y="3" width="7" height="7" />
+          <rect x="14" y="14" width="7" height="7" />
+          <rect x="3" y="14" width="7" height="7" />
+        </svg>
+      ),
+      content: (
+        <div>
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8, marginBottom: '1rem' }}>
+            内置 54 套知名产品设计系统（Notion、Linear、Stripe、Figma 等），一键应用到你的项目。
+          </p>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>打开方式</h4>
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8, marginBottom: '1rem' }}>
+            点击聊天工具栏的调色板图标（🎨）打开设计系统面板。
+          </p>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>浏览与预览</h4>
+          <ul style={{ color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: '1.25rem', marginBottom: '1rem' }}>
+            <li>支持关键词搜索设计系统</li>
+            <li>3 列卡片网格展示，包含名称和简介</li>
+            <li>点击卡片查看详情，包含设计规范代码、亮色/暗色预览</li>
+          </ul>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>应用到项目</h4>
+          <ul style={{ color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: '1.25rem' }}>
+            <li>点击"应用到项目"按钮，设计规范文件会自动写入项目目录</li>
+            <li>支持复制设计规范代码到剪贴板</li>
+          </ul>
+        </div>
+      ),
+    },
+    {
+      id: 'design-spec',
+      title: '设计规范',
+      icon: (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+        </svg>
+      ),
+      content: (
+        <div>
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8, marginBottom: '1rem' }}>
+            设计规范定义项目的视觉风格，包括颜色、字体、间距、圆角等，AI 在生成代码时会自动遵循这些规范。
+          </p>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>配置方式</h4>
+          <ol style={{ color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: '1.25rem', marginBottom: '1rem' }}>
+            <li>打开设置面板，切换到"设计规范"标签页</li>
+            <li>选择设计风格（现代、极简、企业、活泼、新粗野主义）</li>
+            <li>选择 UI 组件库（Ant Design、Material UI、Tailwind 等）</li>
+            <li>自定义颜色、字体、间距等参数</li>
+          </ol>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>实时预览</h4>
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+            右侧面板会实时展示当前设计规范的预览效果，包括卡片、按钮、输入框等组件样式。
+          </p>
         </div>
       ),
     },
@@ -250,10 +341,74 @@ const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
           </p>
           <ul style={{ color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: '1.25rem', marginBottom: '1rem' }}>
             <li><strong>主题</strong> - 切换界面主题</li>
+            <li><strong>设计规范</strong> - 配置项目设计风格和 UI 组件库</li>
             <li><strong>凭证</strong> - 管理 Token 和 SSH 密钥等凭证</li>
             <li><strong>模型</strong> - 配置和管理系统模型</li>
             <li><strong>权限</strong> - 管理员设置用户可用的 Agent 类型</li>
             <li><strong>通知</strong> - 配置桌面通知</li>
+          </ul>
+        </div>
+      ),
+    },
+    {
+      id: 'prompts',
+      title: 'Prompt 模板',
+      icon: (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2Z" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+          <polyline points="10 9 9 9 8 9" />
+        </svg>
+      ),
+      content: (
+        <div>
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8, marginBottom: '1rem' }}>
+            Prompt 模板提供预设的提示词模板，帮助你快速发起高质量的 AI 对话。
+          </p>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>使用方式</h4>
+          <ol style={{ color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: '1.25rem', marginBottom: '1rem' }}>
+            <li>点击聊天工具栏的模板图标打开模板面板</li>
+            <li>浏览或搜索需要的模板</li>
+            <li>点击模板卡片，内容会自动填入输入框</li>
+            <li>根据需要修改变量部分，然后发送</li>
+          </ol>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>模板分类</h4>
+          <ul style={{ color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: '1.25rem' }}>
+            <li>代码开发类：代码审查、Bug 修复、功能实现</li>
+            <li>文档编写类：API 文档、README、注释生成</li>
+            <li>测试类：单元测试、集成测试用例生成</li>
+          </ul>
+        </div>
+      ),
+    },
+    {
+      id: 'component-lib',
+      title: '组件库',
+      icon: (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="12 2 2 7 12 12 22 7 12 2" />
+          <polyline points="2 17 12 22 22 17" />
+          <polyline points="2 12 12 17 22 12" />
+        </svg>
+      ),
+      content: (
+        <div>
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8, marginBottom: '1rem' }}>
+            组件库提供常用 UI 组件的代码片段和最佳实践，帮助你快速构建界面。
+          </p>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>使用方式</h4>
+          <ol style={{ color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: '1.25rem', marginBottom: '1rem' }}>
+            <li>点击聊天工具栏的组件库图标打开面板</li>
+            <li>按分类浏览组件（按钮、表单、卡片、导航等）</li>
+            <li>点击组件查看代码示例和使用说明</li>
+            <li>复制代码到你的项目中使用</li>
+          </ol>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>支持的框架</h4>
+          <ul style={{ color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: '1.25rem' }}>
+            <li>React + Tailwind CSS</li>
+            <li>Vue + Tailwind CSS</li>
+            <li>原生 HTML/CSS</li>
           </ul>
         </div>
       ),

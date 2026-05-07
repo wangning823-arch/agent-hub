@@ -8,7 +8,7 @@ import WorkflowEditor from './WorkflowEditor'
 import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
 import { API_BASE, getWebSocketUrl } from '../config'
-import { Blocks, FileText, Sparkles, Palette } from 'lucide-react'
+import { Blocks, FileText, Sparkles, Palette, Zap, Brain, Gauge } from 'lucide-react'
 import ComponentLibPanel from './ComponentLibPanel'
 import PromptTemplatePanel from './PromptTemplatePanel'
 import DesignSystemPanel from './DesignSystemPanel'
@@ -170,6 +170,7 @@ export default function ChatPanel({
   const [currentModel, setCurrentModel] = useState(options?.model || '')
   const [currentEffort, setCurrentEffort] = useState(options?.effort || 'medium')
   const [sendMode, setSendMode] = useState<'normal' | 'split'>('normal')
+  const [openPopover, setOpenPopover] = useState<'mode' | 'model' | 'effort' | null>(null)
 
   // 子任务状态
   const [subtasks, setSubtasks] = useState<SubtaskData[]>([])
@@ -848,6 +849,18 @@ export default function ChatPanel({
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [showWorkflowDropdown])
+
+  // 点击外部关闭选项弹出菜单
+  useEffect(() => {
+    if (!openPopover) return
+    const handler = (e: MouseEvent) => {
+      if (!(e.target as Element)?.closest('.option-popover')) {
+        setOpenPopover(null)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [openPopover])
 
   // 更新选项
   const updateOption = (type: string, value: string) => {
@@ -1832,7 +1845,7 @@ export default function ChatPanel({
 
         {/* Input area - 所有控件都在输入框里 */}
         <div className="p-3">
-          <div className="rounded-2xl border overflow-hidden" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-primary)' }}>
+          <div className="rounded-2xl border" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-primary)' }}>
             {/* Textarea */}
             <div className="px-3 pt-2 relative">
               {/* 上下文使用百分比 */}
@@ -1919,38 +1932,82 @@ export default function ChatPanel({
               >
                 <Sparkles size={16} />
               </button>
-              <select
-                value={currentMode}
-                onChange={(e) => updateOption('mode', e.target.value)}
-                className="text-xs py-1 px-1.5 rounded-lg border-none focus:outline-none"
-                style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', maxWidth: 80, touchAction: 'manipulation' } as React.CSSProperties}
-              >
-                {modes.map(mode => (
-                  <option key={mode.id} value={mode.id}>{mode.name}</option>
-                ))}
-              </select>
-              <select
-                value={currentModel}
-                onChange={(e) => updateOption('model', e.target.value)}
-                className="text-xs py-1 px-1.5 rounded-lg border-none focus:outline-none"
-                style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', maxWidth: 120, touchAction: 'manipulation' } as React.CSSProperties}
-              >
-                <option value="">默认模型</option>
-                {models.map(model => (
-                  <option key={model.id} value={model.id}>{model.name}</option>
-                ))}
-              </select>
-              {efforts.length > 0 && (
-                <select
-                  value={currentEffort}
-                  onChange={(e) => updateOption('effort', e.target.value)}
-                  className="text-xs py-1 px-1.5 rounded-lg border-none focus:outline-none"
-                  style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', maxWidth: 60, touchAction: 'manipulation' } as React.CSSProperties}
+              {/* Mode 按钮 */}
+              <div className="relative option-popover">
+                <button
+                  onClick={() => setOpenPopover(openPopover === 'mode' ? null : 'mode')}
+                  className="p-1.5 rounded-lg transition-colors"
+                  title={`模式: ${modes.find(m => m.id === currentMode)?.name || currentMode}`}
                 >
-                  {efforts.map(effort => (
-                    <option key={effort.id} value={effort.id}>{effort.name}</option>
-                  ))}
-                </select>
+                  <Zap size={16} style={{ color: openPopover === 'mode' ? 'var(--accent-primary)' : 'var(--text-muted)' }} />
+                </button>
+                {openPopover === 'mode' && (
+                  <div className="absolute bottom-full left-0 mb-1 rounded-lg shadow-lg py-1 min-w-[100px] z-50 option-popover"
+                    style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-subtle)' }}>
+                    {modes.map(mode => (
+                      <button key={mode.id}
+                        onClick={() => { updateOption('mode', mode.id); setOpenPopover(null) }}
+                        className="w-full text-left px-3 py-1.5 text-xs hover:opacity-80"
+                        style={{ color: currentMode === mode.id ? 'var(--accent-primary)' : 'var(--text-primary)' }}>
+                        {currentMode === mode.id ? '✓ ' : ''}{mode.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Model 按钮 */}
+              <div className="relative option-popover">
+                <button
+                  onClick={() => setOpenPopover(openPopover === 'model' ? null : 'model')}
+                  className="p-1.5 rounded-lg transition-colors"
+                  title={`模型: ${models.find(m => m.id === currentModel)?.name || '默认'}`}
+                >
+                  <Brain size={16} style={{ color: openPopover === 'model' ? 'var(--accent-primary)' : 'var(--text-muted)' }} />
+                </button>
+                {openPopover === 'model' && (
+                  <div className="absolute bottom-full left-0 mb-1 rounded-lg shadow-lg py-1 min-w-[140px] z-50 option-popover"
+                    style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-subtle)' }}>
+                    <button
+                      onClick={() => { updateOption('model', ''); setOpenPopover(null) }}
+                      className="w-full text-left px-3 py-1.5 text-xs hover:opacity-80"
+                      style={{ color: !currentModel ? 'var(--accent-primary)' : 'var(--text-primary)' }}>
+                      {!currentModel ? '✓ ' : ''}默认模型
+                    </button>
+                    {models.map(model => (
+                      <button key={model.id}
+                        onClick={() => { updateOption('model', model.id); setOpenPopover(null) }}
+                        className="w-full text-left px-3 py-1.5 text-xs hover:opacity-80"
+                        style={{ color: currentModel === model.id ? 'var(--accent-primary)' : 'var(--text-primary)' }}>
+                        {currentModel === model.id ? '✓ ' : ''}{model.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Effort 按钮 */}
+              {efforts.length > 0 && (
+                <div className="relative option-popover">
+                  <button
+                    onClick={() => setOpenPopover(openPopover === 'effort' ? null : 'effort')}
+                    className="p-1.5 rounded-lg transition-colors"
+                    title={`推理力度: ${efforts.find(e => e.id === currentEffort)?.name || currentEffort}`}
+                  >
+                    <Gauge size={16} style={{ color: openPopover === 'effort' ? 'var(--accent-primary)' : 'var(--text-muted)' }} />
+                  </button>
+                  {openPopover === 'effort' && (
+                    <div className="absolute bottom-full left-0 mb-1 rounded-lg shadow-lg py-1 min-w-[80px] z-50 option-popover"
+                      style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-subtle)' }}>
+                      {efforts.map(effort => (
+                        <button key={effort.id}
+                          onClick={() => { updateOption('effort', effort.id); setOpenPopover(null) }}
+                          className="w-full text-left px-3 py-1.5 text-xs hover:opacity-80"
+                          style={{ color: currentEffort === effort.id ? 'var(--accent-primary)' : 'var(--text-primary)' }}>
+                          {currentEffort === effort.id ? '✓ ' : ''}{effort.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
               <div className="flex-1" />
               <button
@@ -1996,6 +2053,14 @@ export default function ChatPanel({
               )}
               {attachments.length > 0 && (
                 <span style={{ color: 'var(--text-muted)' }}>📎{attachments.length}</span>
+              )}
+              {/* 当前选项显示 */}
+              {modes.length > 0 && (
+                <span style={{ color: 'var(--text-tertiary)' }}>
+                  {modes.find(m => m.id === currentMode)?.name || currentMode}
+                  {currentModel && <span> · {models.find(m => m.id === currentModel)?.name || currentModel}</span>}
+                  {efforts.length > 0 && <span> · {efforts.find(e => e.id === currentEffort)?.name || currentEffort}</span>}
+                </span>
               )}
             </div>
             <div className="flex items-center gap-3">
