@@ -18,7 +18,10 @@ import {
   IconSettings,
   IconLogout,
   IconList,
-  IconChat
+  IconChat,
+  IconControls,
+  IconCommand,
+  IconSkill
 } from './Icons'
 
 // ---- Type Definitions ----
@@ -848,7 +851,7 @@ export default function Sidebar({
 
         {/* Session Controls */}
         <div className="border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-          <SectionHeader icon="⚙️" label="会话控制" section="controls" />
+          <SectionHeader icon={<IconControls size={15} />} label="会话控制" section="controls" />
 
           {expandedSection === 'controls' && (
             <div className="px-4 py-3 space-y-4">
@@ -949,7 +952,7 @@ export default function Sidebar({
 
         {/* Commands */}
         <div>
-          <SectionHeader icon="⌘" label="命令" count={commands.length} section="commands" />
+          <SectionHeader icon={<IconCommand size={15} />} label="命令" count={commands.length} section="commands" />
 
           {expandedSection === 'commands' && (
             <div className="pb-2 max-h-80 overflow-y-auto">
@@ -980,7 +983,7 @@ export default function Sidebar({
 
         {}
         <div>
-          <SectionHeader icon="🎯" label="技能" count={skills.length} section="skills" />
+          <SectionHeader icon={<IconSkill size={15} />} label="技能" count={skills.length} section="skills" />
 
           {expandedSection === 'skills' && (
             <div className="pb-2 max-h-80 overflow-y-auto">
