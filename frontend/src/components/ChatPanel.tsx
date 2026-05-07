@@ -8,9 +8,10 @@ import WorkflowEditor from './WorkflowEditor'
 import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
 import { API_BASE, getWebSocketUrl } from '../config'
-import { Blocks, FileText, Sparkles } from 'lucide-react'
+import { Blocks, FileText, Sparkles, Palette } from 'lucide-react'
 import ComponentLibPanel from './ComponentLibPanel'
 import PromptTemplatePanel from './PromptTemplatePanel'
+import DesignSystemPanel from './DesignSystemPanel'
 import CodeBeautifyModal from './CodeBeautifyModal'
 
 // ---- 类型定义 ----
@@ -175,6 +176,7 @@ export default function ChatPanel({
   const [showSubtaskPanel, setShowSubtaskPanel] = useState(false)
   const [splitAnalyzing, setSplitAnalyzing] = useState(false)
   const [showTemplatePanel, setShowTemplatePanel] = useState(false)
+  const [showDesignSystem, setShowDesignSystem] = useState(false)
   const [activeTab, setActiveTab] = useState<'main' | 'subtasks' | 'workflow'>('main')
   const [viewingSubtaskId, setViewingSubtaskId] = useState<string | null>(null)
   const subtaskScrollRef = useRef<HTMLDivElement>(null)
@@ -1818,6 +1820,16 @@ export default function ChatPanel({
           </div>
         )}
 
+        {/* Design System Panel */}
+        {showDesignSystem && (
+          <div className="px-3 pb-2">
+            <DesignSystemPanel
+              workdir={workdir}
+              onClose={() => setShowDesignSystem(false)}
+            />
+          </div>
+        )}
+
         {/* Input area - 所有控件都在输入框里 */}
         <div className="p-3">
           <div className="rounded-2xl border overflow-hidden" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-primary)' }}>
@@ -1887,6 +1899,14 @@ export default function ChatPanel({
                 title="Prompt 模板"
               >
                 <FileText size={16} />
+              </button>
+              <button
+                onClick={() => setShowDesignSystem(!showDesignSystem)}
+                className="p-1.5 rounded-lg transition-colors"
+                style={{ color: showDesignSystem ? 'var(--accent-primary)' : 'var(--text-muted)' }}
+                title="设计系统"
+              >
+                <Palette size={16} />
               </button>
               <button
                 onClick={() => {
