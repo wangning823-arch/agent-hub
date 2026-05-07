@@ -8,7 +8,7 @@ import WorkflowEditor from './WorkflowEditor'
 import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
 import { API_BASE, getWebSocketUrl } from '../config'
-import { Blocks, FileText, Sparkles, Palette, Zap, Brain, Gauge } from 'lucide-react'
+import { Blocks, FileText, Sparkles, Palette, Zap, Brain, Gauge, Paperclip } from 'lucide-react'
 import ComponentLibPanel from './ComponentLibPanel'
 import PromptTemplatePanel from './PromptTemplatePanel'
 import DesignSystemPanel from './DesignSystemPanel'
@@ -1893,10 +1893,15 @@ export default function ChatPanel({
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading || isWorking || isStarting || splitAnalyzing}
-                className="p-1.5 rounded-lg transition-colors text-xs"
-                style={{ color: 'var(--text-muted)', opacity: (isWorking || isStarting || splitAnalyzing) ? 0.4 : 1 }}
+                className="p-1.5 rounded-lg transition-colors"
+                style={{ color: 'var(--text-muted)', opacity: (uploading || isWorking || isStarting || splitAnalyzing) ? 0.4 : 1 }}
                 title="上传文件"
-              >{uploading ? '⏳' : '📎'}</button>
+              >
+                {uploading
+                  ? <span className="animate-spin inline-block"><Paperclip size={16} /></span>
+                  : <Paperclip size={16} />
+                }
+              </button>
               <button
                 onClick={() => setShowComponentLib(!showComponentLib)}
                 className="p-1.5 rounded-lg transition-colors"
@@ -2052,7 +2057,7 @@ export default function ChatPanel({
                 <span style={{ color: 'var(--accent-primary)' }}>{statusMessage}</span>
               )}
               {attachments.length > 0 && (
-                <span style={{ color: 'var(--text-muted)' }}>📎{attachments.length}</span>
+                <span className="flex items-center gap-0.5" style={{ color: 'var(--text-muted)' }}><Paperclip size={12} />{attachments.length}</span>
               )}
               {/* 当前选项显示 */}
               {modes.length > 0 && (
