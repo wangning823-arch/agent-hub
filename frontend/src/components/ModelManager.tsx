@@ -307,6 +307,14 @@ export default function ModelManager() {
     setDiscoverError(null)
   }
 
+  const toggleAllDiscovered = () => {
+    if (selectedDiscovered.size === discoveredModels.length) {
+      setSelectedDiscovered(new Set())
+    } else {
+      setSelectedDiscovered(new Set(discoveredModels.map(m => m.id)))
+    }
+  }
+
   const doDiscover = async () => {
     setDiscovering(true)
     setDiscoverError(null)
@@ -419,7 +427,7 @@ export default function ModelManager() {
           <DiscoveredPanel models={discoveredModels} selected={selectedDiscovered} discovering={discovering}
             error={discoverError} onDiscover={doDiscover} onToggle={(id) => {
               setSelectedDiscovered(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
-            }} onCancel={cancelDiscover} />
+            }} onSelectAll={toggleAllDiscovered} onCancel={cancelDiscover} />
         )}
         {addingProvider && discoverForProvider === null && discoverError && !discoveredModels.length && (
           <div className="mt-2 p-2 rounded text-xs" style={{ background: 'var(--error-soft)', color: 'var(--error)' }}>{discoverError}</div>
@@ -510,6 +518,7 @@ export default function ModelManager() {
                   <DiscoveredPanel models={discoveredModels} selected={selectedDiscovered} discovering={discovering}
                     error={discoverError} onDiscover={doDiscover}
                     onToggle={(id) => { setSelectedDiscovered(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n }) }}
+                    onSelectAll={toggleAllDiscovered}
                     onImport={importDiscovered} onCancel={cancelDiscover} />
                 )}
               </div>
@@ -525,13 +534,14 @@ export default function ModelManager() {
 
 // ── 发现模型面板 ──
 
-function DiscoveredPanel({ models, selected, discovering, error, onDiscover, onToggle, onImport, onCancel }: {
+function DiscoveredPanel({ models, selected, discovering, error, onDiscover, onToggle, onSelectAll, onImport, onCancel }: {
   models: Array<{ id: string; name: string; contextLimit?: number; outputLimit?: number; free?: boolean }>
   selected: Set<string>
   discovering: boolean
   error: string | null
   onDiscover: () => void
   onToggle: (id: string) => void
+  onSelectAll: () => void
   onImport?: () => void
   onCancel: () => void
 }) {
@@ -559,7 +569,17 @@ function DiscoveredPanel({ models, selected, discovering, error, onDiscover, onT
       {error && <p className="text-xs mb-2" style={{ color: 'var(--error)' }}>{error}</p>}
       {models.length > 0 && (
         <>
-          <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>发现 {models.length} 个，已选 {selected.size} 个</p>
+          <div className="flex items-center gap-3 mb-2">
+            <label className="flex items-center gap-1.5 cursor-pointer text-xs" style={{ color: 'var(--text-secondary)' }}>
+              <input type="checkbox"
+                checked={selected.size === models.length && models.length > 0}
+                onChange={onSelectAll}
+                style={{ accentColor: 'var(--accent-primary)' }}
+              />
+              全选
+            </label>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>发现 {models.length} 个，已选 {selected.size} 个</span>
+          </div>
           <div className="max-h-48 overflow-y-auto space-y-1 mb-2">
             {[...models].sort((a, b) => (b.free ? 1 : 0) - (a.free ? 1 : 0)).map(m => (
               <label key={m.id} className="flex items-center gap-2 p-1.5 rounded cursor-pointer text-xs"

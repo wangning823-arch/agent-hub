@@ -264,6 +264,14 @@ export default function UserModelView() {
     }
   }
 
+  const toggleAllDiscoveredModels = () => {
+    if (selectedModels.size === discoveredModels.length) {
+      setSelectedModels(new Set())
+    } else {
+      setSelectedModels(new Set(discoveredModels.map(m => m.id)))
+    }
+  }
+
   const toggleDiscoveredModel = (modelId: string) => {
     setSelectedModels(prev => {
       const next = new Set(prev)
@@ -487,6 +495,7 @@ export default function UserModelView() {
             importing={importing}
             onDiscover={doDiscover}
             onToggle={toggleDiscoveredModel}
+            onSelectAll={toggleAllDiscoveredModels}
             onImport={importSelectedModels}
             onCancel={cancelDiscover}
           />
@@ -503,6 +512,7 @@ export default function UserModelView() {
             importing={false}
             onDiscover={doDiscover}
             onToggle={toggleDiscoveredModel}
+            onSelectAll={toggleAllDiscoveredModels}
             onImport={() => {}}
             onCancel={cancelDiscover}
             note="请先创建 Provider，然后在 Provider 中导入模型"
@@ -612,7 +622,7 @@ export default function UserModelView() {
 
 function DiscoverPanel({
   providerName, discoveredModels, selectedModels, discovering, discoverError,
-  importing, onDiscover, onToggle, onImport, onCancel, note
+  importing, onDiscover, onToggle, onSelectAll, onImport, onCancel, note
 }: {
   providerName: string
   discoveredModels: DiscoveredModel[]
@@ -622,6 +632,7 @@ function DiscoverPanel({
   importing: boolean
   onDiscover: () => void
   onToggle: (id: string) => void
+  onSelectAll: () => void
   onImport: () => void
   onCancel: () => void
   note?: string
@@ -664,9 +675,19 @@ function DiscoverPanel({
 
       {discoveredModels.length > 0 && (
         <>
-          <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
-            发现 {discoveredModels.length} 个模型，已选择 {selectedModels.size} 个
-          </p>
+          <div className="flex items-center gap-3 mb-2">
+            <label className="flex items-center gap-1.5 cursor-pointer text-xs" style={{ color: 'var(--text-secondary)' }}>
+              <input type="checkbox"
+                checked={selectedModels.size === discoveredModels.length && discoveredModels.length > 0}
+                onChange={onSelectAll}
+                style={{ accentColor: 'var(--accent-primary)' }}
+              />
+              全选
+            </label>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              发现 {discoveredModels.length} 个模型，已选择 {selectedModels.size} 个
+            </span>
+          </div>
           <div className="max-h-60 overflow-y-auto space-y-1 mb-3">
             {[...discoveredModels].sort((a, b) => (b.free ? 1 : 0) - (a.free ? 1 : 0)).map(m => (
               <label key={m.id} className="flex items-center gap-2 p-2 rounded cursor-pointer"
