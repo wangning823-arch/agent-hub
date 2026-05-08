@@ -90,6 +90,7 @@ export default function App() {
   const [authChecked, setAuthChecked] = useState<boolean>(false)
   const [user, setUser] = useState<UserInfo | null>(null)
   const [showUserManager, setShowUserManager] = useState<boolean>(false)
+  const [showAdminPanel, setShowAdminPanel] = useState<boolean>(false)
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeSession, setActiveSession] = useState<string | null>(() => localStorage.getItem('activeSession'))
   const [sessionOptions, setSessionOptions] = useState<SessionOptions>({})
@@ -593,11 +594,6 @@ export default function App() {
   const currentToken: string = localStorage.getItem('access_token') || accessToken
   if (!currentToken) return <Login onLogin={handleLogin} />
 
-  // 管理员：显示管理界面
-  if (user?.role === 'admin') {
-    return <AdminPanel user={user} onLogout={handleLogout} />
-  }
-
   return (
     <div
       ref={scrollContainerRef}
@@ -618,7 +614,7 @@ export default function App() {
           loadingSessionId={loadingSessionId}
           user={user}
           onLogout={handleLogout}
-          onShowUserManager={() => setShowUserManager(true)}
+          onShowAdminPanel={() => setShowAdminPanel(true)}
           onSetLoading={(id: string | null) => setLoadingSessionId(id)}
           onSelectSession={(id: string) => {
             if (id === activeSession) {
@@ -814,6 +810,61 @@ export default function App() {
         />
       )}
       {showUserManager && <UserManager onClose={() => setShowUserManager(false)} />}
+      {showAdminPanel && <AdminPanelModal onClose={() => setShowAdminPanel(false)} />}
+    </div>
+  )
+}
+
+// ===================== 管理面板弹窗 =====================
+
+function AdminPanelModal({ onClose }: { onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState('users')
+
+  const tabs = [
+    { key: 'users', icon: '👥', label: '用户管理' },
+    { key: 'models', icon: '🤖', label: '模型管理' },
+    { key: 'credentials', icon: '🔑', label: '凭证管理' },
+    { key: 'access', icon: '🔐', label: '权限分配' },
+  ]
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onMouseDown={onClose}>
+      <div
+        className="rounded-lg w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col"
+        style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)' }}
+        onMouseDown={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+          <span className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>管理面板</span>
+          <button onClick={onClose} style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18 }}>✕</button>
+        </div>
+        <div className="flex border-b px-5" style={{ borderColor: 'var(--border-subtle)' }}>
+          {tabs.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                padding: '10px 20px',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: activeTab === tab.key ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                color: activeTab === tab.key ? 'var(--accent-primary)' : 'var(--text-muted)',
+                fontWeight: activeTab === tab.key ? 600 : 400,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex-1 overflow-auto p-5">
+          {activeTab === 'users' && <UserManager onClose={() => {}} fullPage />}
+          {activeTab === 'models' && <ModelManager />}
+          {activeTab === 'credentials' && <CredentialManager />}
+          {activeTab === 'access' && <AccessControlManager />}
+        </div>
+      </div>
     </div>
   )
 }

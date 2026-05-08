@@ -503,16 +503,21 @@ Violation of these rules will result in immediate termination of the session.
     }
 
     // 验证 workdir 必须在用户目录内（非 admin 用户）
+    let userRole = 'user';
     if (userId) {
-      // 从数据库获取用户的 homeDir
+      // 从数据库获取用户的 homeDir 和 role
       const db = _getDb!();
-      const result = db.exec(`SELECT home_dir FROM users WHERE id = '${userId.replace(/'/g, "''")}'`);
+      const result = db.exec(`SELECT home_dir, role FROM users WHERE id = '${userId.replace(/'/g, "''")}'`);
       if (result.length > 0 && result[0].values.length > 0) {
         const userHome = result[0].values[0][0] as string;
-        const resolvedWorkdir = path.resolve(absoluteWorkdir);
-        const resolvedHome = path.resolve(userHome);
-        if (!resolvedWorkdir.startsWith(resolvedHome)) {
-          throw new Error(`工作目录必须在用户目录 ${userHome} 内`);
+        userRole = result[0].values[0][1] as string;
+        // 只有非管理员用户才限制路径
+        if (userRole !== 'admin') {
+          const resolvedWorkdir = path.resolve(absoluteWorkdir);
+          const resolvedHome = path.resolve(userHome);
+          if (!resolvedWorkdir.startsWith(resolvedHome)) {
+            throw new Error(`工作目录必须在用户目录 ${userHome} 内`);
+          }
         }
       }
     }
@@ -523,13 +528,13 @@ Violation of these rules will result in immediate termination of the session.
     }
 
     // 为非 admin 用户生成 CLAUDE.md 限制文件访问范围
-    if (userId) {
+    if (userId && userRole !== 'admin') {
       this._generateClaudeMdForSandbox(absoluteWorkdir);
     }
 
     this._setupGitForWorkdir(absoluteWorkdir);
 
-    const agent = _createAgent!(absoluteWorkdir, agentType, { ...options, sessionId: id, userId, userRole: userId ? 'user' : undefined });
+    const agent = _createAgent!(absoluteWorkdir, agentType, { ...options, sessionId: id, userId, userRole: userId ? userRole : undefined });
     const session: SessionInstance = {
       id,
       workdir: absoluteWorkdir,
