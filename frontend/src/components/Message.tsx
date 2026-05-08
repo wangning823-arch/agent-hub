@@ -117,7 +117,7 @@ export default function Message({ message, index, onDelete, onCopy, onQuote, onR
     </button>
   )
 
-  const formatTime = (ts?: number) => new Date(ts || Date.now()).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  const displayTime = React.useRef(new Date(message.time || Date.now()).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })).current
 
   // Skip internal messages
   if (type === 'token_usage' || type === 'conversation_id') return null
@@ -178,7 +178,7 @@ export default function Message({ message, index, onDelete, onCopy, onQuote, onR
               </div>
             )}
           </div>
-          <div className="text-xs mt-1.5 text-right" style={{ color: 'var(--text-muted)' }}>{formatTime(message.time)}</div>
+          <div className="text-xs mt-1.5 text-right" style={{ color: 'var(--text-muted)' }}>{displayTime}</div>
         </div>
       </div>
     )
@@ -289,7 +289,7 @@ export default function Message({ message, index, onDelete, onCopy, onQuote, onR
           </div>
         </div>
         <div className="flex items-center justify-between mt-1.5">
-          <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatTime(message.time)}</div>
+          <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{displayTime}</div>
           <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
             <ActionButton onClick={handleCopy} title={copied ? "已复制" : "复制"} hoverColor={copied ? "var(--success)" : undefined}>
               {copied ? <IconCheck /> : <IconCopy />}

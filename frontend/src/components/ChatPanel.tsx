@@ -726,7 +726,7 @@ export default function ChatPanel({
               // token 用量信息不显示在聊天中，但继续处理后续逻辑更新状态
             } else {
               // 非工具调用消息正常添加
-              setMessages(prev => [...prev, msg])
+              setMessages(prev => [...prev, { ...msg, time: msg.time || Date.now() }])
             }
           }
 
