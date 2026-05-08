@@ -658,6 +658,8 @@ export default () => {
           name: m.id,
           contextLimit: m.context_length || m.context_window || 0,
           outputLimit: m.max_output_tokens || 0,
+          pricing: m.pricing || null,
+          free: m.pricing && String(m.pricing.prompt) === '0' && String(m.pricing.completion) === '0',
         }));
       }
 
@@ -678,11 +680,12 @@ export default () => {
   }
 
   router.post('/discover', async (req: Request, res: Response) => {
-    const { baseUrl, apiKey } = req.body;
+    const { baseUrl, apiKey, freeOnly } = req.body;
     if (!baseUrl) return res.status(400).json({ error: 'baseUrl 必填' });
     try {
-      console.log(`[Discover] Admin 正在发现模型: ${baseUrl}`);
-      const models = await discoverModels(baseUrl, apiKey || '');
+      console.log(`[Discover] Admin 正在发现模型: ${baseUrl}${freeOnly ? ' (仅免费)' : ''}`);
+      let models = await discoverModels(baseUrl, apiKey || '');
+      if (freeOnly) models = models.filter((m: any) => m.free);
       console.log(`[Discover] 发现 ${models.length} 个模型`);
       res.json({ models });
     } catch (e: any) {
@@ -705,8 +708,10 @@ export default () => {
       return res.status(400).json({ error: 'Provider 未设置 Base URL' });
     }
     try {
-      console.log(`[Discover] Admin 正在发现模型 (provider: ${pid}): ${baseUrl}`);
-      const models = await discoverModels(baseUrl, apiKey);
+      const { freeOnly } = req.body;
+      console.log(`[Discover] Admin 正在发现模型 (provider: ${pid}): ${baseUrl}${freeOnly ? ' (仅免费)' : ''}`);
+      let models = await discoverModels(baseUrl, apiKey);
+      if (freeOnly) models = models.filter((m: any) => m.free);
       console.log(`[Discover] 发现 ${models.length} 个模型`);
       res.json({ models });
     } catch (e: any) {
@@ -900,11 +905,12 @@ export default () => {
 
   // ── 个人 Provider 自动发现模型 ──
   myModelsRouter.post('/discover', async (req: Request, res: Response) => {
-    const { baseUrl, apiKey } = req.body;
+    const { baseUrl, apiKey, freeOnly } = req.body;
     if (!baseUrl) return res.status(400).json({ error: 'baseUrl 必填' });
     try {
-      console.log(`[Discover] 用户 ${req.user!.userId} 正在发现模型: ${baseUrl}`);
-      const models = await discoverModels(baseUrl, apiKey || '');
+      console.log(`[Discover] 用户 ${req.user!.userId} 正在发现模型: ${baseUrl}${freeOnly ? ' (仅免费)' : ''}`);
+      let models = await discoverModels(baseUrl, apiKey || '');
+      if (freeOnly) models = models.filter((m: any) => m.free);
       console.log(`[Discover] 发现 ${models.length} 个模型`);
       res.json({ models });
     } catch (e: any) {
@@ -931,8 +937,10 @@ export default () => {
       return res.status(400).json({ error: 'Provider 未设置 Base URL' });
     }
     try {
-      console.log(`[Discover] 用户 ${userId} 正在发现模型 (provider: ${pid}): ${baseUrl}`);
-      const models = await discoverModels(baseUrl, apiKey);
+      const { freeOnly } = req.body;
+      console.log(`[Discover] 用户 ${userId} 正在发现模型 (provider: ${pid}): ${baseUrl}${freeOnly ? ' (仅免费)' : ''}`);
+      let models = await discoverModels(baseUrl, apiKey);
+      if (freeOnly) models = models.filter((m: any) => m.free);
       console.log(`[Discover] 发现 ${models.length} 个模型`);
       res.json({ models });
     } catch (e: any) {

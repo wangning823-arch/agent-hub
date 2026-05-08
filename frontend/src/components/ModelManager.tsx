@@ -130,7 +130,7 @@ export default function ModelManager() {
   // 自动发现状态
   const [discovering, setDiscovering] = useState(false)
   const [discoverError, setDiscoverError] = useState<string | null>(null)
-  const [discoveredModels, setDiscoveredModels] = useState<Array<{ id: string; name: string; contextLimit?: number; outputLimit?: number }>>([])
+  const [discoveredModels, setDiscoveredModels] = useState<Array<{ id: string; name: string; contextLimit?: number; outputLimit?: number; free?: boolean }>>([])
   const [selectedDiscovered, setSelectedDiscovered] = useState<Set<string>>(new Set())
   const [discoverForProvider, setDiscoverForProvider] = useState<string | null>(null)
 
@@ -526,7 +526,7 @@ export default function ModelManager() {
 // ── 发现模型面板 ──
 
 function DiscoveredPanel({ models, selected, discovering, error, onDiscover, onToggle, onImport, onCancel }: {
-  models: Array<{ id: string; name: string; contextLimit?: number; outputLimit?: number }>
+  models: Array<{ id: string; name: string; contextLimit?: number; outputLimit?: number; free?: boolean }>
   selected: Set<string>
   discovering: boolean
   error: string | null
@@ -561,12 +561,15 @@ function DiscoveredPanel({ models, selected, discovering, error, onDiscover, onT
         <>
           <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>发现 {models.length} 个，已选 {selected.size} 个</p>
           <div className="max-h-48 overflow-y-auto space-y-1 mb-2">
-            {models.map(m => (
+            {[...models].sort((a, b) => (b.free ? 1 : 0) - (a.free ? 1 : 0)).map(m => (
               <label key={m.id} className="flex items-center gap-2 p-1.5 rounded cursor-pointer text-xs"
                 style={{ background: selected.has(m.id) ? 'var(--accent-primary-soft)' : 'var(--bg-secondary)' }}>
                 <input type="checkbox" checked={selected.has(m.id)} onChange={() => onToggle(m.id)} style={{ accentColor: 'var(--accent-primary)' }} />
-                <span style={{ color: 'var(--text-primary)' }}>{m.name}</span>
+                <span style={{ color: m.free ? '#22c55e' : 'var(--text-primary)' }}>{m.name}</span>
                 <span style={{ color: 'var(--text-muted)' }}>{m.id}</span>
+                {m.free && (
+                  <span className="px-1.5 py-0.5 rounded shrink-0" style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>免费</span>
+                )}
                 <span className="ml-auto" style={{ color: 'var(--text-muted)' }}>
                   {m.contextLimit ? formatCtx(m.contextLimit) : ''}{m.outputLimit ? ` / ${formatCtx(m.outputLimit)}` : ''}
                 </span>

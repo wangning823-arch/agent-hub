@@ -21,6 +21,7 @@ interface DiscoveredModel {
   name: string
   contextLimit?: number
   outputLimit?: number
+  free?: boolean
 }
 
 interface PersonalProviderForm {
@@ -667,16 +668,19 @@ function DiscoverPanel({
             发现 {discoveredModels.length} 个模型，已选择 {selectedModels.size} 个
           </p>
           <div className="max-h-60 overflow-y-auto space-y-1 mb-3">
-            {discoveredModels.map(m => (
+            {[...discoveredModels].sort((a, b) => (b.free ? 1 : 0) - (a.free ? 1 : 0)).map(m => (
               <label key={m.id} className="flex items-center gap-2 p-2 rounded cursor-pointer"
                 style={{ background: selectedModels.has(m.id) ? 'var(--accent-primary-soft)' : 'var(--bg-secondary)' }}>
                 <input type="checkbox" checked={selectedModels.has(m.id)}
                   onChange={() => onToggle(m.id)}
                   style={{ accentColor: 'var(--accent-primary)' }} />
                 <div className="flex-1 min-w-0">
-                  <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{m.name}</span>
+                  <span className="text-sm" style={{ color: m.free ? '#22c55e' : 'var(--text-primary)' }}>{m.name}</span>
                   <span className="text-xs ml-2" style={{ color: 'var(--text-muted)' }}>{m.id}</span>
                 </div>
+                {m.free && (
+                  <span className="text-xs px-1.5 py-0.5 rounded shrink-0" style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>免费</span>
+                )}
                 <div className="text-xs shrink-0" style={{ color: 'var(--text-muted)' }}>
                   {m.contextLimit ? `${(m.contextLimit / 1000).toFixed(0)}k` : ''}
                   {m.outputLimit ? ` / ${(m.outputLimit / 1000).toFixed(0)}k out` : ''}
