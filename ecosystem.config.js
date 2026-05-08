@@ -23,7 +23,7 @@ module.exports = {
     cwd: resolve(__dirname, 'backend'),
     env: {
       NODE_ENV: 'production',
-      PORT: parseInt(process.env.PORT || '3003', 10)
+      PORT: parseInt(process.env.PORT || '3001', 10)
     },
     max_memory_restart: '512M',
     restart_delay: 5000,

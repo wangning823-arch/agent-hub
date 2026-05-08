@@ -23,3 +23,4 @@ uploads/
 memory/
 MULTI-TENANT-PLAN.md
 docs/
+.env
