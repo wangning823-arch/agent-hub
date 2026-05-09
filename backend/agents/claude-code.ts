@@ -518,11 +518,11 @@ Violation of these rules will result in session termination.`);
       let resolved = false;
       const done = () => { if (!resolved) { resolved = true; resolve(); } };
 
-      // 超时 60 秒
+      // 超时 180 秒（compact 需要读取完整会话并总结，大文件可能需要较长时间）
       const timeout = setTimeout(() => {
         try { proc.kill('SIGTERM'); } catch {}
         reject(new Error('Compact 超时'));
-      }, 60000);
+      }, 180000);
 
       proc.on('close', (code) => {
         clearTimeout(timeout);
