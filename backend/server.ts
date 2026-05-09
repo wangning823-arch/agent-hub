@@ -370,10 +370,6 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
     const { userId, date, filename } = req.params;
     const filePath = path.join(UPLOAD_DIR, userId, date, filename);
 
-    if (req.user && req.user.role !== 'admin' && req.user.userId !== userId) {
-      return res.status(403).json({ error: '无权访问此文件' });
-    }
-
     res.sendFile(filePath, (err) => {
       if (err) res.status(404).json({ error: '文件不存在' });
     });

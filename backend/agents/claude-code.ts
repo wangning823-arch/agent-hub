@@ -95,7 +95,8 @@ class ClaudeCodeAgent extends Agent {
         '--verbose',
         '--output-format', 'stream-json'
       ];
-      if (this.options.model) args.push('--model', this.options.model);
+      const model = this.options.model || this._resolveDefaultModel();
+      if (model) args.push('--model', model);
       // 权限模式：plan 模式下不使用 --dangerously-skip-permissions
       if (this.options.mode === 'plan') {
         args.push('--permission-mode', 'plan');
@@ -494,8 +495,9 @@ Violation of these rules will result in session termination.`);
           args.push('--permission-mode', this.options.mode);
         }
       }
-      if (this.options.model) {
-        args.push('--model', this.options.model);
+      const model = this.options.model || this._resolveDefaultModel();
+      if (model) {
+        args.push('--model', model);
       }
 
       args.push('-p', '/compact');
@@ -579,6 +581,29 @@ Violation of these rules will result in session termination.`);
     } catch (e) {
       return { ok: false, error: (e as Error).message };
     }
+  }
+
+  /**
+   * 解析默认模型：优先读 workdir 下的 .claude/settings.json，再读 ~/.claude/settings.json
+   */
+  _resolveDefaultModel(): string | null {
+    try {
+      // 1. 读 workdir 下的本地 settings
+      const localSettings = path.join(this.workdir, '.claude', 'settings.json');
+      if (fs.existsSync(localSettings)) {
+        const settings = JSON.parse(fs.readFileSync(localSettings, 'utf-8'));
+        if (settings.env?.ANTHROPIC_MODEL) return settings.env.ANTHROPIC_MODEL;
+      }
+      // 2. 读系统级 ~/.claude/settings.json
+      const homeSettings = path.join(os.homedir(), '.claude', 'settings.json');
+      if (fs.existsSync(homeSettings)) {
+        const settings = JSON.parse(fs.readFileSync(homeSettings, 'utf-8'));
+        if (settings.env?.ANTHROPIC_MODEL) return settings.env.ANTHROPIC_MODEL;
+      }
+    } catch (e) {
+      // 读取失败，返回 null
+    }
+    return null;
   }
 
   /**
