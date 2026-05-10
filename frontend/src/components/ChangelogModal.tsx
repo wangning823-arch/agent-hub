@@ -16,6 +16,29 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.20260510.0001',
+    date: '2026-05-10',
+    sections: [
+      {
+        title: '新功能',
+        color: 'var(--accent-primary, #6366f1)',
+        items: [
+          'AI 美化面板支持可编辑输入：打开面板后可直接粘贴代码，无需先选中文件',
+          '设计系统支持中英文切换：EN/CN 按钮一键切换设计系统的中文名称和描述',
+        ],
+      },
+      {
+        title: '改进',
+        color: 'var(--success, #22c55e)',
+        items: [
+          '左侧栏图标升级：会话控制、命令、技能图标替换为简洁的 SVG 矢量图标',
+          '技能图标改为扳手样式，避免与输入框模式图标混淆',
+          '项目 README 全面重写，覆盖所有功能模块和技术栈说明',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.3.20260507.0001',
     date: '2026-05-07',
     sections: [
