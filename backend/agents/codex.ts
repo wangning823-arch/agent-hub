@@ -37,6 +37,7 @@ interface JsonMessage {
   model?: string;
   file?: string;
   path?: string;
+  thread_id?: string;
 }
 
 // 获取 npm 全局 bin 目录
@@ -159,12 +160,24 @@ function getCodexEnv(): NodeJS.ProcessEnv {
 class CodexAgent extends Agent {
   options: CodexOptions;
   activeProc: ChildProcess | null;
+  codexSessionId: string | null;
 
   constructor(workdir: string, options: CodexOptions = {}) {
     super('codex', workdir);
     this.options = options;
-    // 跟踪活跃的子进程，便于停止/清理
     this.activeProc = null;
+    // 恢复会话时从 conversationId 恢复 codex session
+    this.codexSessionId = (options as any).conversationId || null;
+  }
+
+  /**
+   * 更新选项时同步 conversationId 到 codexSessionId
+   */
+  updateOptions(newOptions: Record<string, unknown>): void {
+    super.updateOptions(newOptions);
+    if (newOptions.conversationId) {
+      this.codexSessionId = newOptions.conversationId as string;
+    }
   }
 
   /**
@@ -207,6 +220,7 @@ class CodexAgent extends Agent {
 
   /**
    * 发送消息给 Codex
+   * 首次用 codex exec 获取 session_id，后续用 codex resume 保持会话连续性
    */
   async send(message: string): Promise<void> {
     if (!this.isRunning) {
@@ -219,26 +233,36 @@ class CodexAgent extends Agent {
     return new Promise((resolve, reject) => {
       const codexPath = process.env.CODEX_CLI_PATH || 'codex';
 
-      // 构建命令参数
-      const args: string[] = ['exec'];
+      // 根据当前选择的模型动态更新 config.toml 的 model_provider 和 section
+      const fullModel = this.options.model || '';
+      updateCodexConfig(fullModel);
+
+      // 提取 model_id 部分传给 --model 参数
+      let modelId = fullModel;
+      if (modelId.includes('/')) {
+        modelId = modelId.split('/').slice(1).join('/');
+      }
+
+      // 构建命令参数：首次用 exec，后续用 resume 保持会话
+      const args: string[] = [];
+      if (this.codexSessionId) {
+        args.push('resume', this.codexSessionId);
+      } else {
+        args.push('exec');
+      }
 
       // 自动批准模式
       if (this.options.fullAuto !== false) {
         args.push('--full-auto');
       }
 
-      // 指定模型（模型 ID 格式: provider_id/model_id）
-      const fullModel = this.options.model || '';
-      // 根据当前选择的模型动态更新 config.toml 的 model_provider 和 section
-      updateCodexConfig(fullModel);
-      // 提取 model_id 部分传给 --model 参数
-      let modelId = fullModel;
-      if (modelId.includes('/')) {
-        modelId = modelId.split('/').slice(1).join('/');
-      }
+      // 指定模型
       if (modelId) {
         args.push('--model', modelId);
       }
+
+      // JSON 输出以便解析 session_id
+      args.push('--json');
 
       // 添加用户消息（长度截断，防止超大输入导致崩溃）
       let userMessage = message;
@@ -248,6 +272,8 @@ class CodexAgent extends Agent {
         this.emit('message', { type: 'status', content: '⚠️ 输入过长，已截断以确保处理稳定' });
       }
       args.push(userMessage);
+
+      console.log(`[Codex] 执行: codex ${args.slice(0, 2).join(' ')} (session: ${this.codexSessionId || 'new'})`);
 
       // 设置所有 provider 的 API key 环境变量
       const proc: ChildProcess = spawn(codexPath, args, {
@@ -284,7 +310,7 @@ class CodexAgent extends Agent {
         }
       });
 
-      proc.on('close', () => {
+      proc.on('close', (code) => {
         // 处理剩余输出
         if (stdoutBuffer.trim()) {
           this.handleOutput(stdoutBuffer.trim());
@@ -301,9 +327,10 @@ class CodexAgent extends Agent {
           });
         }
 
+        console.log(`[Codex] 进程退出，exit code: ${code}, session: ${this.codexSessionId || 'none'}`);
+
         this.activeProc = null;
-        // 通知会话 agent 已停止
-        this.emit('stopped', { code: 0 });
+        // 注意：不在这里 emit stopped，让会话保持活跃以便后续 resume
         resolve();
       });
 
@@ -345,7 +372,15 @@ class CodexAgent extends Agent {
    * 处理JSON消息
    */
   handleJsonMessage(msg: JsonMessage): void {
-    if (msg.type === 'message' || msg.type === 'assistant') {
+    // 捕获 session_id 用于后续 resume
+    if (msg.type === 'thread.started' && msg.thread_id) {
+      this.codexSessionId = msg.thread_id;
+      console.log(`[Codex] 获取 session_id: ${this.codexSessionId}`);
+      this.emit('message', {
+        type: 'conversation_id',
+        conversationId: this.codexSessionId
+      } as any);
+    } else if (msg.type === 'message' || msg.type === 'assistant') {
       const content = msg.content || msg.text || msg.message;
       if (content) {
         this.emit('message', { type: 'text', content: String(content) });
@@ -366,6 +401,14 @@ class CodexAgent extends Agent {
         type: 'error',
         content: msg.message || msg.error || JSON.stringify(msg)
       });
+    } else if (msg.type === 'turn.failed') {
+      // resume 失败时清除 session_id，下次回退到 exec 重新开始
+      console.log(`[Codex] turn.failed，清除 session_id 以便下次重新开始`);
+      this.codexSessionId = null;
+      this.emit('message', {
+        type: 'error',
+        content: '会话恢复失败，下次将开启新对话（之前的上下文可能丢失）'
+      });
     } else if (msg.type === 'usage') {
       this.emit('message', {
         type: 'token_usage',
@@ -377,7 +420,6 @@ class CodexAgent extends Agent {
         })
       });
     } else if (msg.type === 'diff' || msg.type === 'file_change') {
-      // 文件变更
       this.emit('message', {
         type: 'file_change',
         content: JSON.stringify(msg, null, 2),
