@@ -252,7 +252,7 @@ class CodexAgent extends Agent {
       const args: string[] = [];
       const isResume = !!this.codexSessionId;
       if (isResume) {
-        args.push('resume', this.codexSessionId);
+        args.push('resume', this.codexSessionId!);
       } else {
         args.push('exec');
       }
