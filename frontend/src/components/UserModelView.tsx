@@ -167,7 +167,7 @@ export default function UserModelView() {
 
   const deleteModel = async (providerId: string, modelId: string) => {
     try {
-      const res = await fetch(`${API_BASE}/my-models/providers/${providerId}/models/${modelId}`, { method: 'DELETE' })
+      const res = await fetch(`${API_BASE}/my-models/providers/${providerId}/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' })
       if (res.ok) fetchProviderModels(providerId, true)
     } catch (error) {
       console.error('删除模型失败:', error)

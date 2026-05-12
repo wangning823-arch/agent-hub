@@ -276,7 +276,7 @@ export default function ModelManager() {
   const deleteModel = async (providerId: string, modelId: string) => {
     if (!window.confirm(`确定删除模型 "${modelId}"？`)) return
     try {
-      const res = await fetch(`${API_BASE}/models/providers/${providerId}/models/${modelId}`, { method: 'DELETE' })
+      const res = await fetch(`${API_BASE}/models/providers/${providerId}/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error || '删除失败'); return }
       toast.success('模型已删除')

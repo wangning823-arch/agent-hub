@@ -892,7 +892,14 @@ export default () => {
 
     const existing = db.exec(`SELECT owner_id FROM providers WHERE id = '${pid}'`);
     if (existing.length === 0) return res.status(404).json({ error: 'Provider 不存在' });
-    if (existing[0].values[0][0] !== userId) return res.status(403).json({ error: '无权操作此 Provider' });
+    const ownerId = existing[0].values[0][0];
+    // 允许：个人 Provider（owner_id = userId）或 已分配的系统 Provider（owner_id IS NULL 且在 user_providers 中）
+    if (ownerId !== null && ownerId !== userId) {
+      const assigned = db.exec(`SELECT 1 FROM user_providers WHERE user_id = '${userId}' AND provider_id = '${pid}'`);
+      if (assigned.length === 0 || assigned[0].values.length === 0) {
+        return res.status(403).json({ error: '无权操作此 Provider' });
+      }
+    }
 
     try {
       db.run(`DELETE FROM models WHERE id = '${req.params.modelId.replace(/'/g, "''")}' AND provider_id = '${pid}'`);
