@@ -194,10 +194,15 @@ class CodexAgent extends Agent {
   }
 
   async start(): Promise<void> {
-    // Codex 要求在 git 仓库内运行
+    // Codex 要求在 git 仓库内运行，如果不是则自动初始化
     if (!this.isGitRepo(this.workdir)) {
-      this.isRunning = false;
-      throw new Error('Codex 需要在 git 仓库内运行，请先初始化仓库: git init');
+      try {
+        execSync('git init', { cwd: this.workdir, stdio: 'ignore' });
+        console.log(`[Codex] 自动初始化 git 仓库: ${this.workdir}`);
+      } catch (e) {
+        this.isRunning = false;
+        throw new Error('Codex 需要在 git 仓库内运行，且无法自动初始化: ' + (e as Error).message);
+      }
     }
 
     this.isRunning = true;
