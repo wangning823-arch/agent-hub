@@ -250,7 +250,8 @@ class CodexAgent extends Agent {
 
       // 构建命令参数：首次用 exec，后续用 resume 保持会话
       const args: string[] = [];
-      if (this.codexSessionId) {
+      const isResume = !!this.codexSessionId;
+      if (isResume) {
         args.push('resume', this.codexSessionId);
       } else {
         args.push('exec');
@@ -266,8 +267,10 @@ class CodexAgent extends Agent {
         args.push('--model', modelId);
       }
 
-      // JSON 输出以便解析 session_id
-      args.push('--json');
+      // JSON 输出以便解析 session_id（仅 exec 支持 --json，resume 不支持）
+      if (!isResume) {
+        args.push('--json');
+      }
 
       // 添加用户消息（长度截断，防止超大输入导致崩溃）
       let userMessage = message;
@@ -385,6 +388,12 @@ class CodexAgent extends Agent {
         type: 'conversation_id',
         conversationId: this.codexSessionId
       } as any);
+    } else if (msg.type === 'item.completed') {
+      // codex 输出的 item.completed 包含 agent 消息文本
+      const item = (msg as any).item;
+      if (item && item.type === 'agent_message' && item.text) {
+        this.emit('message', { type: 'text', content: String(item.text) });
+      }
     } else if (msg.type === 'message' || msg.type === 'assistant') {
       const content = msg.content || msg.text || msg.message;
       if (content) {
@@ -424,6 +433,19 @@ class CodexAgent extends Agent {
           model: msg.model || 'unknown'
         })
       });
+    } else if (msg.type === 'turn.completed') {
+      const usage = (msg as any).usage;
+      if (usage) {
+        this.emit('message', {
+          type: 'token_usage',
+          content: JSON.stringify({
+            inputTokens: usage.input_tokens || 0,
+            outputTokens: usage.output_tokens || 0,
+            cost: usage.cost || 0,
+            model: usage.model || 'unknown'
+          })
+        });
+      }
     } else if (msg.type === 'diff' || msg.type === 'file_change') {
       this.emit('message', {
         type: 'file_change',
