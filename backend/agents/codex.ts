@@ -248,11 +248,11 @@ class CodexAgent extends Agent {
         modelId = modelId.split('/').slice(1).join('/');
       }
 
-      // 构建命令参数：首次用 exec，后续用 resume 保持会话
+      // 构建命令参数：首次用 exec，后续用 exec resume 保持会话（exec resume 支持 --json 和非交互模式）
       const args: string[] = [];
       const isResume = !!this.codexSessionId;
       if (isResume) {
-        args.push('resume', this.codexSessionId!);
+        args.push('exec', 'resume', this.codexSessionId!);
       } else {
         args.push('exec');
       }
@@ -267,10 +267,8 @@ class CodexAgent extends Agent {
         args.push('--model', modelId);
       }
 
-      // JSON 输出以便解析 session_id（仅 exec 支持 --json，resume 不支持）
-      if (!isResume) {
-        args.push('--json');
-      }
+      // JSON 输出以便解析事件（exec 和 exec resume 都支持 --json）
+      args.push('--json');
 
       // 添加用户消息（长度截断，防止超大输入导致崩溃）
       let userMessage = message;
@@ -281,7 +279,7 @@ class CodexAgent extends Agent {
       }
       args.push(userMessage);
 
-      console.log(`[Codex] 执行: codex ${args.slice(0, 2).join(' ')} (session: ${this.codexSessionId || 'new'})`);
+      console.log(`[Codex] 执行: codex ${args.slice(0, 3).join(' ')} (session: ${this.codexSessionId || 'new'})`);
 
       // 设置所有 provider 的 API key 环境变量
       const proc: ChildProcess = spawn(codexPath, args, {
@@ -453,10 +451,8 @@ class CodexAgent extends Agent {
         metadata: { file: msg.file || msg.path }
       });
     } else {
-      const text = msg.content || msg.text || msg.message || JSON.stringify(msg);
-      if (text && text !== '{}') {
-        this.emit('message', { type: 'text', content: String(text) });
-      }
+      // 未识别的事件类型不展示给用户，仅记录日志
+      console.log(`[Codex] 未处理事件: ${msg.type}`);
     }
   }
 
