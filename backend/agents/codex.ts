@@ -157,6 +157,35 @@ function getCodexEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+/**
+ * 获取同一 provider 下的下一个可用模型（循环）
+ * 当前模型格式: "providerId/modelId"
+ */
+function getNextModel(currentModel: string): string | null {
+  if (!currentModel || !currentModel.includes('/')) return null;
+  const [providerId] = currentModel.split('/');
+  if (!providerId) return null;
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getDb } = require('../db');
+    const db = getDb();
+    if (!db) return null;
+
+    const result = db.exec(
+      `SELECT id FROM models WHERE provider_id = '${providerId.replace(/'/g, "''")}' ORDER BY name`
+    );
+    if (!result.length || result[0].values.length <= 1) return null;
+
+    const modelIds = result[0].values.map(row => `${providerId}/${row[0]}`);
+    const currentIdx = modelIds.indexOf(currentModel);
+    const nextIdx = (currentIdx + 1) % modelIds.length;
+    return modelIds[nextIdx];
+  } catch {
+    return null;
+  }
+}
+
 class CodexAgent extends Agent {
   options: CodexOptions;
   activeProc: ChildProcess | null;
@@ -417,12 +446,28 @@ class CodexAgent extends Agent {
       const errMsg = JSON.stringify((msg as any).error || msg.message || '');
       const isRateLimit = errMsg.includes('429') || errMsg.includes('rate') || errMsg.includes('Too Many');
       if (isRateLimit) {
-        // 429 速率限制是临时错误，保留 session_id，下次可继续 resume
-        console.log(`[Codex] turn.failed: 速率限制，保留 session_id`);
-        this.emit('message', {
-          type: 'error',
-          content: '请求频率过高，请稍后重试'
-        });
+        const currentModel = this.options.model || '';
+        const nextModel = getNextModel(currentModel);
+        if (nextModel) {
+          // 自动切换到同一 provider 下的下一个模型
+          this.options.model = nextModel;
+          console.log(`[Codex] 速率限制，模型切换: ${currentModel} → ${nextModel}`);
+          this.emit('message', {
+            type: 'status',
+            content: `请求频率过高，已自动切换模型为 ${nextModel.split('/')[1]}`
+          });
+          this.emit('message', {
+            type: 'model_switch',
+            content: nextModel
+          } as any);
+        } else {
+          // 同一 provider 下没有其他模型，保留 session_id 提示稍后重试
+          console.log(`[Codex] turn.failed: 速率限制，无可用替代模型，保留 session_id`);
+          this.emit('message', {
+            type: 'error',
+            content: '请求频率过高，请稍后重试'
+          });
+        }
       } else {
         // 其他错误（如会话过期）清除 session_id，下次回退到 exec
         console.log(`[Codex] turn.failed: ${errMsg}，清除 session_id`);
