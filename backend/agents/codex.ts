@@ -414,13 +414,24 @@ class CodexAgent extends Agent {
         content: msg.message || msg.error || JSON.stringify(msg)
       });
     } else if (msg.type === 'turn.failed') {
-      // resume 失败时清除 session_id，下次回退到 exec 重新开始
-      console.log(`[Codex] turn.failed，清除 session_id 以便下次重新开始`);
-      this.codexSessionId = null;
-      this.emit('message', {
-        type: 'error',
-        content: '会话恢复失败，下次将开启新对话（之前的上下文可能丢失）'
-      });
+      const errMsg = JSON.stringify((msg as any).error || msg.message || '');
+      const isRateLimit = errMsg.includes('429') || errMsg.includes('rate') || errMsg.includes('Too Many');
+      if (isRateLimit) {
+        // 429 速率限制是临时错误，保留 session_id，下次可继续 resume
+        console.log(`[Codex] turn.failed: 速率限制，保留 session_id`);
+        this.emit('message', {
+          type: 'error',
+          content: '请求频率过高，请稍后重试'
+        });
+      } else {
+        // 其他错误（如会话过期）清除 session_id，下次回退到 exec
+        console.log(`[Codex] turn.failed: ${errMsg}，清除 session_id`);
+        this.codexSessionId = null;
+        this.emit('message', {
+          type: 'error',
+          content: '会话恢复失败，下次将开启新对话（之前的上下文可能丢失）'
+        });
+      }
     } else if (msg.type === 'usage') {
       this.emit('message', {
         type: 'token_usage',
