@@ -31,7 +31,7 @@ import modelsRouter from './routes/models';
 import workflowsRouter from './routes/workflows';
 import WorkflowEngine from './workflow-engine';
 import wsHandler from './websocket/handler';
-import { initDb, getDb } from './db';
+import { initDb, getDb, saveToFile } from './db';
 import promptTemplatesRouter from './routes/prompt-templates';
 import designSpecsRouter from './routes/design-specs';
 import beautifyRouter from './routes/beautify';
@@ -70,6 +70,11 @@ let sessionManager!: SessionManager;
 
 async function initApp(): Promise<void> {
   await initDb();
+
+  // 每 30 秒自动保存数据库到磁盘，防止 OOM 崩溃导致数据丢失
+  setInterval(() => {
+    try { saveToFile(); } catch {}
+  }, 30000);
 
   const tokenTracker = new TokenTracker();
   sessionManager = new SessionManager(tokenTracker);
@@ -403,6 +408,16 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
 
   process.on('SIGINT', async () => {
     console.log('\n正在关闭...');
+    try { saveToFile(); } catch {}
+    if (sessionManager) {
+      sessionManager.saveData();
+    }
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', async () => {
+    console.log('\n收到 SIGTERM，正在关闭...');
+    try { saveToFile(); } catch {}
     if (sessionManager) {
       sessionManager.saveData();
     }
