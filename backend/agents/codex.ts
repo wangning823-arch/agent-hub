@@ -177,7 +177,7 @@ function getNextModel(currentModel: string): string | null {
     );
     if (!result.length || result[0].values.length <= 1) return null;
 
-    const modelIds = result[0].values.map(row => `${providerId}/${row[0]}`);
+    const modelIds = result[0].values.map((row: any[]) => `${providerId}/${row[0]}`);
     const currentIdx = modelIds.indexOf(currentModel);
     const nextIdx = (currentIdx + 1) % modelIds.length;
     return modelIds[nextIdx];
