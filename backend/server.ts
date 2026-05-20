@@ -32,7 +32,7 @@ import modelsRouter from './routes/models';
 import workflowsRouter from './routes/workflows';
 import WorkflowEngine from './workflow-engine';
 import wsHandler from './websocket/handler';
-import { initDb, getDb, saveToFile } from './db';
+import { initDb, getDb, saveToFile, saveTokenStatsToFile } from './db';
 import promptTemplatesRouter from './routes/prompt-templates';
 import designSpecsRouter from './routes/design-specs';
 import beautifyRouter from './routes/beautify';
@@ -74,7 +74,8 @@ async function initApp(): Promise<void> {
 
   // 每 10 秒自动保存数据库到磁盘，防止 OOM 崩溃导致数据丢失
   setInterval(() => {
-    try { saveToFile(); } catch {}
+    try { saveToFile(); } catch (e) { console.error('[DB] 主数据库保存失败:', e); }
+    try { saveTokenStatsToFile(); } catch (e) { console.error('[DB] Token统计保存失败:', e); }
   }, 10000);
 
   const tokenTracker = new TokenTracker();
@@ -412,7 +413,8 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
 
   process.on('SIGINT', async () => {
     console.log('\n正在关闭...');
-    try { saveToFile(); } catch {}
+    try { saveToFile(); } catch (e) { console.error('[DB] 关闭时保存失败:', e); }
+    try { saveTokenStatsToFile(); } catch (e) { console.error('[DB] 关闭时保存Token统计失败:', e); }
     if (sessionManager) {
       sessionManager.saveData();
     }
@@ -421,7 +423,8 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
 
   process.on('SIGTERM', async () => {
     console.log('\n收到 SIGTERM，正在关闭...');
-    try { saveToFile(); } catch {}
+    try { saveToFile(); } catch (e) { console.error('[DB] SIGTERM保存失败:', e); }
+    try { saveTokenStatsToFile(); } catch (e) { console.error('[DB] SIGTERM保存Token统计失败:', e); }
     if (sessionManager) {
       sessionManager.saveData();
     }

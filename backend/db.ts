@@ -405,6 +405,18 @@ async function initDb(): Promise<SqlJsDatabase> {
   await migrateModelsFromConfigFiles();
   saveToFile();
 
+  // 启动验证：检查关键表是否存在且可读
+  try {
+    const userCount = db.exec('SELECT COUNT(*) FROM users');
+    const count = userCount.length > 0 ? userCount[0].values[0][0] : 0;
+    console.log(`[数据库验证] 用户数: ${count}`);
+    if ((count as number) === 0) {
+      console.warn('[数据库警告] users 表为空，新用户将需要注册');
+    }
+  } catch (e) {
+    console.error('[数据库错误] 无法读取 users 表:', e);
+  }
+
   await initTokenStatsDb();
 
   console.log('数据库初始化完成');
@@ -901,4 +913,4 @@ function getJwtSecret(): string {
   return secret;
 }
 
-export { initDb, getDb, saveToFile, getTokenStatsDb, saveTokenStats, getJwtSecret };
+export { initDb, getDb, saveToFile, saveTokenStatsToFile, getTokenStatsDb, saveTokenStats, getJwtSecret };
