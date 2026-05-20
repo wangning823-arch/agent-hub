@@ -429,17 +429,69 @@ const CODEX_COMMANDS: CommandDef[] = [
   { id: 'explain', name: '解释代码', description: '解释代码逻辑', category: '分析', usage: 'Explain this code' }
 ];
 
+// --- 动态命令发现 ---
+
+// 候选命令列表（新版本可能新增的命令）
+const CANDIDATE_COMMANDS: { id: string; name: string; description: string; category: string; usage: string }[] = [
+  { id: 'goal', name: '/goal', description: '设置当前工作目标', category: '会话', usage: '/goal <condition>' },
+  { id: 'ultrareview', name: '/ultrareview', description: '多Agent代码审查', category: '审查', usage: '/ultrareview' },
+  { id: 'commit-push-pr', name: '/commit-push-pr', description: '提交并创建PR', category: '开发', usage: '/commit-push-pr' },
+  { id: 'babysit-prs', name: '/babysit-prs', description: '监控PR状态', category: '团队', usage: '/babysit-prs' },
+  { id: 'catch-up', name: '/catch-up', description: '恢复上次工作上下文', category: '会话', usage: '/catch-up' },
+  { id: 'doctor', name: '/doctor', description: '检查Claude Code健康状态', category: '调试', usage: '/doctor' },
+];
+
+// 缓存：探测后的完整命令列表
+let _discoveredCommands: CommandDef[] | null = null;
+
+// 探测单个命令是否可用
+function _probeCommand(cmd: string): boolean {
+  try {
+    const { execSync } = require('child_process');
+    const claudePath = process.env.CLAUDE_CLI_PATH || 'claude';
+    const output = execSync(`${claudePath} --print --dangerously-skip-permissions -p "/${cmd}"`, {
+      encoding: 'utf-8',
+      timeout: 15000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env }
+    });
+    return !output.includes('Unknown command');
+  } catch {
+    return false;
+  }
+}
+
+// 启动时探测可用命令，与硬编码列表合并
+function discoverClaudeCommands(): CommandDef[] {
+  if (_discoveredCommands) return _discoveredCommands;
+
+  const existingIds = new Set(CLAUDE_COMMANDS.map(c => c.id));
+  const extra: CommandDef[] = [];
+
+  for (const candidate of CANDIDATE_COMMANDS) {
+    if (existingIds.has(candidate.id)) continue;
+    if (_probeCommand(candidate.id)) {
+      extra.push(candidate);
+      console.log(`[Commands] 发现新命令: ${candidate.name}`);
+    }
+  }
+
+  _discoveredCommands = [...CLAUDE_COMMANDS, ...extra];
+  console.log(`[Commands] 命令列表: ${CLAUDE_COMMANDS.length} 固定 + ${extra.length} 发现 = ${_discoveredCommands.length} 个`);
+  return _discoveredCommands;
+}
+
 // 按 agentType 获取命令列表
 function getCommandsForAgent(agentType: AgentType): CommandDef[] {
   switch (agentType) {
     case 'claude-code':
-      return CLAUDE_COMMANDS;
+      return discoverClaudeCommands();
     case 'opencode':
       return OPENCODE_COMMANDS;
     case 'codex':
       return CODEX_COMMANDS;
     default:
-      return CLAUDE_COMMANDS;
+      return discoverClaudeCommands();
   }
 }
 
@@ -458,5 +510,6 @@ export {
   getModesForAgent,
   getEffortsForAgent,
   getCommandsForAgent,
-  clearModelCache
+  clearModelCache,
+  discoverClaudeCommands
 };
