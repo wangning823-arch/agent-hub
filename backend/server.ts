@@ -25,6 +25,7 @@ import exportRouter from './routes/export';
 import healthRouter from './routes/health';
 import uploadRouter from './routes/upload';
 import optionsRouter from './routes/options';
+import { discoverClaudeCommands } from './commands';
 import credentialsRouter from './routes/credentials';
 import skillsRouter from './routes/skills';
 import modelsRouter from './routes/models';
@@ -71,10 +72,10 @@ let sessionManager!: SessionManager;
 async function initApp(): Promise<void> {
   await initDb();
 
-  // 每 30 秒自动保存数据库到磁盘，防止 OOM 崩溃导致数据丢失
+  // 每 10 秒自动保存数据库到磁盘，防止 OOM 崩溃导致数据丢失
   setInterval(() => {
     try { saveToFile(); } catch {}
-  }, 30000);
+  }, 10000);
 
   const tokenTracker = new TokenTracker();
   sessionManager = new SessionManager(tokenTracker);
@@ -381,6 +382,9 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   });
 
   wsConnectionHandler(wss);
+
+  // 启动时探测可用的 Claude Code 命令
+  discoverClaudeCommands();
 
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`

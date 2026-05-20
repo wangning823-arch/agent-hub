@@ -720,9 +720,21 @@ async function initTokenStatsDb(): Promise<void> {
   } catch (e) { }
 
   await migrateTokenStatsFromJson();
-  saveTokenStatsToFile();
 
-  startDailyBackup();
+  // 清理 token_history 防止无限增长（每个 session 只保留最近 500 条）
+  try {
+    tokenStatsDb!.run(`
+      DELETE FROM token_history WHERE id NOT IN (
+        SELECT id FROM (
+          SELECT id, ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY id DESC) as rn
+          FROM token_history
+        ) WHERE rn <= 500
+      )
+    `);
+    console.log('[数据库维护] 清理 token_history 历史记录');
+  } catch (e) { }
+
+  saveTokenStatsToFile();
 
   console.log('Token统计数据库初始化完成');
 }
@@ -839,6 +851,23 @@ function startDailyBackup(): void {
     doBackup();
     setInterval(doBackup, 24 * 60 * 60 * 1000);
   }, msUntilMidnight);
+
+  // 每小时清理 token_history 防止无限增长
+  setInterval(() => {
+    try {
+      if (tokenStatsDb) {
+        tokenStatsDb.run(`
+          DELETE FROM token_history WHERE id NOT IN (
+            SELECT id FROM (
+              SELECT id, ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY id DESC) as rn
+              FROM token_history
+            ) WHERE rn <= 500
+          )
+        `);
+        saveTokenStatsToFile();
+      }
+    } catch (e) { }
+  }, 60 * 60 * 1000);
 }
 
 function getDb(): SqlJsDatabase {

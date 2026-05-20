@@ -25,7 +25,7 @@ module.exports = {
       NODE_ENV: 'production',
       PORT: parseInt(process.env.PORT || '3001', 10)
     },
-    max_memory_restart: '512M',
+    max_memory_restart: '1024M',
     restart_delay: 5000,
     max_restarts: 10,
     min_uptime: '30s'
