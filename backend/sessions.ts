@@ -414,8 +414,6 @@ Violation of these rules will result in immediate termination of the session.
   saveSession(session: SessionInstance): void {
     const db = _getDb!();
 
-    db.run('BEGIN TRANSACTION');
-
     try {
       db.run(
         `
@@ -473,11 +471,9 @@ Violation of these rules will result in immediate termination of the session.
 
       session.lastSavedMessageCount = session.messages.length;
 
-      db.run('COMMIT');
       _saveToFile!();
     } catch (error) {
-      db.run('ROLLBACK');
-      throw error;
+      console.error(`[Session] 保存会话 ${session.id} 失败:`, error);
     }
   }
 
