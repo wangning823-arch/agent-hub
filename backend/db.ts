@@ -6,7 +6,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import crypto from 'crypto';
 
-const dataDir: string = path.join(__dirname, '..', '..', 'data');
+const dataDir: string = path.join(__dirname, '..', 'data');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }

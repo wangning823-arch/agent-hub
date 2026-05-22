@@ -624,6 +624,17 @@ export default function App() {
             }
             setActiveSession(id);
             setLoadingSessionId(id);
+            // 自动关联项目：通过 workdir 查找匹配的项目
+            const session = sessions.find(s => s.id === id)
+            if (session?.workdir && !activeProjectId) {
+              fetch(`${API_BASE}/projects`).then(r => r.json()).then((projects: any[]) => {
+                const matched = Array.isArray(projects) ? projects.find(p => p.workdir === session.workdir) : null
+                if (matched) {
+                  setActiveProjectId(matched.id)
+                  setActiveProjectName(matched.name)
+                }
+              }).catch(() => {})
+            }
             // 不在这里滑动，等加载完成后由 onSessionLoaded 滑动
           }}
           onCloseSession={removeSession}
@@ -661,9 +672,26 @@ export default function App() {
                   style={{ color: 'var(--text-primary)', background: 'none', border: 'none', padding: 0 }}
                   title="在新窗口中预览项目"
                   onClick={async () => {
-                    if (!activeProjectId) return
+                    let projectId = activeProjectId
+                    // 如果没有选中项目，尝试通过 workdir 查找
+                    if (!projectId && currentSession?.workdir) {
+                      try {
+                        const listRes = await fetch(`${API_BASE}/projects`)
+                        const projects = await listRes.json()
+                        const matched = Array.isArray(projects) ? projects.find((p: any) => p.workdir === currentSession.workdir) : null
+                        if (matched) {
+                          projectId = matched.id
+                          setActiveProjectId(matched.id)
+                          setActiveProjectName(matched.name)
+                        }
+                      } catch (_) {}
+                    }
+                    if (!projectId) {
+                      toast.error('请先在左侧选择一个项目')
+                      return
+                    }
                     try {
-                      const res = await fetch(`${API_BASE}/projects/${activeProjectId}/preview-url`)
+                      const res = await fetch(`${API_BASE}/projects/${projectId}/preview-url`)
                       const data = await res.json()
                       if (import.meta.env.DEV && data.apiUrl) window.open(data.apiUrl, '_blank')
                       else if (data.url) window.open(data.url, '_blank')
