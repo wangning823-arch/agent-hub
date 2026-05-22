@@ -22,6 +22,27 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
     res.json(projectManager.getFavoriteProjects());
   });
 
+  router.get('/:id/preview-url', (req: Request, res: Response) => {
+    try {
+      const project = projectManager.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: '项目不存在' });
+      }
+      const db = getDb();
+      const userId = (project.userId || '').replace(/'/g, "''");
+      const result = db.exec(`SELECT username FROM users WHERE id = '${userId}'`);
+      const username = (result.length > 0 && result[0].values.length > 0)
+        ? result[0].values[0][0] as string
+        : 'admin';
+      res.json({
+        url: `/${username}/${project.name}`,
+        apiUrl: `/api/preview/${username}/${project.name}`
+      });
+    } catch (error) {
+      res.status(500).json({ error: '获取预览地址失败' });
+    }
+  });
+
   router.post('/', (req: Request, res: Response) => {
     try {
       const { name, workdir, password } = req.body;

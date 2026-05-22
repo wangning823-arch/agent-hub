@@ -173,16 +173,24 @@ function projectPreviewHandler(req: Request, res: Response, next: NextFunction):
     }
     const userId = userResult[0].values[0][0] as string;
 
-    const safeProject = projectName.replace(/'/g, "''");
-    const safeUserId = userId.replace(/'/g, "''");
-    const projectResult = db.exec(
-      `SELECT workdir FROM projects WHERE name = '${safeProject}' AND user_id = '${safeUserId}'`
-    );
-    if (projectResult.length === 0 || projectResult[0].values.length === 0) {
+    // 从 projects.json 查找项目（而非 SQLite 数据库）
+    const projectsFile = path.join(__dirname, '..', '..', 'data', 'projects.json');
+    let workdir = '';
+    try {
+      const raw = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
+      const projects: any[] = Array.isArray(raw.projects) ? raw.projects : Object.entries(raw.projects);
+      for (const [, p] of projects) {
+        if (p.name === projectName && p.userId === userId) {
+          workdir = p.workdir;
+          break;
+        }
+      }
+    } catch (_e) {}
+
+    if (!workdir) {
       next();
       return;
     }
-    const workdir = projectResult[0].values[0][0] as string;
 
     if (!filePath) {
       // 项目根目录无尾部斜杠时重定向，确保浏览器正确解析相对路径
@@ -293,29 +301,6 @@ app.get('/api/auth/check', (req: Request, res: Response) => {
   res.json({ valid: !ACCESS_TOKEN || token === ACCESS_TOKEN });
 });
 
-// 获取项目预览 URL
-app.get('/api/projects/:id/preview-url', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const projectId = req.params.id.replace(/'/g, "''");
-    const result = db.exec(
-      `SELECT p.name, u.username FROM projects p JOIN users u ON p.user_id = u.id WHERE p.id = '${projectId}'`
-    );
-    if (result.length === 0 || result[0].values.length === 0) {
-      return res.status(404).json({ error: '项目不存在' });
-    }
-    const row = result[0].values[0];
-    const projectName = row[0] as string;
-    const username = row[1] as string;
-    // 开发模式走 /api 代理，生产模式走直接路径
-    res.json({
-      url: `/${username}/${projectName}`,
-      apiUrl: `/api/preview/${username}/${projectName}`
-    });
-  } catch (error) {
-    res.status(500).json({ error: '获取预览地址失败' });
-  }
-});
 
 // 通过 /api 代理的预览路由（开发模式使用）
 app.get('/api/preview/:username/:project', projectPreviewHandler);
