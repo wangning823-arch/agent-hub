@@ -31,6 +31,7 @@ import skillsRouter from './routes/skills';
 import modelsRouter from './routes/models';
 import workflowsRouter from './routes/workflows';
 import WorkflowEngine from './workflow-engine';
+import WorkflowScheduler from './workflow-scheduler';
 import wsHandler from './websocket/handler';
 import { initDb, getDb, saveToFile, saveTokenStatsToFile } from './db';
 import promptTemplatesRouter from './routes/prompt-templates';
@@ -326,6 +327,8 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   const permissionManager = new PermissionManager();
   const projectManager = new ProjectManager();
   const workflowEngine = new WorkflowEngine(sessionManager);
+  const workflowScheduler = new WorkflowScheduler(sessionManager, workflowEngine);
+  workflowScheduler.loadPending();
   const wsConnectionHandler = wsHandler(sessionManager, TOKEN_FILE);
 
   // Register route factories
@@ -350,7 +353,7 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   const { systemRouter: modelsSystemRouter, myModelsRouter } = modelsRouter();
   app.use('/api/models', modelsSystemRouter);
   app.use('/api/my-models', myModelsRouter);
-  app.use('/api', workflowsRouter(sessionManager, workflowEngine));
+  app.use('/api', workflowsRouter(sessionManager, workflowEngine, workflowScheduler));
   app.use('/api/prompt-templates', promptTemplatesRouter());
   app.use('/api/design-specs', designSpecsRouter());
   app.use('/api/ai', beautifyRouter());

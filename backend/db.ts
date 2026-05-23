@@ -146,6 +146,18 @@ async function initDb(): Promise<SqlJsDatabase> {
     )
   `);
 
+  // 工作流定时调度表
+  db.run(`
+    CREATE TABLE IF NOT EXISTS workflow_schedules (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      workflow_def_id TEXT NOT NULL,
+      scheduled_at INTEGER NOT NULL,
+      status TEXT DEFAULT 'pending',
+      created_at INTEGER NOT NULL
+    )
+  `);
+
   // ========== Prompt 模板表 ==========
   db.run(`
     CREATE TABLE IF NOT EXISTS prompt_templates (

@@ -13,6 +13,7 @@ import ComponentLibPanel from './ComponentLibPanel'
 import PromptTemplatePanel from './PromptTemplatePanel'
 import DesignSystemPanel from './DesignSystemPanel'
 import CodeBeautifyModal from './CodeBeautifyModal'
+import ScheduleModal from './ScheduleModal'
 
 // ---- 类型定义 ----
 
@@ -206,6 +207,9 @@ export default function ChatPanel({
   const [workflowDefs, setWorkflowDefs] = useState<any[]>([])
   const [workflowTemplates, setWorkflowTemplates] = useState<any[]>([])
   const [showWorkflowDropdown, setShowWorkflowDropdown] = useState(false)
+  const [schedules, setSchedules] = useState<any[]>([])
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [scheduleDef, setScheduleDef] = useState<{ id: string; name: string } | null>(null)
 
   // 代码美化状态
   const [showBeautifyModal, setShowBeautifyModal] = useState(false)
@@ -496,6 +500,10 @@ export default function ChatPanel({
         const running = list.find((w: WorkflowInstance) => w.status === 'running')
         if (running) setActiveWorkflow(running)
       })
+      .catch(() => {})
+    fetch(`${API_BASE}/sessions/${sessionId}/workflow-schedules`)
+      .then(r => r.json())
+      .then(data => setSchedules(data.schedules || []))
       .catch(() => {})
 
      let reconnectAttempts = 0
@@ -1203,7 +1211,7 @@ export default function ChatPanel({
   }
 
   // 工作流处理函数
-  const handleWorkflowSave = async (def: { name: string; description: string; steps: WorkflowStepDef[] }) => {
+  const handleWorkflowSave = async (def: { name: string; description: string; steps: WorkflowStepDef[] }): Promise<string | null> => {
     try {
       const res = await fetch(`${API_BASE}/sessions/${sessionId}/workflow-defs`, {
         method: 'POST',
@@ -1211,11 +1219,16 @@ export default function ChatPanel({
         body: JSON.stringify(def)
       })
       const data = await res.json()
-      if (data.id) setWorkflowDefs(prev => [...prev, data])
-      setShowWorkflowEditor(false)
-      toast.success('工作流已保存')
+      if (data.id) {
+        setWorkflowDefs(prev => [...prev, data])
+        setShowWorkflowEditor(false)
+        toast.success('工作流已保存')
+        return data.id
+      }
+      return null
     } catch (err: any) {
       toast.error('保存失败: ' + err.message)
+      return null
     }
   }
 
@@ -1332,6 +1345,47 @@ export default function ChatPanel({
       setShowWorkflowDropdown(false)
     } catch (err: any) {
       toast.error('加载模板失败: ' + err.message)
+    }
+  }
+
+  // 加载定时调度列表
+  const loadSchedules = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/workflow-schedules`)
+      const data = await res.json()
+      setSchedules(data.schedules || [])
+    } catch {}
+  }
+
+  // 创建定时调度
+  const handleScheduleWorkflow = async (scheduledAt: number) => {
+    if (!scheduleDef) return
+    try {
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/workflow-schedules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defId: scheduleDef.id, scheduledAt })
+      })
+      const data = await res.json()
+      if (data.id) {
+        setSchedules(prev => [...prev, data])
+        toast.success(`已设置定时执行: ${new Date(scheduledAt).toLocaleString('zh-CN')}`)
+      }
+      setShowScheduleModal(false)
+      setScheduleDef(null)
+    } catch (err: any) {
+      toast.error('设置定时失败: ' + err.message)
+    }
+  }
+
+  // 取消定时调度
+  const handleCancelSchedule = async (scheduleId: string) => {
+    try {
+      await fetch(`${API_BASE}/sessions/${sessionId}/workflow-schedules/${scheduleId}`, { method: 'DELETE' })
+      setSchedules(prev => prev.filter(s => s.id !== scheduleId))
+      toast.success('已取消定时')
+    } catch (err: any) {
+      toast.error('取消失败: ' + err.message)
     }
   }
 
@@ -1675,6 +1729,7 @@ export default function ChatPanel({
                 <div className="text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>已保存的工作流定义</div>
                 {workflowDefs.map((def: any) => {
                   const lastRun = workflows.find(w => w.defId === def.id)
+                  const pendingSchedule = schedules.find(s => s.workflowDefId === def.id && s.status === 'pending')
                   return (
                     <div key={def.id} className="rounded-lg p-3 mb-2" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}>
                       <div className="flex items-center justify-between">
@@ -1712,6 +1767,16 @@ export default function ChatPanel({
                         {def.steps.length} 个步骤
                         {lastRun && <span className="ml-2">· 上次运行: {lastRun.status === 'done' ? '完成' : lastRun.status === 'running' ? '执行中' : lastRun.status}</span>}
                       </div>
+                      {pendingSchedule && (
+                        <div className="flex items-center gap-2 mt-1.5 text-xs" style={{ color: 'var(--accent-primary)' }}>
+                          <span>定时: {new Date(pendingSchedule.scheduledAt).toLocaleString('zh-CN')}</span>
+                          <button className="px-1.5 py-0.5 rounded hover:opacity-80"
+                                  style={{ background: 'var(--error-soft, #fef2f2)', color: 'var(--error, #ef4444)' }}
+                                  onClick={() => handleCancelSchedule(pendingSchedule.id)}>
+                            取消定时
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -1761,10 +1826,30 @@ export default function ChatPanel({
               onSave={handleWorkflowSave}
               onSaveAndRun={handleWorkflowSaveAndRun}
               onSaveAsTemplate={handleWorkflowSaveAsTemplate}
+              onSchedule={async (def) => {
+                let defId = editingWorkflowDef?.id
+                if (!defId) {
+                  defId = await handleWorkflowSave(def)
+                }
+                if (defId) {
+                  setShowWorkflowEditor(false)
+                  setScheduleDef({ id: defId, name: def.name })
+                  setShowScheduleModal(true)
+                }
+              }}
               onCancel={() => { setShowWorkflowEditor(false); setEditingWorkflowDef(null) }}
             />
           </div>
         </div>
+      )}
+
+      {/* Schedule Modal */}
+      {showScheduleModal && scheduleDef && (
+        <ScheduleModal
+          workflowName={scheduleDef.name}
+          onConfirm={handleScheduleWorkflow}
+          onCancel={() => { setShowScheduleModal(false); setScheduleDef(null) }}
+        />
       )}
 
       {/* Bottom input area */}
@@ -2118,7 +2203,13 @@ export default function ChatPanel({
                                     onClick={() => { setEditingWorkflowDef(def); setShowWorkflowEditor(true); setShowWorkflowDropdown(false) }}>
                               {def.name}
                             </button>
-                            <button className="ml-2 px-1 hover:opacity-80"
+                            <button className="ml-1 px-1 hover:opacity-80"
+                                    style={{ color: 'var(--accent-primary)' }}
+                                    title="定时执行"
+                                    onClick={(e) => { e.stopPropagation(); setScheduleDef({ id: def.id, name: def.name }); setShowScheduleModal(true); setShowWorkflowDropdown(false) }}>
+                              &#128337;
+                            </button>
+                            <button className="ml-1 px-1 hover:opacity-80"
                                     style={{ color: 'var(--error, #ef4444)' }}
                                     onClick={(e) => { e.stopPropagation(); handleDeleteWorkflowDef(def.id); }}>
                               ✕

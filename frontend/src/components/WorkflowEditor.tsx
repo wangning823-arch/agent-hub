@@ -27,6 +27,7 @@ interface WorkflowEditorProps {
   onSave: (def: { name: string; description: string; steps: StepDef[] }) => void
   onSaveAndRun: (def: { name: string; description: string; steps: StepDef[] }) => void
   onSaveAsTemplate: (def: { name: string; description: string; steps: StepDef[] }) => void
+  onSchedule: (def: { name: string; description: string; steps: StepDef[] }) => void
   onCancel: () => void
 }
 
@@ -48,7 +49,7 @@ const hasCycle = (steps: StepDef[], stepId: string, newDep: string): boolean => 
   return false
 }
 
-export default function WorkflowEditor({ initialDef, models, onSave, onSaveAndRun, onSaveAsTemplate, onCancel }: WorkflowEditorProps) {
+export default function WorkflowEditor({ initialDef, models, onSave, onSaveAndRun, onSaveAsTemplate, onSchedule, onCancel }: WorkflowEditorProps) {
   const [name, setName] = useState(initialDef?.name || '')
   const [description, setDescription] = useState(initialDef?.description || '')
   const [steps, setSteps] = useState<StepDef[]>(
@@ -274,6 +275,14 @@ export default function WorkflowEditor({ initialDef, models, onSave, onSaveAndRu
           style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary, #8b5cf6))', color: 'white' }}
         >
           保存并执行
+        </button>
+        <button
+          onClick={() => onSchedule(getBuildDef())}
+          disabled={!isValid}
+          className="px-3 py-1.5 rounded-lg text-xs hover:opacity-80 disabled:opacity-40"
+          style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
+        >
+          定时执行
         </button>
       </div>
     </div>

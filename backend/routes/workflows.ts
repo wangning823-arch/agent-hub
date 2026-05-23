@@ -7,6 +7,7 @@ import type {
   WorkflowTemplate,
 } from '../types';
 import type WorkflowEngine from '../workflow-engine';
+import type WorkflowScheduler from '../workflow-scheduler';
 
 interface SessionManagerLike {
   getSession(sessionId: string): any;
@@ -30,7 +31,7 @@ function saveToFile(): void {
   require('../db').saveToFile();
 }
 
-export default (sessionManager: SessionManagerLike, workflowEngine: WorkflowEngine) => {
+export default (sessionManager: SessionManagerLike, workflowEngine: WorkflowEngine, workflowScheduler: WorkflowScheduler) => {
   const router = Router();
 
   router.post('/sessions/:sessionId/workflow-defs', (req: Request, res: Response) => {
@@ -376,6 +377,64 @@ export default (sessionManager: SessionManagerLike, workflowEngine: WorkflowEngi
       const db = getDb();
       db.run('DELETE FROM workflow_templates WHERE id = ?', [templateId]);
       saveToFile();
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==================== Workflow Schedules ====================
+
+  router.post('/sessions/:sessionId/workflow-schedules', (req: Request, res: Response) => {
+    try {
+      const { sessionId } = req.params;
+      const session = sessionManager.getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: '会话不存在' });
+      }
+
+      const { defId, scheduledAt } = req.body;
+      if (!defId || !scheduledAt) {
+        return res.status(400).json({ error: 'defId 和 scheduledAt 是必需的' });
+      }
+
+      if (typeof scheduledAt !== 'number' || scheduledAt <= Date.now()) {
+        return res.status(400).json({ error: 'scheduledAt 必须是未来的时间戳' });
+      }
+
+      const defs = sessionManager.getWorkflowDefs(sessionId);
+      const def = defs.find(d => d.id === defId);
+      if (!def) {
+        return res.status(404).json({ error: '工作流定义不存在' });
+      }
+
+      const schedule = workflowScheduler.schedule(sessionId, defId, scheduledAt);
+      res.json(schedule);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.get('/sessions/:sessionId/workflow-schedules', (req: Request, res: Response) => {
+    try {
+      const { sessionId } = req.params;
+      const session = sessionManager.getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: '会话不存在' });
+      }
+      res.json({ schedules: workflowScheduler.getSchedules(sessionId) });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.delete('/sessions/:sessionId/workflow-schedules/:scheduleId', (req: Request, res: Response) => {
+    try {
+      const { scheduleId } = req.params;
+      const success = workflowScheduler.cancel(scheduleId);
+      if (!success) {
+        return res.status(404).json({ error: '调度任务不存在' });
+      }
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
