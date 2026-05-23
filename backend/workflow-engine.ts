@@ -220,7 +220,10 @@ class WorkflowEngine {
     this.broadcastWorkflow(sessionId, instance);
 
     const fullPrompt = this.buildContext(instance, step);
-    const agent = createAgent(session.workdir, session.agentType as AgentType, { model: step.model });
+    const agent = createAgent(session.workdir, session.agentType as AgentType, {
+      model: step.model,
+      sessionId: `wf_${instance.id}_${step.id}`,
+    });
     rw.agents.set(step.id, agent);
 
     const handler = (msg: { type: string; content: string | Record<string, unknown>; message?: { content: Array<{ type: string; text: string }> } }) => {
