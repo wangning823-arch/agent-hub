@@ -6,21 +6,40 @@ interface ScheduleModalProps {
   onCancel: () => void
 }
 
+const QUICK_OPTIONS = [
+  { label: '1 分钟', minutes: 1 },
+  { label: '5 分钟', minutes: 5 },
+  { label: '10 分钟', minutes: 10 },
+  { label: '30 分钟', minutes: 30 },
+]
+
 export default function ScheduleModal({ workflowName, onConfirm, onCancel }: ScheduleModalProps) {
+  const toLocalDatetime = (date: Date): string => {
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    const h = String(date.getHours()).padStart(2, '0')
+    const min = String(date.getMinutes()).padStart(2, '0')
+    return `${y}-${m}-${d}T${h}:${min}`
+  }
+
   const getDefaultDateTime = (): string => {
     const now = new Date()
-    now.setMinutes(now.getMinutes() + 5)
+    now.setMinutes(now.getMinutes() + 1)
     now.setSeconds(0)
     now.setMilliseconds(0)
-    const year = now.getFullYear()
-    const month = String(now.getMonth() + 1).padStart(2, '0')
-    const day = String(now.getDate()).padStart(2, '0')
-    const hours = String(now.getHours()).padStart(2, '0')
-    const minutes = String(now.getMinutes()).padStart(2, '0')
-    return `${year}-${month}-${day}T${hours}:${minutes}`
+    return toLocalDatetime(now)
   }
 
   const [dateTime, setDateTime] = useState(getDefaultDateTime)
+
+  const handleQuickSelect = (minutes: number) => {
+    const target = new Date()
+    target.setMinutes(target.getMinutes() + minutes)
+    target.setSeconds(0)
+    target.setMilliseconds(0)
+    setDateTime(toLocalDatetime(target))
+  }
 
   const handleConfirm = () => {
     const scheduledAt = new Date(dateTime).getTime()
@@ -55,7 +74,23 @@ export default function ScheduleModal({ workflowName, onConfirm, onCancel }: Sch
           </div>
 
           <div>
-            <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>执行时间</label>
+            <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>快捷选择</label>
+            <div className="flex gap-2">
+              {QUICK_OPTIONS.map(opt => (
+                <button
+                  key={opt.minutes}
+                  onClick={() => handleQuickSelect(opt.minutes)}
+                  className="flex-1 px-2 py-1.5 rounded text-xs hover:opacity-80"
+                  style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>自定义时间</label>
             <input
               type="datetime-local"
               value={dateTime}
