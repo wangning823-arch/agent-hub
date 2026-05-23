@@ -352,7 +352,7 @@ export default function App() {
         }
       })
       .catch(console.error)
-  }, [accessToken])
+  }, [accessToken, activeProjectId])
 
   useEffect(() => {
     const checkAgentStatus = async (): Promise<void> => {

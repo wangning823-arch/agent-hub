@@ -181,10 +181,11 @@ function projectPreviewHandler(req: Request, res: Response, next: NextFunction):
       const raw = JSON.parse(fs.readFileSync(projectsFile, 'utf8'));
       const projects: any[] = Array.isArray(raw.projects) ? raw.projects : Object.entries(raw.projects);
       for (const [, p] of projects) {
-        if (p.name === projectName && p.userId === userId) {
-          workdir = p.workdir;
-          break;
-        }
+        if (p.name !== projectName) continue;
+        // 有 userId 的项目必须匹配，没有 userId 的旧项目允许访问
+        if (p.userId && p.userId !== userId) continue;
+        workdir = p.workdir;
+        break;
       }
     } catch (_e) {}
 
@@ -334,7 +335,7 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   // Register route factories
   app.use('/api/auth', authRouter);
   app.use('/api/users', usersRouter);
-  app.use('/api/sessions', sessionsRouter(sessionManager));
+  app.use('/api/sessions', sessionsRouter(sessionManager, projectManager));
   app.use('/api/tags', tagsRouter(sessionManager));
   app.use('/api/projects', projectsRouter(projectManager, sessionManager));
   app.use('/api/files', filesRouter(ALLOWED_ROOT, projectManager));

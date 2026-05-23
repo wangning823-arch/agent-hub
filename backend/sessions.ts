@@ -620,10 +620,13 @@ Violation of these rules will result in immediate termination of the session.
     this.saveSession(session);
   }
 
-  listSessions(userId?: string): SessionJSON[] {
+  listSessions(userId?: string, workdir?: string): SessionJSON[] {
     let sessions = Array.from(this.sessions.values());
     if (userId) {
       sessions = sessions.filter(s => s.userId === userId || !s.userId);
+    }
+    if (workdir) {
+      sessions = sessions.filter(s => s.workdir === workdir);
     }
     return sessions.map((s) => s.toJSON());
   }

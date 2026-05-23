@@ -2,7 +2,7 @@ import express, { Router, Request, Response } from 'express';
 import type { SessionData, AgentBase } from '../types/index';
 import { getDb } from '../db';
 
-export default (sessionManager: any) => { // TODO: type this
+export default (sessionManager: any, projectManager?: any) => { // TODO: type this
   const router = Router();
 
   router.post('/', async (req: Request, res: Response) => {
@@ -41,7 +41,14 @@ export default (sessionManager: any) => { // TODO: type this
 
   router.get('/', (req: Request, res: Response) => {
     const userId = req.user?.role === 'admin' ? undefined : req.user?.userId;
-    res.json(sessionManager.listSessions(userId));
+    // 按项目过滤：通过 projectId 查找 workdir
+    let workdir: string | undefined;
+    const projectId = req.query.projectId as string || req.headers['x-project-id'] as string;
+    if (projectId && projectManager) {
+      const project = projectManager.getProject(projectId);
+      if (project) workdir = project.workdir;
+    }
+    res.json(sessionManager.listSessions(userId, workdir));
   });
 
   router.get('/:id', (req: Request, res: Response) => {
