@@ -11,6 +11,7 @@ interface WorkflowStep {
   status: StepStatus
   result: string | null
   error: string | null
+  messages: Array<{ type: string; content: string; time: number }>
   startedAt: number | null
   completedAt: number | null
 }
@@ -116,7 +117,34 @@ export default function WorkflowStepCard({ step, isExpanded, onToggleExpand, onR
             <div className="mb-1" style={{ color: 'var(--text-muted)', fontSize: 10 }}>指令</div>
             <div className="whitespace-pre-wrap break-words">{step.prompt}</div>
           </div>
-          {step.result && (
+
+          {/* 实时消息流 */}
+          {step.messages && step.messages.length > 0 && (
+            <div className="rounded-md p-2 text-xs max-h-64 overflow-y-auto" style={{ background: 'var(--bg-tertiary)' }}>
+              <div className="mb-1" style={{ color: 'var(--text-muted)', fontSize: 10 }}>
+                {step.status === 'running' ? '执行输出' : '输出'}
+              </div>
+              {step.messages.map((msg, i) => (
+                <div key={i} className="py-0.5" style={{ color: msg.type === 'error' ? 'var(--error)' : 'var(--text-primary)' }}>
+                  {msg.type === 'tool_use' ? (
+                    <span style={{ color: 'var(--text-muted)' }}>🔧 {msg.content}</span>
+                  ) : msg.type === 'tool_result' ? (
+                    <span style={{ color: 'var(--text-muted)' }}>📋 {msg.content}</span>
+                  ) : msg.type === 'status' ? (
+                    <span style={{ color: 'var(--text-muted)' }}>{msg.content}</span>
+                  ) : (
+                    <span className="whitespace-pre-wrap break-words">{msg.content}</span>
+                  )}
+                </div>
+              ))}
+              {step.status === 'running' && (
+                <div className="animate-pulse" style={{ color: 'var(--text-muted)' }}>...</div>
+              )}
+            </div>
+          )}
+
+          {/* 完成后的结果（无消息时的回退显示） */}
+          {step.result && (!step.messages || step.messages.length === 0) && (
             <div className="rounded-md p-2 text-xs" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}>
               <div className="mb-1" style={{ color: 'var(--text-muted)', fontSize: 10 }}>结果</div>
               <div className="whitespace-pre-wrap break-words max-h-48 overflow-y-auto">{step.result}</div>

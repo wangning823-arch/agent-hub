@@ -809,6 +809,7 @@ export default function App() {
           sessionId={activeSession!}
           workdir={activeProjectWorkdir || currentSession?.workdir}
           onViewFile={handleViewFile}
+          userRole={user?.role}
         />
       </div>
 

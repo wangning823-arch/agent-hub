@@ -34,6 +34,7 @@ interface RightSidebarProps {
   sessionId: string
   workdir?: string
   onViewFile?: (filePath: string) => void
+  userRole?: 'admin' | 'user'
 }
 
 interface ContextMenuState {
@@ -66,7 +67,7 @@ interface IconChevronProps {
   open: boolean
 }
 
-export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSidebarProps) {
+export default function RightSidebar({ sessionId, workdir, onViewFile, userRole }: RightSidebarProps) {
   const toast = useToast()
   const [expandedSection, setExpandedSection] = useState<string>('files')
   const [files, setFiles] = useState<FileItem[]>([])
@@ -85,7 +86,8 @@ export default function RightSidebar({ sessionId, workdir, onViewFile }: RightSi
     setLoading(true)
     try {
       const data = await fetch(`${API_BASE}/files?path=${encodeURIComponent(dirPath)}`).then(r => r.json())
-      setFiles((data.files || []).filter((f: FileItem) => f.name !== '.claude' && f.name !== '.git' && f.name !== 'CLAUDE.md'))
+      const hiddenNames = userRole === 'admin' ? [] : ['.claude', '.git', 'CLAUDE.md']
+      setFiles((data.files || []).filter((f: FileItem) => !hiddenNames.includes(f.name)))
     } catch (error) { console.error('加载文件失败:', error) }
     setLoading(false)
   }

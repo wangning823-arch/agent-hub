@@ -12,6 +12,7 @@ interface WorkflowStep {
   status: StepStatus
   result: string | null
   error: string | null
+  messages: Array<{ type: string; content: string; time: number }>
   startedAt: number | null
   completedAt: number | null
 }

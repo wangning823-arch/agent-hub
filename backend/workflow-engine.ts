@@ -11,6 +11,8 @@ import type { AgentBase } from './types';
 import { createAgent } from './agents/factory';
 
 const MAX_CONCURRENT = 3;
+// 单个依赖步骤结果的最大字符数，超过则截断
+const MAX_DEP_RESULT_CHARS = 8000;
 
 interface RunningWorkflow {
   agents: Map<string, AgentBase>;
@@ -222,7 +224,6 @@ class WorkflowEngine {
     const fullPrompt = this.buildContext(instance, step);
     const agent = createAgent(session.workdir, session.agentType as AgentType, {
       model: step.model,
-      sessionId: `wf_${instance.id}_${step.id}`,
     });
     rw.agents.set(step.id, agent);
 
@@ -314,7 +315,11 @@ class WorkflowEngine {
     for (const depId of step.dependsOn) {
       const depStep = instance.steps.find(s => s.id === depId);
       if (depStep) {
-        const result = depStep.result || '(无结果)';
+        let result = depStep.result || '(无结果)';
+        // 截断过长的依赖结果，防止 prompt 超大导致上下文溢出
+        if (result.length > MAX_DEP_RESULT_CHARS) {
+          result = result.substring(0, MAX_DEP_RESULT_CHARS) + `\n\n... [结果过长，已截断，原始长度 ${result.length} 字符]`;
+        }
         contextParts.push(`## ${depStep.name} 的结果\n${result}\n`);
       }
     }
