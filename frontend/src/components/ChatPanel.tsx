@@ -216,13 +216,26 @@ export default function ChatPanel({
   const [beautifyCode, setBeautifyCode] = useState('')
   const [beautifyLanguage, setBeautifyLanguage] = useState('')
 
-  // 上下文使用情况（从 localStorage 恢复）
+  // 上下文使用情况（优先从后端恢复，回退到 sessionStorage）
   const [contextUsage, setContextUsage] = useState<ContextUsage>(() => {
     try {
       const cached = sessionStorage.getItem(`contextUsage_${sessionId}`)
       return cached ? JSON.parse(cached) : { inputTokens: 0, contextWindow: 0, percentage: 0 }
     } catch { return { inputTokens: 0, contextWindow: 0, percentage: 0 } }
   })
+
+  // 从后端加载持久化的 contextUsage（跨设备可见）
+  useEffect(() => {
+    fetch(`${API_BASE}/sessions/${sessionId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.contextUsage && data.contextUsage.percentage > 0) {
+          setContextUsage(data.contextUsage)
+          sessionStorage.setItem(`contextUsage_${sessionId}`, JSON.stringify(data.contextUsage))
+        }
+      })
+      .catch(() => {})
+  }, [sessionId])
 
   // 当 options prop 变化时（切换session），同步更新内部状态
   useEffect(() => {
@@ -761,6 +774,11 @@ export default function ChatPanel({
               const usage = { inputTokens: msg.content.totalTokens, contextWindow: msg.content.contextWindow, percentage };
               setContextUsage(usage);
               sessionStorage.setItem(`contextUsage_${sessionId}`, JSON.stringify(usage));
+              fetch(`${API_BASE}/sessions/${sessionId}/context-usage`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(usage)
+              }).catch(() => {})
             }
           }
 
@@ -779,6 +797,11 @@ export default function ChatPanel({
             const usage = { inputTokens: used, contextWindow: total, percentage: msg.content.percentage };
             setContextUsage(usage);
             sessionStorage.setItem(`contextUsage_${sessionId}`, JSON.stringify(usage));
+            fetch(`${API_BASE}/sessions/${sessionId}/context-usage`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(usage)
+            }).catch(() => {})
           }
 
           // Agent回复时发送通知（如果页面不在前台）

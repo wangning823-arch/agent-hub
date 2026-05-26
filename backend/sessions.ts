@@ -81,6 +81,7 @@ interface SessionInstance {
   workflowDefs: WorkflowDefinition[];
   workflows: WorkflowInstance[];
   userId?: string;
+  contextUsage?: { inputTokens: number; contextWindow: number; percentage: number } | null;
   toJSON(): SessionJSON;
 }
 
@@ -381,6 +382,7 @@ Violation of these rules will result in immediate termination of the session.
         workflowDefs: JSON.parse((sessionData.workflow_defs as string) || '[]') as WorkflowDefinition[],
         workflows: JSON.parse((sessionData.workflows as string) || '[]') as WorkflowInstance[],
         userId: (sessionData.user_id as string) || undefined,
+        contextUsage: sessionData.context_usage ? JSON.parse(sessionData.context_usage as string) : null,
         toJSON(): SessionJSON {
           return {
             id: this.id,
@@ -403,6 +405,7 @@ Violation of these rules will result in immediate termination of the session.
             isPinned: this.isPinned,
             isArchived: this.isArchived,
             tags: this.tags,
+            contextUsage: this.contextUsage || null,
           };
         },
       };
@@ -417,8 +420,8 @@ Violation of these rules will result in immediate termination of the session.
     try {
       db.run(
         `
-        INSERT OR REPLACE INTO sessions (id, workdir, agent_type, agent_name, conversation_id, title, options, is_pinned, is_archived, tags, created_at, updated_at, subtasks, workflow_defs, workflows, user_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO sessions (id, workdir, agent_type, agent_name, conversation_id, title, options, is_pinned, is_archived, tags, created_at, updated_at, subtasks, workflow_defs, workflows, user_id, context_usage)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
         [
           session.id,
@@ -441,6 +444,7 @@ Violation of these rules will result in immediate termination of the session.
           JSON.stringify(session.workflowDefs || []),
           JSON.stringify(session.workflows || []),
           session.userId || null,
+          session.contextUsage ? JSON.stringify(session.contextUsage) : null,
         ],
       );
 
@@ -617,6 +621,13 @@ Violation of these rules will result in immediate termination of the session.
     if (session.agent) {
       session.agent.updateOptions(newOptions);
     }
+    this.saveSession(session);
+  }
+
+  updateContextUsage(sessionId: string, contextUsage: { inputTokens: number; contextWindow: number; percentage: number }): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error('会话不存在');
+    session.contextUsage = contextUsage;
     this.saveSession(session);
   }
 

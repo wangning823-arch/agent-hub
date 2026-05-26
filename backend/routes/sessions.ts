@@ -163,6 +163,20 @@ export default (sessionManager: any, projectManager?: any) => { // TODO: type th
     }
   });
 
+  // 更新上下文使用量（持久化到数据库，跨设备可见）
+  router.put('/:id/context-usage', (req: Request, res: Response) => {
+    try {
+      const { inputTokens, contextWindow, percentage } = req.body;
+      if (inputTokens === undefined || contextWindow === undefined || percentage === undefined) {
+        return res.status(400).json({ error: 'inputTokens, contextWindow, percentage 是必需的' });
+      }
+      sessionManager.updateContextUsage(req.params.id, { inputTokens, contextWindow, percentage });
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   router.post('/:id/resume', async (req: Request, res: Response) => {
     try {
       const session = sessionManager.getSession(req.params.id);

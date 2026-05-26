@@ -115,6 +115,10 @@ async function initDb(): Promise<SqlJsDatabase> {
         db.run('ALTER TABLE sessions ADD COLUMN subtasks TEXT DEFAULT "[]"');
         console.log('[数据库迁移] sessions 表添加 subtasks 列');
       }
+      if (!colNames.includes('context_usage')) {
+        db.run('ALTER TABLE sessions ADD COLUMN context_usage TEXT DEFAULT NULL');
+        console.log('[数据库迁移] sessions 表添加 context_usage 列');
+      }
     }
   } catch (e) { }
 

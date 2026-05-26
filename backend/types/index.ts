@@ -113,6 +113,7 @@ export interface SessionJSON {
   isPinned: boolean;
   isArchived: boolean;
   tags: string[];
+  contextUsage?: { inputTokens: number; contextWindow: number; percentage: number } | null;
 }
 
 // ==================== Agent Base ====================
