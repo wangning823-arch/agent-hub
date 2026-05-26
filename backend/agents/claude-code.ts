@@ -9,6 +9,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import type { AgentMessage, AgentOptions } from '../types';
 
+/** Claude CLI 在 root 下拒绝使用 --dangerously-skip-permissions，改用 --permission-mode auto */
+function skipPermissionsArg(): string[] {
+  return process.getuid?.() === 0
+    ? ['--permission-mode', 'auto']
+    : ['--dangerously-skip-permissions'];
+}
+
 interface ClaudeCodeOptions extends AgentOptions {
   mode?: string;
   effort?: string;
@@ -101,7 +108,7 @@ class ClaudeCodeAgent extends Agent {
       if (this.options.mode === 'plan') {
         args.push('--permission-mode', 'plan');
       } else {
-        args.push('--dangerously-skip-permissions');
+        args.push(...skipPermissionsArg());
         if (this.options.mode && this.options.mode !== 'default') {
           args.push('--permission-mode', this.options.mode);
         }
@@ -252,7 +259,7 @@ class ClaudeCodeAgent extends Agent {
       if (this.options.mode === 'plan') {
         args.push('--permission-mode', 'plan');
       } else {
-        args.push('--dangerously-skip-permissions');
+        args.push(...skipPermissionsArg());
         if (this.options.mode && this.options.mode !== 'default') {
           args.push('--permission-mode', this.options.mode);
         }
@@ -490,7 +497,7 @@ Violation of these rules will result in session termination.`);
       if (this.options.mode === 'plan') {
         args.push('--permission-mode', 'plan');
       } else {
-        args.push('--dangerously-skip-permissions');
+        args.push(...skipPermissionsArg());
         if (this.options.mode && this.options.mode !== 'default') {
           args.push('--permission-mode', this.options.mode);
         }

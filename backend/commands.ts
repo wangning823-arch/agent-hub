@@ -6,6 +6,11 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import { AgentType } from './types';
 
+/** Claude CLI 在 root 下拒绝使用 --dangerously-skip-permissions */
+function rootSafePermsFlag(): string {
+  return process.getuid?.() === 0 ? '--permission-mode auto' : '--dangerously-skip-permissions';
+}
+
 interface CommandDef {
   id: string;
   name: string;
@@ -449,7 +454,7 @@ function _probeCommand(cmd: string): boolean {
   try {
     const { execSync } = require('child_process');
     const claudePath = process.env.CLAUDE_CLI_PATH || 'claude';
-    const output = execSync(`${claudePath} --print --dangerously-skip-permissions -p "/${cmd}"`, {
+    const output = execSync(`${claudePath} --print ${rootSafePermsFlag()} -p "/${cmd}"`, {
       encoding: 'utf-8',
       timeout: 15000,
       stdio: ['pipe', 'pipe', 'pipe'],

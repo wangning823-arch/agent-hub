@@ -6,6 +6,13 @@ import { execSync, spawn } from 'child_process';
 import * as fs from 'fs';
 import { SessionMessage, AgentType } from './types';
 
+/** Claude CLI 在 root 下拒绝使用 --dangerously-skip-permissions */
+function rootSafePermsArg(): string[] {
+  return process.getuid?.() === 0
+    ? ['--permission-mode', 'auto']
+    : ['--dangerously-skip-permissions'];
+}
+
 interface SummaryResult {
   summary: string;
 }
@@ -63,7 +70,7 @@ async function summarizeWithClaudeCode(messages: SessionMessage[], workdir?: str
   return new Promise((resolve, reject) => {
     const proc = spawn(claudeBin, [
       '--print',
-      '--dangerously-skip-permissions',
+      ...rootSafePermsArg(),
       '-p', prompt
     ], {
       cwd: workdir || process.env.HOME || '/root',
