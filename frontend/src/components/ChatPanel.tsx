@@ -1462,9 +1462,9 @@ export default function ChatPanel({
     }
   };
 
-  // 按Enter发送
+  // 按Shift+Enter发送，Enter换行
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && e.shiftKey) {
       e.preventDefault()
       if (!isWorking && !isStarting && !isRestoringMemory && !splitAnalyzing) {
         sendMessage()
@@ -2266,7 +2266,7 @@ export default function ChatPanel({
                   </div>
                 )}
               </div>
-              <span className="hidden md:inline">Enter 发送 · Shift+Enter 换行</span>
+              <span className="hidden md:inline">Shift+Enter 发送 · Enter 换行</span>
             </div>
           </div>
         </div>

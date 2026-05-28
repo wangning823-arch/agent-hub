@@ -114,7 +114,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
         <div>
           <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>发送消息</h4>
           <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8, marginBottom: '1rem' }}>
-            在底部输入框中输入消息，点击发送按钮或按 Enter 发送。支持上传图片、文档等附件。
+            在底部输入框中输入消息，点击发送按钮或按 Shift+Enter 发送。支持上传图片、文档等附件。
           </p>
           <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>中断任务</h4>
           <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8, marginBottom: '1rem' }}>
@@ -435,8 +435,8 @@ const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
             <tbody>
               {[
                 ['Ctrl + K', '打开全局搜索'],
-                ['Enter', '发送消息'],
-                ['Shift + Enter', '换行（不发送）'],
+                ['Shift + Enter', '发送消息'],
+                ['Enter', '换行（不发送）'],
                 ['Ctrl + S', '保存文件（文件查看器中）'],
               ].map(([key, desc]) => (
                 <tr key={key} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
