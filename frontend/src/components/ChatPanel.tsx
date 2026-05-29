@@ -169,7 +169,7 @@ export default function ChatPanel({
   const [efforts, setEfforts] = useState<OptionItem[]>([])
   const [currentMode, setCurrentMode] = useState(options?.mode || 'auto')
   const [currentModel, setCurrentModel] = useState(options?.model || '')
-  const [currentEffort, setCurrentEffort] = useState(options?.effort || 'medium')
+  const [currentEffort, setCurrentEffort] = useState(options?.effort || 'high')
   const [sendMode, setSendMode] = useState<'normal' | 'split'>('normal')
   const [openPopover, setOpenPopover] = useState<'mode' | 'model' | 'effort' | null>(null)
 

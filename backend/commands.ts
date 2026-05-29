@@ -385,6 +385,7 @@ const MODELS: ModelOption[] = loadClaudeModels();
 
 // 努力程度选项 - Claude Code
 const EFFORT_LEVELS: EffortOption[] = [
+  { id: 'none', name: '无', description: '不设置努力程度' },
   { id: 'low', name: '低', description: '快速响应，节省token' },
   { id: 'medium', name: '中', description: '平衡速度和质量' },
   { id: 'high', name: '高', description: '更深入的思考' },

@@ -64,7 +64,7 @@ async function initDb(): Promise<SqlJsDatabase> {
       agent_type TEXT DEFAULT 'claude-code',
       mode TEXT DEFAULT 'auto',
       model TEXT,
-      effort TEXT DEFAULT 'medium',
+      effort TEXT DEFAULT 'high',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       last_session_id TEXT,

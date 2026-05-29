@@ -314,7 +314,7 @@ export default (projectManager: any, sessionManager: any) => { // TODO: type thi
         }
       }
 
-      const { agentType = 'claude-code', mode = 'auto', model = null, effort = 'medium' } = req.body;
+      const { agentType = 'claude-code', mode = 'auto', model = null, effort = 'high' } = req.body;
 
       const session = await sessionManager.createSession(
         project.workdir,

@@ -29,6 +29,7 @@ docs/
 .env
 
 # 后端运行时数据和临时文件
+backend/data/
 backend/data/*.db
 backend/data/*.db.backup.*
 backend/data/jwt-secret.json

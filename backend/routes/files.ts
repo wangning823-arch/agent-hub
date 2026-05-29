@@ -84,6 +84,44 @@ export default (ALLOWED_ROOT: string, projectManager?: any) => {
     }
   });
 
+  const MIME_MAP: Record<string, string> = {
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+    '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+    '.bmp': 'image/bmp', '.ico': 'image/x-icon',
+    '.pdf': 'application/pdf',
+    '.zip': 'application/zip', '.tar': 'application/x-tar',
+    '.gz': 'application/gzip', '.rar': 'application/vnd.rar',
+    '.7z': 'application/x-7z-compressed',
+    '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
+    '.mp4': 'video/mp4', '.webm': 'video/webm',
+  };
+
+  router.get('/raw', requireProjectScope, (req: Request, res: Response) => {
+    const filePath = req.query.path as string;
+    if (!filePath) {
+      return res.status(400).json({ error: 'path参数是必需的' });
+    }
+
+    const userRoot = getUserRoot(req);
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(userRoot)) {
+      return res.status(403).json({ error: '路径不在允许的范围内' });
+    }
+
+    try {
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: '文件不存在' });
+      }
+      const ext = path.extname(filePath).toLowerCase();
+      const contentType = MIME_MAP[ext] || 'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', 'inline');
+      fs.createReadStream(filePath).pipe(res);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   router.get('/content', requireProjectScope, (req: Request, res: Response) => {
     const filePath = req.query.path as string;
     if (!filePath) {

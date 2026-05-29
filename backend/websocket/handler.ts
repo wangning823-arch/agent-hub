@@ -95,11 +95,15 @@ export default (sessionManager: SessionManager, TOKEN_FILE: string) => {
         break;
 
       case 'set_effort':
-        if (agent?.updateOptions) {
-          agent.updateOptions({ effort: params.effort });
+        // 只有支持 effort 的 agent 才设置
+        const { getEffortsForAgent } = require('../commands');
+        if (getEffortsForAgent(session.agentType).length > 0) {
+          if (agent?.updateOptions) {
+            agent.updateOptions({ effort: params.effort });
+          }
+          session.options = { ...session.options, effort: params.effort };
+          sessionManager.saveSession(session);
         }
-        session.options = { ...session.options, effort: params.effort };
-        sessionManager.saveSession(session);
         break;
 
       case 'update_options':

@@ -388,7 +388,7 @@ class ProjectManager {
       const stmt = db.prepare(
         'INSERT OR IGNORE INTO projects (id, name, workdir, agent_type, mode, model, effort, created_at, updated_at, last_session_id, last_used_at, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       );
-      stmt.run([id, name, workdir, 'claude-code', 'auto', null, 'medium', now, now, null, now, userId || null]);
+      stmt.run([id, name, workdir, 'claude-code', 'auto', null, 'high', now, now, null, now, userId || null]);
     } catch (e: any) {
       console.warn('同步项目到数据库失败:', e.message);
     }

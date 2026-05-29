@@ -275,8 +275,8 @@ class ClaudeCodeAgent extends Agent {
 Violation of these rules will result in session termination.`);
       }
 
-      // 添加努力程度参数
-      if (this.options.effort) {
+      // 添加努力程度参数（'none' 表示不设置）
+      if (this.options.effort && this.options.effort !== 'none') {
         args.push('--effort', this.options.effort);
       }
 

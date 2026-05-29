@@ -104,6 +104,7 @@ export default function App() {
   const [agents, setAgents] = useState<Agent[]>([])
 
   const [viewingFile, setViewingFile] = useState<ViewingFile | null>(null)
+  const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null)
   const [showSearch, setShowSearch] = useState<boolean>(false)
   const [subtaskInfo, setSubtaskInfo] = useState<SubtaskInfo>({ total: 0, running: 0, completed: 0 })
   const [showSubtaskFromHeader, setShowSubtaskFromHeader] = useState<boolean>(false)
@@ -537,11 +538,25 @@ export default function App() {
     }
   }
 
+  const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.bmp', '.ico']
+  const ARCHIVE_EXTS = ['.zip', '.tar', '.gz', '.rar', '.7z']
+
   const handleViewFile = async (filePath: string): Promise<void> => {
+    const ext = '.' + filePath.split('.').pop()?.toLowerCase()
     try {
-      const data = await fetch(`${API_BASE}/files/content?path=${encodeURIComponent(filePath)}`).then(r => r.json())
-      setViewingFile({ path: filePath, content: data.content || '' })
-      if (isMobile) scrollToPanel('main')
+      if (IMAGE_EXTS.includes(ext)) {
+        const res = await fetch(`${API_BASE}/files/raw?path=${encodeURIComponent(filePath)}`)
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        setPreviewImage({ url, name: filePath.split('/').pop() || filePath })
+        if (isMobile) scrollToPanel('main')
+      } else if (ARCHIVE_EXTS.includes(ext) || ext === '.pdf') {
+        window.open(`${API_BASE}/files/raw?path=${encodeURIComponent(filePath)}`, '_blank')
+      } else {
+        const data = await fetch(`${API_BASE}/files/content?path=${encodeURIComponent(filePath)}`).then(r => r.json())
+        setViewingFile({ path: filePath, content: data.content || '' })
+        if (isMobile) scrollToPanel('main')
+      }
     } catch (error) {
       toast.error('加载文件失败: ' + (error as Error).message)
     }
@@ -757,6 +772,20 @@ export default function App() {
               onClose={() => setViewingFile(null)}
               onSave={(newContent: string) => setViewingFile(prev => prev ? ({ ...prev, content: newContent }) : null)}
             />
+          ) : previewImage ? (
+            <div className="flex flex-col h-full" style={{ background: 'var(--bg-primary)' }}>
+              <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+                <span className="text-sm truncate" style={{ color: 'var(--text-secondary)' }}>{previewImage.name}</span>
+                <button onClick={() => { URL.revokeObjectURL(previewImage.url); setPreviewImage(null) }}
+                  className="btn-icon" title="关闭">
+                  ✕
+                </button>
+              </div>
+              <div className="flex-1 flex items-center justify-center overflow-auto p-4">
+                <img src={previewImage.url} alt={previewImage.name}
+                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 4 }} />
+              </div>
+            </div>
           ) : activeSession ? (
             <ChatPanel
               key={activeSession}

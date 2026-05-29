@@ -7,7 +7,7 @@ export default (sessionManager: any, projectManager?: any) => { // TODO: type th
 
   router.post('/', async (req: Request, res: Response) => {
     try {
-      const { workdir, agentType = 'claude-code', mode = 'auto', model = null, effort = 'medium', ...options } = req.body;
+      const { workdir, agentType = 'claude-code', mode = 'auto', model = null, effort = 'high', ...options } = req.body;
 
       if (!workdir) {
         return res.status(400).json({ error: 'workdir是必需的' });
