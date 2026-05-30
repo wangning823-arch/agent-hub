@@ -130,13 +130,13 @@ function getOpenCodeContextWindow(): number {
     const configPath = path.join(process.env.HOME || '/root', '.config', 'opencode', 'opencode.json');
     const config: OpenCodeConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     const modelId = config.model; // e.g. "volcengine-plan/glm-5.1"
-    if (!modelId) return 0;
+    if (!modelId) return 200000;
     const [providerId, modelKey] = modelId.split('/');
     const provider = config.provider?.[providerId];
     const model = provider?.models?.[modelKey];
-    return model?.limit?.context || 0;
+    return model?.limit?.context || 200000;
   } catch (e) {
-    return 0;
+    return 200000;
   }
 }
 

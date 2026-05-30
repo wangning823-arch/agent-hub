@@ -227,6 +227,7 @@ function loadOpenCodeModels(): ModelOption[] {
                   id: fullId,
                   name: model.name || model.id,
                   description: `免费${ctx ? ' · ' + ctx + ' ctx' : ''}${caps.length ? ' · ' + caps.join('/') : ''}`,
+                  contextLimit: model.limit?.context || 0,
                   free: true
                 });
                 seen.add(fullId);
@@ -270,7 +271,8 @@ function loadOpenCodeModels(): ModelOption[] {
       models.unshift({
         id: defaultModel,
         name: modelInfo?.name || modelId,
-        description: '当前默认模型'
+        description: '当前默认模型',
+        contextLimit: modelInfo?.limit?.context || 0
       });
       seen.add(defaultModel);
     }
@@ -284,7 +286,8 @@ function loadOpenCodeModels(): ModelOption[] {
           models.push({
             id: fullId,
             name: modelInfo?.name || modelId,
-            description: provider.name || providerName
+            description: provider.name || providerName,
+            contextLimit: modelInfo?.limit?.context || 0
           });
           seen.add(fullId);
         }
