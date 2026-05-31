@@ -91,7 +91,8 @@ async function initDb(): Promise<SqlJsDatabase> {
 
   // db 已初始化，以下所有 db 使用都是安全的
   if (!db) {
-    throw new Error('数据库初始化失败');
+    console.warn('[数据库] 无可用数据库，创建新数据库...');
+    db = new SQL.Database();
   }
   // 用局部变量遮蔽外层 nullable db，消除后续 TS18047 错误
   const _db: SqlJsDatabase = db;
