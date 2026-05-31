@@ -98,24 +98,24 @@ const WORKFLOW_CREATION_SYSTEM_PROMPT = `
 [系统指令：工作流创建]
 当用户要求创建工作流（workflow）时，请直接在回复中输出工作流定义，使用以下格式：
 
+重要规则：
+- dependsOn 使用其他步骤的 name 字段值（字符串），不是 id
+- 没有依赖的步骤 dependsOn 设为 []
+- 可并行执行的步骤，它们的 dependsOn 都指向同一个前置步骤
+- 有先后顺序的步骤，后面的 dependsOn 包含前面的 name
+
 [WORKFLOW_DEF]
 {
   "name": "工作流名称",
   "description": "工作流描述",
   "steps": [
-    {
-      "name": "步骤名称",
-      "prompt": "发送给Agent的具体指令",
-      "dependsOn": []
-    }
+    { "name": "代码分析", "prompt": "分析代码库结构和性能瓶颈...", "dependsOn": [] },
+    { "name": "API优化", "prompt": "优化API路由性能...", "dependsOn": ["代码分析"] },
+    { "name": "前端优化", "prompt": "优化前端组件...", "dependsOn": ["代码分析"] },
+    { "name": "验证结果", "prompt": "运行构建验证所有优化...", "dependsOn": ["API优化", "前端优化"] }
   ]
 }
 [/WORKFLOW_DEF]
-
-说明：
-- steps 中每个步骤的 dependsOn 是依赖的步骤名称数组（依赖的步骤会先执行，其结果会传给后续步骤）
-- 如果步骤间没有依赖关系，dependsOn 设为空数组
-- prompt 应该是具体、明确的指令
 `;
 
 let _createAgent: ((workdir: string, agentType: AgentType, options: Record<string, unknown>) => AgentBase) | null = null;

@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import WorkflowFlowchart from './WorkflowFlowchart'
 
 interface StepDef {
   id: string
@@ -52,6 +53,7 @@ const hasCycle = (steps: StepDef[], stepId: string, newDep: string): boolean => 
 export default function WorkflowEditor({ initialDef, models, onSave, onSaveAndRun, onSaveAsTemplate, onSchedule, onCancel }: WorkflowEditorProps) {
   const [name, setName] = useState(initialDef?.name || '')
   const [description, setDescription] = useState(initialDef?.description || '')
+  const [showFlowchart, setShowFlowchart] = useState(false)
   const [steps, setSteps] = useState<StepDef[]>(
     initialDef?.steps?.map(s => ({ ...s })) || [
       { id: generateStepId(0), name: '', prompt: '', model: '', dependsOn: [], timeout: 600 }
@@ -98,11 +100,18 @@ export default function WorkflowEditor({ initialDef, models, onSave, onSaveAndRu
 
   return (
     <div className="flex flex-col h-full" style={{ background: 'var(--bg-primary)' }}>
-      <div className="px-4 py-3 border-b"
+      <div className="px-4 py-3 border-b flex items-center justify-between"
            style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
         <h3 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
           🔧 工作流编辑器
         </h3>
+        <button
+          onClick={() => setShowFlowchart(true)}
+          className="px-2 py-0.5 rounded text-xs hover:opacity-80"
+          style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
+        >
+          流程图
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -285,6 +294,10 @@ export default function WorkflowEditor({ initialDef, models, onSave, onSaveAndRu
           定时执行
         </button>
       </div>
+
+      {showFlowchart && (
+        <WorkflowFlowchart steps={steps} onClose={() => setShowFlowchart(false)} />
+      )}
     </div>
   )
 }
