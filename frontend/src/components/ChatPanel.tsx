@@ -748,8 +748,18 @@ export default function ChatPanel({
             } else {
               // 非工具调用消息正常添加
               let displayContent = msg.content || ''
+              // assistant 类型消息需要从 content blocks 中提取文本
+              if (msg.type === 'assistant' && msg.message?.content && Array.isArray(msg.message.content)) {
+                const texts = msg.message.content
+                  .filter((c: { type: string; text?: string }) => c.type === 'text' && c.text)
+                  .map((c: { text: string }) => c.text)
+                if (texts.length > 0) {
+                  displayContent = texts.join('\n')
+                }
+              }
               // 检测 AI 工作流创建标记
-              if (msg.type === 'text' && typeof displayContent === 'string' && displayContent.includes('[WORKFLOW_DEF]')) {
+              const checkContent = (msg.type === 'text' || msg.type === 'assistant') && typeof displayContent === 'string' && displayContent.includes('[WORKFLOW_DEF]')
+              if (checkContent) {
                 const match = displayContent.match(/\[WORKFLOW_DEF\]([\s\S]*?)\[\/WORKFLOW_DEF\]/)
                 if (match) {
                   try {

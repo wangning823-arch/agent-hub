@@ -704,7 +704,9 @@ Violation of these rules will result in immediate termination of the session.
     this.saveSession(session);
 
     // 注入工作流创建系统提示词（仅发送给Agent，不保存到会话历史）
-    const messageForAgent = message + WORKFLOW_CREATION_SYSTEM_PROMPT;
+    // /compact 等命令不附加提示词，否则 agent 端无法识别
+    const isCommand = message.trim().startsWith('/');
+    const messageForAgent = isCommand ? message : message + WORKFLOW_CREATION_SYSTEM_PROMPT;
 
     session.isWorking = true;
     this.broadcast(sessionId, { type: 'status', content: 'task_started' });
