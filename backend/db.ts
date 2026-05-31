@@ -89,7 +89,14 @@ async function initDb(): Promise<SqlJsDatabase> {
     }
   }
 
-  db.run(`
+  // db 已初始化，以下所有 db 使用都是安全的
+  if (!db) {
+    throw new Error('数据库初始化失败');
+  }
+  // 用局部变量遮蔽外层 nullable db，消除后续 TS18047 错误
+  const _db: SqlJsDatabase = db;
+
+  _db.run(`
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       workdir TEXT NOT NULL,
@@ -107,7 +114,7 @@ async function initDb(): Promise<SqlJsDatabase> {
     )
   `);
 
-  db.run(`
+  _db.run(`
     CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id TEXT NOT NULL,
@@ -118,7 +125,7 @@ async function initDb(): Promise<SqlJsDatabase> {
     )
   `);
 
-  db.run(`
+  _db.run(`
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -134,11 +141,11 @@ async function initDb(): Promise<SqlJsDatabase> {
     )
   `);
 
-  db.run(`CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at)`);
+  _db.run(`CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)`);
+  _db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at)`);
 
   // 模型管理表
-  db.run(`
+  _db.run(`
     CREATE TABLE IF NOT EXISTS providers (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -153,16 +160,16 @@ async function initDb(): Promise<SqlJsDatabase> {
 
   // 增量迁移：给已有的 providers 表添加 base_url_anthropic 列
   try {
-    const cols = db.exec("PRAGMA table_info(providers)");
+    const cols = _db.exec("PRAGMA table_info(providers)");
     if (cols.length > 0) {
       const colNames = cols[0].values.map((row: any[]) => row[1]);
       if (!colNames.includes('base_url_anthropic')) {
-        db.run('ALTER TABLE providers ADD COLUMN base_url_anthropic TEXT DEFAULT ""');
+        _db.run('ALTER TABLE providers ADD COLUMN base_url_anthropic TEXT DEFAULT ""');
         console.log('[数据库迁移] providers 表添加 base_url_anthropic 列');
       }
       // 增量迁移：给 providers 表添加 owner_id 列（NULL = 系统 Provider，user_id = 个人 Provider）
       if (!colNames.includes('owner_id')) {
-        db.run('ALTER TABLE providers ADD COLUMN owner_id TEXT DEFAULT NULL');
+        _db.run('ALTER TABLE providers ADD COLUMN owner_id TEXT DEFAULT NULL');
         console.log('[数据库迁移] providers 表添加 owner_id 列');
       }
     }
@@ -170,15 +177,15 @@ async function initDb(): Promise<SqlJsDatabase> {
 
   // 增量迁移：给 sessions 表添加 subtasks 列
   try {
-    const cols = db.exec("PRAGMA table_info(sessions)");
+    const cols = _db.exec("PRAGMA table_info(sessions)");
     if (cols.length > 0) {
       const colNames = cols[0].values.map((row: any[]) => row[1]);
       if (!colNames.includes('subtasks')) {
-        db.run('ALTER TABLE sessions ADD COLUMN subtasks TEXT DEFAULT "[]"');
+        _db.run('ALTER TABLE sessions ADD COLUMN subtasks TEXT DEFAULT "[]"');
         console.log('[数据库迁移] sessions 表添加 subtasks 列');
       }
       if (!colNames.includes('context_usage')) {
-        db.run('ALTER TABLE sessions ADD COLUMN context_usage TEXT DEFAULT NULL');
+        _db.run('ALTER TABLE sessions ADD COLUMN context_usage TEXT DEFAULT NULL');
         console.log('[数据库迁移] sessions 表添加 context_usage 列');
       }
     }
@@ -186,22 +193,22 @@ async function initDb(): Promise<SqlJsDatabase> {
 
   // 增量迁移：给 sessions 表添加 workflow_defs 和 workflows 列
   try {
-    const cols = db.exec("PRAGMA table_info(sessions)");
+    const cols = _db.exec("PRAGMA table_info(sessions)");
     if (cols.length > 0) {
       const colNames = cols[0].values.map((row: any[]) => row[1]);
       if (!colNames.includes('workflow_defs')) {
-        db.run('ALTER TABLE sessions ADD COLUMN workflow_defs TEXT DEFAULT "[]"');
+        _db.run('ALTER TABLE sessions ADD COLUMN workflow_defs TEXT DEFAULT "[]"');
         console.log('[数据库迁移] sessions 表添加 workflow_defs 列');
       }
       if (!colNames.includes('workflows')) {
-        db.run('ALTER TABLE sessions ADD COLUMN workflows TEXT DEFAULT "[]"');
+        _db.run('ALTER TABLE sessions ADD COLUMN workflows TEXT DEFAULT "[]"');
         console.log('[数据库迁移] sessions 表添加 workflows 列');
       }
     }
   } catch (e) { }
 
   // 工作流模板表
-  db.run(`
+  _db.run(`
     CREATE TABLE IF NOT EXISTS workflow_templates (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -213,7 +220,7 @@ async function initDb(): Promise<SqlJsDatabase> {
   `);
 
   // 工作流定时调度表
-  db.run(`
+  _db.run(`
     CREATE TABLE IF NOT EXISTS workflow_schedules (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
@@ -225,7 +232,7 @@ async function initDb(): Promise<SqlJsDatabase> {
   `);
 
   // ========== Prompt 模板表 ==========
-  db.run(`
+  _db.run(`
     CREATE TABLE IF NOT EXISTS prompt_templates (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -239,11 +246,11 @@ async function initDb(): Promise<SqlJsDatabase> {
       usage_count INTEGER DEFAULT 0
     )
   `);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_prompt_templates_category ON prompt_templates(category)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_prompt_templates_owner_id ON prompt_templates(owner_id)`);
+  _db.run(`CREATE INDEX IF NOT EXISTS idx_prompt_templates_category ON prompt_templates(category)`);
+  _db.run(`CREATE INDEX IF NOT EXISTS idx_prompt_templates_owner_id ON prompt_templates(owner_id)`);
 
   // ========== 设计规范表 ==========
-  db.run(`
+  _db.run(`
     CREATE TABLE IF NOT EXISTS design_specs (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL DEFAULT 'Default Spec',
@@ -262,21 +269,21 @@ async function initDb(): Promise<SqlJsDatabase> {
       updated_at INTEGER
     )
   `);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_design_specs_owner_id ON design_specs(owner_id)`);
+  _db.run(`CREATE INDEX IF NOT EXISTS idx_design_specs_owner_id ON design_specs(owner_id)`);
 
   // 增量迁移：清理从 Claude Code 自动迁移的 claude-custom provider
   try {
-    const ccResult = db.exec("SELECT id FROM providers WHERE id = 'claude-custom'");
+    const ccResult = _db.exec("SELECT id FROM providers WHERE id = 'claude-custom'");
     if (ccResult.length > 0 && ccResult[0].values.length > 0) {
-      db.run("DELETE FROM models WHERE provider_id = 'claude-custom'");
-      db.run("DELETE FROM tool_sync WHERE provider_id = 'claude-custom'");
-      db.run("DELETE FROM providers WHERE id = 'claude-custom'");
+      _db.run("DELETE FROM models WHERE provider_id = 'claude-custom'");
+      _db.run("DELETE FROM tool_sync WHERE provider_id = 'claude-custom'");
+      _db.run("DELETE FROM providers WHERE id = 'claude-custom'");
       console.log('[数据库迁移] 已清理 claude-custom provider（模型仅从 OpenCode 配置读取）');
       saveToFile();
     }
   } catch (e) { }
 
-  db.run(`
+  _db.run(`
     CREATE TABLE IF NOT EXISTS models (
       id TEXT NOT NULL,
       provider_id TEXT NOT NULL,
@@ -291,7 +298,7 @@ async function initDb(): Promise<SqlJsDatabase> {
   `);
 
   // 工具同步状态表
-  db.run(`
+  _db.run(`
     CREATE TABLE IF NOT EXISTS tool_sync (
       tool TEXT PRIMARY KEY,
       provider_id TEXT,
@@ -302,7 +309,7 @@ async function initDb(): Promise<SqlJsDatabase> {
   `);
 
   // ========== 用户管理表迁移 ==========
-  db.run(`
+  _db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       username TEXT NOT NULL UNIQUE,
@@ -315,22 +322,22 @@ async function initDb(): Promise<SqlJsDatabase> {
       updated_at TEXT NOT NULL
     )
   `);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
+  _db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
 
   // 增量迁移：给 users 表添加 preferences 列
   try {
-    const cols = db.exec("PRAGMA table_info(users)");
+    const cols = _db.exec("PRAGMA table_info(users)");
     if (cols.length > 0) {
       const colNames = cols[0].values.map((row: any[]) => row[1]);
       if (!colNames.includes('preferences')) {
-        db.run('ALTER TABLE users ADD COLUMN preferences TEXT DEFAULT \'{}\'');
+        _db.run('ALTER TABLE users ADD COLUMN preferences TEXT DEFAULT \'{}\'');
         console.log('[数据库迁移] users 表添加 preferences 列');
       }
     }
   } catch (e) { }
 
   // 模型权限表：管理系统 Provider 分配给用户
-  db.run(`
+  _db.run(`
     CREATE TABLE IF NOT EXISTS user_providers (
       user_id TEXT NOT NULL,
       provider_id TEXT NOT NULL,
@@ -340,10 +347,10 @@ async function initDb(): Promise<SqlJsDatabase> {
       FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
     )
   `);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_user_providers_provider_id ON user_providers(provider_id)`);
+  _db.run(`CREATE INDEX IF NOT EXISTS idx_user_providers_provider_id ON user_providers(provider_id)`);
 
   // ========== 凭证管理表 ==========
-  db.run(`
+  _db.run(`
     CREATE TABLE IF NOT EXISTS credentials (
       id TEXT PRIMARY KEY,
       host TEXT NOT NULL,
@@ -356,11 +363,11 @@ async function initDb(): Promise<SqlJsDatabase> {
       updated_at TEXT NOT NULL
     )
   `);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_credentials_host ON credentials(host)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_credentials_owner_id ON credentials(owner_id)`);
+  _db.run(`CREATE INDEX IF NOT EXISTS idx_credentials_host ON credentials(host)`);
+  _db.run(`CREATE INDEX IF NOT EXISTS idx_credentials_owner_id ON credentials(owner_id)`);
 
   // 管理员分配系统凭证给用户
-  db.run(`
+  _db.run(`
     CREATE TABLE IF NOT EXISTS user_credentials (
       user_id TEXT NOT NULL,
       credential_id TEXT NOT NULL,
@@ -370,10 +377,10 @@ async function initDb(): Promise<SqlJsDatabase> {
       FOREIGN KEY (credential_id) REFERENCES credentials(id) ON DELETE CASCADE
     )
   `);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_user_credentials_credential_id ON user_credentials(credential_id)`);
+  _db.run(`CREATE INDEX IF NOT EXISTS idx_user_credentials_credential_id ON user_credentials(credential_id)`);
 
   // ========== Agent 类型权限表 ==========
-  db.run(`
+  _db.run(`
     CREATE TABLE IF NOT EXISTS user_agent_types (
       user_id TEXT NOT NULL,
       agent_type TEXT NOT NULL,
@@ -388,17 +395,17 @@ async function initDb(): Promise<SqlJsDatabase> {
 
   // 向后兼容：如果 user_credentials 为空且只有一个 admin，自动分配所有系统凭证给该 admin
   try {
-    const adminResult = db.exec("SELECT id FROM users WHERE role = 'admin' AND is_active = 1");
-    const credResult = db.exec("SELECT id FROM credentials WHERE owner_id IS NULL");
+    const adminResult = _db.exec("SELECT id FROM users WHERE role = 'admin' AND is_active = 1");
+    const credResult = _db.exec("SELECT id FROM credentials WHERE owner_id IS NULL");
     if (adminResult.length > 0 && adminResult[0].values.length === 1 && credResult.length > 0 && credResult[0].values.length > 0) {
-      const permResult = db.exec("SELECT COUNT(*) FROM user_credentials");
+      const permResult = _db.exec("SELECT COUNT(*) FROM user_credentials");
       const permCount = permResult[0]?.values[0][0] as number;
       if (permCount === 0) {
         const adminId = adminResult[0].values[0][0] as string;
         const now = new Date().toISOString();
         for (const row of credResult[0].values) {
           const cid = row[0] as string;
-          db.run("INSERT OR IGNORE INTO user_credentials (user_id, credential_id, created_at) VALUES (?, ?, ?)", [adminId, cid, now]);
+          _db.run("INSERT OR IGNORE INTO user_credentials (user_id, credential_id, created_at) VALUES (?, ?, ?)", [adminId, cid, now]);
         }
         console.log(`[数据库迁移] 自动分配 ${credResult[0].values.length} 个系统凭证给管理员 ${adminId}`);
       }
@@ -407,17 +414,17 @@ async function initDb(): Promise<SqlJsDatabase> {
 
   // 向后兼容：如果 user_providers 为空且只有一个 admin，自动分配所有系统 Provider 给该 admin
   try {
-    const adminResult = db.exec("SELECT id FROM users WHERE role = 'admin' AND is_active = 1");
-    const providerResult = db.exec("SELECT id FROM providers WHERE owner_id IS NULL");
+    const adminResult = _db.exec("SELECT id FROM users WHERE role = 'admin' AND is_active = 1");
+    const providerResult = _db.exec("SELECT id FROM providers WHERE owner_id IS NULL");
     if (adminResult.length > 0 && adminResult[0].values.length === 1 && providerResult.length > 0 && providerResult[0].values.length > 0) {
-      const permResult = db.exec("SELECT COUNT(*) FROM user_providers");
+      const permResult = _db.exec("SELECT COUNT(*) FROM user_providers");
       const permCount = permResult[0]?.values[0][0] as number;
       if (permCount === 0) {
         const adminId = adminResult[0].values[0][0] as string;
         const now = new Date().toISOString();
         for (const row of providerResult[0].values) {
           const pid = row[0] as string;
-          db.run("INSERT OR IGNORE INTO user_providers (user_id, provider_id, created_at) VALUES (?, ?, ?)", [adminId, pid, now]);
+          _db.run("INSERT OR IGNORE INTO user_providers (user_id, provider_id, created_at) VALUES (?, ?, ?)", [adminId, pid, now]);
         }
         console.log(`[数据库迁移] 自动分配 ${providerResult[0].values.length} 个系统 Provider 给管理员 ${adminId}`);
       }
@@ -426,16 +433,16 @@ async function initDb(): Promise<SqlJsDatabase> {
 
   // 向后兼容：如果 user_agent_types 为空且只有一个 admin，自动分配所有 agent 类型给该 admin
   try {
-    const adminResult = db.exec("SELECT id FROM users WHERE role = 'admin' AND is_active = 1");
+    const adminResult = _db.exec("SELECT id FROM users WHERE role = 'admin' AND is_active = 1");
     if (adminResult.length > 0 && adminResult[0].values.length === 1) {
-      const permResult = db.exec("SELECT COUNT(*) FROM user_agent_types");
+      const permResult = _db.exec("SELECT COUNT(*) FROM user_agent_types");
       const permCount = permResult[0]?.values[0][0] as number;
       if (permCount === 0) {
         const adminId = adminResult[0].values[0][0] as string;
         const now = new Date().toISOString();
         const allAgentTypes = ['claude-code', 'opencode', 'codex'];
         for (const at of allAgentTypes) {
-          db.run("INSERT OR IGNORE INTO user_agent_types (user_id, agent_type, created_at) VALUES (?, ?, ?)", [adminId, at, now]);
+          _db.run("INSERT OR IGNORE INTO user_agent_types (user_id, agent_type, created_at) VALUES (?, ?, ?)", [adminId, at, now]);
         }
         console.log(`[数据库迁移] 自动分配所有 Agent 类型给管理员 ${adminId}`);
       }
@@ -443,36 +450,36 @@ async function initDb(): Promise<SqlJsDatabase> {
   } catch (e) { }
 
   try {
-    const cols = db.exec("PRAGMA table_info(projects)");
+    const cols = _db.exec("PRAGMA table_info(projects)");
     if (cols.length > 0) {
       const colNames = cols[0].values.map((row: any[]) => row[1]);
       if (!colNames.includes('user_id')) {
-        db.run('ALTER TABLE projects ADD COLUMN user_id TEXT DEFAULT NULL');
-        db.run('CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id)');
+        _db.run('ALTER TABLE projects ADD COLUMN user_id TEXT DEFAULT NULL');
+        _db.run('CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id)');
         console.log('[数据库迁移] projects 表添加 user_id 列');
       }
     }
   } catch (e) { }
 
   try {
-    const cols = db.exec("PRAGMA table_info(sessions)");
+    const cols = _db.exec("PRAGMA table_info(sessions)");
     if (cols.length > 0) {
       const colNames = cols[0].values.map((row: any[]) => row[1]);
       if (!colNames.includes('user_id')) {
-        db.run('ALTER TABLE sessions ADD COLUMN user_id TEXT DEFAULT NULL');
-        db.run('CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)');
+        _db.run('ALTER TABLE sessions ADD COLUMN user_id TEXT DEFAULT NULL');
+        _db.run('CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)');
         console.log('[数据库迁移] sessions 表添加 user_id 列');
       }
     }
   } catch (e) { }
 
   try {
-    const cols = db.exec("PRAGMA table_info(workflow_templates)");
+    const cols = _db.exec("PRAGMA table_info(workflow_templates)");
     if (cols.length > 0) {
       const colNames = cols[0].values.map((row: any[]) => row[1]);
       if (!colNames.includes('user_id')) {
-        db.run('ALTER TABLE workflow_templates ADD COLUMN user_id TEXT DEFAULT NULL');
-        db.run('CREATE INDEX IF NOT EXISTS idx_workflow_templates_user_id ON workflow_templates(user_id)');
+        _db.run('ALTER TABLE workflow_templates ADD COLUMN user_id TEXT DEFAULT NULL');
+        _db.run('CREATE INDEX IF NOT EXISTS idx_workflow_templates_user_id ON workflow_templates(user_id)');
         console.log('[数据库迁移] workflow_templates 表添加 user_id 列');
       }
     }
