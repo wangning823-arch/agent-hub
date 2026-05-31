@@ -17,6 +17,38 @@ const tokenStatsDbPath: string = path.join(dataDir, 'token-stats.db');
 let db: SqlJsDatabase | null = null;
 let tokenStatsDb: SqlJsDatabase | null = null;
 
+async function recoverFromBackup(SQL: any): Promise<boolean> {
+  const backupDir = path.join(dataDir, 'backups');
+  if (!fs.existsSync(backupDir)) return false;
+
+  // 按文件名倒序找最新的备份（格式：agent-hub-YYYY-MM-DD.db）
+  const files = fs.readdirSync(backupDir)
+    .filter(f => f.startsWith('agent-hub-') && f.endsWith('.db'))
+    .sort()
+    .reverse();
+
+  for (const file of files) {
+    const backupPath = path.join(backupDir, file);
+    try {
+      const backupData = fs.readFileSync(backupPath);
+      const testDb = new SQL.Database(backupData);
+      const result = testDb.exec('SELECT COUNT(*) FROM users');
+      const count = result.length > 0 ? (result[0].values[0][0] as number) : 0;
+      if (count > 0) {
+        console.log(`[数据库恢复] 从备份 ${file} 恢复成功，用户数: ${count}`);
+        db = testDb;
+        // 用恢复的数据覆盖损坏的文件
+        saveToFile();
+        return true;
+      }
+      testDb.close();
+    } catch (e) {
+      console.warn(`[数据库恢复] 备份 ${file} 也已损坏:`, (e as Error).message);
+    }
+  }
+  return false;
+}
+
 async function initDb(): Promise<SqlJsDatabase> {
   const SQL = await initSqlJs();
 
@@ -25,7 +57,37 @@ async function initDb(): Promise<SqlJsDatabase> {
     data = fs.readFileSync(dbPath);
   }
 
-  db = new SQL.Database(data as any);
+  // 尝试加载数据库，如果损坏则从备份恢复
+  try {
+    db = new SQL.Database(data as any);
+  } catch (e) {
+    console.error('[数据库] 加载数据库文件失败，尝试从备份恢复:', (e as Error).message);
+    db = null;
+  }
+
+  // 检查数据库是否有效（users 表是否有数据）
+  if (db) {
+    try {
+      const result = db.exec('SELECT COUNT(*) FROM users');
+      const count = result.length > 0 ? (result[0].values[0][0] as number) : 0;
+      if (count === 0) {
+        // users 表为空，可能数据库被重建了，尝试从备份恢复
+        console.warn('[数据库] users 表为空，尝试从备份恢复...');
+        const recovered = await recoverFromBackup(SQL);
+        if (!recovered) {
+          console.warn('[数据库] 无可用备份，将使用空数据库');
+        }
+      }
+    } catch (e) {
+      // users 表不存在，数据库可能损坏
+      console.error('[数据库] 无法读取 users 表:', (e as Error).message);
+      db = null;
+      const recovered = await recoverFromBackup(SQL);
+      if (!recovered) {
+        console.warn('[数据库] 无可用备份，将创建新数据库');
+      }
+    }
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS sessions (
@@ -443,7 +505,10 @@ function saveToFile(): void {
   if (db) {
     const data = db.export();
     const buffer = Buffer.from(data);
-    fs.writeFileSync(dbPath, buffer);
+    // 原子写入：先写临时文件，再 rename，防止写入过程中崩溃导致文件损坏
+    const tmpPath = dbPath + '.tmp';
+    fs.writeFileSync(tmpPath, buffer);
+    fs.renameSync(tmpPath, dbPath);
   }
 }
 
@@ -827,7 +892,9 @@ function saveTokenStatsToFile(): void {
   if (tokenStatsDb) {
     const data = tokenStatsDb.export();
     const buffer = Buffer.from(data);
-    fs.writeFileSync(tokenStatsDbPath, buffer);
+    const tmpPath = tokenStatsDbPath + '.tmp';
+    fs.writeFileSync(tmpPath, buffer);
+    fs.renameSync(tmpPath, tokenStatsDbPath);
   }
 }
 
@@ -839,16 +906,38 @@ function startDailyBackup(): void {
 
   const doBackup = (): void => {
     const date = new Date().toISOString().split('T')[0];
-    const backupPath = path.join(backupDir, `token-stats-${date}.db`);
 
-    if (tokenStatsDb) {
-      const data = tokenStatsDb.export();
-      const buffer = Buffer.from(data);
-      fs.writeFileSync(backupPath, buffer);
-      console.log(`Token统计已备份到 ${backupPath}`);
-
-      cleanupOldBackups(30);
+    // 备份主数据库
+    if (db) {
+      try {
+        const backupPath = path.join(backupDir, `agent-hub-${date}.db`);
+        const data = db.export();
+        const buffer = Buffer.from(data);
+        const tmpPath = backupPath + '.tmp';
+        fs.writeFileSync(tmpPath, buffer);
+        fs.renameSync(tmpPath, backupPath);
+        console.log(`主数据库已备份到 ${backupPath}`);
+      } catch (e) {
+        console.error('主数据库备份失败:', e);
+      }
     }
+
+    // 备份 token 统计数据库
+    if (tokenStatsDb) {
+      try {
+        const backupPath = path.join(backupDir, `token-stats-${date}.db`);
+        const data = tokenStatsDb.export();
+        const buffer = Buffer.from(data);
+        const tmpPath = backupPath + '.tmp';
+        fs.writeFileSync(tmpPath, buffer);
+        fs.renameSync(tmpPath, backupPath);
+        console.log(`Token统计已备份到 ${backupPath}`);
+      } catch (e) {
+        console.error('Token统计备份失败:', e);
+      }
+    }
+
+    cleanupOldBackups(30);
   };
 
   const cleanupOldBackups = (daysToKeep: number): void => {
