@@ -110,7 +110,7 @@ export default (ALLOWED_ROOT: string, projectManager?: any) => {
 
     try {
       if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ error: '文件不存在' });
+        return res.status(404).json({ error: '文件不存在: ' + filePath });
       }
       const ext = path.extname(filePath).toLowerCase();
       const contentType = MIME_MAP[ext] || 'application/octet-stream';

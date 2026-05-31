@@ -546,6 +546,11 @@ export default function App() {
     try {
       if (IMAGE_EXTS.includes(ext)) {
         const res = await fetch(`${API_BASE}/files/raw?path=${encodeURIComponent(filePath)}`)
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }))
+          toast.error('加载图片失败: ' + (err.error || res.statusText))
+          return
+        }
         const blob = await res.blob()
         const url = URL.createObjectURL(blob)
         setPreviewImage({ url, name: filePath.split('/').pop() || filePath })
