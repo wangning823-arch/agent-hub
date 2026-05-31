@@ -90,6 +90,34 @@ interface SessionInstance {
 
 /// <reference types="node" />
 
+// AI 自动创建工作流的系统提示词
+const WORKFLOW_CREATION_SYSTEM_PROMPT = `
+
+---
+
+[系统指令：工作流创建]
+当用户要求创建工作流（workflow）时，请直接在回复中输出工作流定义，使用以下格式：
+
+[WORKFLOW_DEF]
+{
+  "name": "工作流名称",
+  "description": "工作流描述",
+  "steps": [
+    {
+      "name": "步骤名称",
+      "prompt": "发送给Agent的具体指令",
+      "dependsOn": []
+    }
+  ]
+}
+[/WORKFLOW_DEF]
+
+说明：
+- steps 中每个步骤的 dependsOn 是依赖的步骤名称数组（依赖的步骤会先执行，其结果会传给后续步骤）
+- 如果步骤间没有依赖关系，dependsOn 设为空数组
+- prompt 应该是具体、明确的指令
+`;
+
 let _createAgent: ((workdir: string, agentType: AgentType, options: Record<string, unknown>) => AgentBase) | null = null;
 let _getDb: (() => SqlDb) | null = null;
 let _saveToFile: (() => void) | null = null;
@@ -675,12 +703,15 @@ Violation of these rules will result in immediate termination of the session.
     session.messages.push({ role: 'user', content: message, time: Date.now(), ...(quote ? { quote } : {}) });
     this.saveSession(session);
 
+    // 注入工作流创建系统提示词（仅发送给Agent，不保存到会话历史）
+    const messageForAgent = message + WORKFLOW_CREATION_SYSTEM_PROMPT;
+
     session.isWorking = true;
     this.broadcast(sessionId, { type: 'status', content: 'task_started' });
 
     let agentError: Error | null = null;
     try {
-      await session.agent!.send(message);
+      await session.agent!.send(messageForAgent);
     } catch (error) {
       agentError = error as Error;
       this.broadcast(sessionId, {

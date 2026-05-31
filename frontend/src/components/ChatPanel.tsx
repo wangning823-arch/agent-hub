@@ -747,7 +747,34 @@ export default function ChatPanel({
               // token 用量信息不显示在聊天中，但继续处理后续逻辑更新状态
             } else {
               // 非工具调用消息正常添加
-              setMessages(prev => [...prev, { ...msg, time: msg.time || Date.now() }])
+              let displayContent = msg.content || ''
+              // 检测 AI 工作流创建标记
+              if (msg.type === 'text' && typeof displayContent === 'string' && displayContent.includes('[WORKFLOW_DEF]')) {
+                const match = displayContent.match(/\[WORKFLOW_DEF\]([\s\S]*?)\[\/WORKFLOW_DEF\]/)
+                if (match) {
+                  try {
+                    const def = JSON.parse(match[1].trim())
+                    // 补充 steps 的 id 和 dependsOn
+                    if (def.steps && Array.isArray(def.steps)) {
+                      def.steps = def.steps.map((s: any, i: number) => ({
+                        id: s.id || `step_${Date.now()}_${i}`,
+                        name: s.name || '',
+                        prompt: s.prompt || '',
+                        model: s.model || '',
+                        dependsOn: s.dependsOn || [],
+                        timeout: s.timeout || 600,
+                      }))
+                    }
+                    setEditingWorkflowDef(def)
+                    setShowWorkflowEditor(true)
+                  } catch (e) {
+                    console.error('解析工作流定义失败:', e)
+                  }
+                  // 从显示内容中移除 WORKFLOW_DEF 标记
+                  displayContent = displayContent.replace(/\[WORKFLOW_DEF\][\s\S]*?\[\/WORKFLOW_DEF\]/, '').trim()
+                }
+              }
+              setMessages(prev => [...prev, { ...msg, content: displayContent, time: msg.time || Date.now() }])
             }
           }
 
