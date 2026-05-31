@@ -766,6 +766,7 @@ export default function ChatPanel({
                     const def = JSON.parse(match[1].trim())
                     // 补充 steps 的 id 和 dependsOn（将步骤名称映射为 id）
                     if (def.steps && Array.isArray(def.steps)) {
+                      // 第一遍：生成 id，建立 name→id 映射，保留原始 dependsOn
                       const nameToId: Record<string, string> = {}
                       def.steps = def.steps.map((s: any, i: number) => {
                         const id = s.id || `step_${Date.now()}_${i}`
@@ -776,11 +777,16 @@ export default function ChatPanel({
                           prompt: s.prompt || '',
                           model: s.model || '',
                           timeout: s.timeout || 600,
+                          dependsOn: s.dependsOn || [],
                         }
                       })
+                      // 第二遍：将 dependsOn 中的名称替换为 id
+                      const validIds = new Set(def.steps.map((s: any) => s.id))
                       def.steps = def.steps.map((s: any) => ({
                         ...s,
-                        dependsOn: (s.dependsOn || []).map((dep: string) => nameToId[dep] || dep),
+                        dependsOn: (s.dependsOn || [])
+                          .map((dep: string) => nameToId[dep] || dep)
+                          .filter((dep: string) => validIds.has(dep)),
                       }))
                     }
                     setEditingWorkflowDef(def)

@@ -16,15 +16,16 @@ interface Props {
 
 const NODE_W = 180
 const NODE_H = 56
-const GAP_X = 60
-const GAP_Y = 24
-const PADDING = 32
+const GAP_X = 80
+const GAP_Y = 28
+const PADDING = 40
 
 /**
  * 根据依赖关系计算步骤的布局层级
  * 没有依赖的步骤在第0层，依赖第N层的步骤在第N+1层
  */
 function computeLayout(steps: StepDef[]) {
+  const idSet = new Set(steps.map(s => s.id))
   const idToStep = new Map(steps.map(s => [s.id, s]))
   const levelMap = new Map<string, number>()
 
@@ -33,11 +34,14 @@ function computeLayout(steps: StepDef[]) {
     if (visited.has(id)) return 0 // 循环依赖保护
     visited.add(id)
     const step = idToStep.get(id)
-    if (!step || step.dependsOn.length === 0) {
+    if (!step) return 0
+    // 过滤掉不存在的依赖，防止崩溃
+    const validDeps = step.dependsOn.filter(depId => idSet.has(depId) && depId !== id)
+    if (validDeps.length === 0) {
       levelMap.set(id, 0)
       return 0
     }
-    const maxDepLevel = Math.max(...step.dependsOn.map(depId => getLevel(depId, visited)))
+    const maxDepLevel = Math.max(...validDeps.map(depId => getLevel(depId, visited)))
     const level = maxDepLevel + 1
     levelMap.set(id, level)
     return level
@@ -45,29 +49,65 @@ function computeLayout(steps: StepDef[]) {
 
   steps.forEach(s => getLevel(s.id))
 
-  // 按层级分组
+  // 按层级分组，只包含存在于 idSet 中的步骤
   const levels: string[][] = []
   for (const [id, level] of levelMap) {
+    if (!idSet.has(id)) continue
     if (!levels[level]) levels[level] = []
     levels[level].push(id)
   }
 
-  return { levels, levelMap }
+  return { levels, levelMap, idSet }
+}
+
+/**
+ * 生成平滑的S形贝塞尔曲线路径
+ * 从源节点右侧连接到目标节点左侧
+ */
+function createSmoothPath(
+  x1: number, y1: number, x2: number, y2: number,
+  curvature: number = 0.5
+): string {
+  const dx = Math.abs(x2 - x1)
+  const dy = Math.abs(y2 - y1)
+  // 控制点偏移量：水平距离越大，控制点越远；垂直距离越大，垂直偏移越大
+  const ctrl = Math.max(dx * curvature, 30)
+  // 从右侧出，左侧入
+  if (x2 > x1) {
+    // 正常从左到右
+    const cx1 = x1 + ctrl
+    const cy1 = y1
+    const cx2 = x2 - ctrl
+    const cy2 = y2
+    return `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`
+  }
+  // 回退：上方的节点连到下方
+  const cx1 = x1
+  const cy1 = y1 + ctrl
+  const cx2 = x2
+  const cy2 = y2 - ctrl
+  return `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`
 }
 
 export default function WorkflowFlowchart({ steps, onClose }: Props) {
-  const { levels, levelMap } = useMemo(() => computeLayout(steps), [steps])
-  const idToStep = useMemo(() => new Map(steps.map(s => [s.id, s])), [steps])
+  // 过滤掉无效步骤
+  const validSteps = useMemo(() =>
+    steps.filter(s => s && s.id && s.name),
+    [steps]
+  )
+
+  const { levels, levelMap, idSet } = useMemo(() => computeLayout(validSteps), [validSteps])
+  const idToStep = useMemo(() => new Map(validSteps.map(s => [s.id, s])), [validSteps])
 
   const cols = levels.length
   const maxRows = Math.max(...levels.map(l => l.length), 1)
-  const svgW = PADDING * 2 + cols * NODE_W + (cols - 1) * GAP_X
+  const svgW = PADDING * 2 + cols * NODE_W + Math.max(0, cols - 1) * GAP_X
   const svgH = PADDING * 2 + maxRows * NODE_H + Math.max(0, maxRows - 1) * GAP_Y
 
   // 计算每个步骤的位置
   const positions = new Map<string, { x: number; y: number }>()
   levels.forEach((levelIds, col) => {
-    const totalH = levelIds.length * NODE_H + (levelIds.length - 1) * GAP_Y
+    const totalH = levelIds.length * NODE_H + Math.max(0, levelIds.length - 1) * GAP_Y
     const startY = PADDING + (svgH - PADDING * 2 - totalH) / 2
     levelIds.forEach((id, row) => {
       positions.set(id, {
@@ -77,28 +117,30 @@ export default function WorkflowFlowchart({ steps, onClose }: Props) {
     })
   })
 
-  // 绘制依赖箭头
+  // 绘制依赖箭头（连接节点边缘中心）
   const arrows: React.ReactNode[] = []
-  steps.forEach(step => {
+  validSteps.forEach(step => {
     const target = positions.get(step.id)
     if (!target) return
-    step.dependsOn.forEach(depId => {
+    // 只处理有效依赖
+    const validDeps = step.dependsOn.filter(depId => idSet.has(depId) && depId !== step.id)
+    validDeps.forEach(depId => {
       const source = positions.get(depId)
       if (!source) return
-      const x1 = source.x + NODE_W / 2
-      const y1 = source.y + NODE_H
-      const x2 = target.x + NODE_W / 2
-      const y2 = target.y
-      const midY = (y1 + y2) / 2
+      // 源节点右侧中心 → 目标节点左侧中心
+      const x1 = source.x + NODE_W
+      const y1 = source.y + NODE_H / 2
+      const x2 = target.x
+      const y2 = target.y + NODE_H / 2
+      const path = createSmoothPath(x1, y1, x2, y2, 0.6)
       arrows.push(
         <path
           key={`${depId}-${step.id}`}
-          d={`M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`}
+          d={path}
           fill="none"
           stroke="var(--accent-primary)"
-          strokeWidth={2}
+          strokeWidth={1.5}
           markerEnd="url(#arrowhead)"
-          opacity={0.7}
         />
       )
     })
@@ -106,11 +148,16 @@ export default function WorkflowFlowchart({ steps, onClose }: Props) {
 
   // 绘制节点
   const nodes: React.ReactNode[] = []
-  steps.forEach(step => {
+  validSteps.forEach(step => {
     const pos = positions.get(step.id)
     if (!pos) return
-    const depCount = step.dependsOn.length
+    const validDeps = step.dependsOn.filter(depId => idSet.has(depId) && depId !== step.id)
+    const depCount = validDeps.length
     const isRoot = depCount === 0
+    // 检查是否是并行步骤（同层级有多个）
+    const level = levelMap.get(step.id) ?? 0
+    const isParallel = (levels[level]?.length ?? 0) > 1
+
     nodes.push(
       <g key={step.id}>
         <rect
@@ -120,8 +167,9 @@ export default function WorkflowFlowchart({ steps, onClose }: Props) {
           height={NODE_H}
           rx={8}
           fill={isRoot ? 'var(--accent-primary-soft, rgba(99,102,241,0.15))' : 'var(--bg-secondary)'}
-          stroke={isRoot ? 'var(--accent-primary)' : 'var(--border-subtle)'}
-          strokeWidth={1.5}
+          stroke={isRoot ? 'var(--accent-primary)' : isParallel ? 'var(--accent-secondary, #8b5cf6)' : 'var(--border-subtle)'}
+          strokeWidth={isParallel ? 1.8 : 1.5}
+          strokeDasharray={isParallel && !isRoot ? '6 3' : undefined}
         />
         <text
           x={pos.x + NODE_W / 2}
@@ -132,7 +180,7 @@ export default function WorkflowFlowchart({ steps, onClose }: Props) {
           fontSize={13}
           fontWeight={600}
         >
-          {step.name.length > 14 ? step.name.slice(0, 13) + '…' : step.name}
+          {step.name.length > 12 ? step.name.slice(0, 11) + '…' : step.name}
         </text>
         {depCount > 0 && (
           <text
@@ -171,14 +219,14 @@ export default function WorkflowFlowchart({ steps, onClose }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center"
          style={{ background: 'rgba(0,0,0,0.5)' }}
          onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-auto"
+      <div className="rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-auto"
            style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-subtle)' }}
            onMouseDown={e => e.stopPropagation()}>
         {/* 标题栏 */}
         <div className="flex items-center justify-between px-4 py-3 border-b"
              style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
           <h3 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-            工作流流程图 ({steps.length} 个步骤)
+            工作流流程图 ({validSteps.length} 个步骤)
           </h3>
           <div className="flex items-center gap-3">
             {parallelGroups.length > 0 && (
@@ -199,9 +247,9 @@ export default function WorkflowFlowchart({ steps, onClose }: Props) {
         <div className="p-4 overflow-auto" style={{ minHeight: 200 }}>
           <svg width={svgW} height={svgH} style={{ display: 'block', margin: '0 auto' }}>
             <defs>
-              <marker id="arrowhead" markerWidth="10" markerHeight="7"
-                      refX="10" refY="3.5" orient="auto">
-                <polygon points="0 0, 10 3.5, 0 7" fill="var(--accent-primary)" opacity={0.7} />
+              <marker id="arrowhead" markerWidth="8" markerHeight="6"
+                      refX="7" refY="3" orient="auto">
+                <polygon points="0 0, 8 3, 0 6" fill="var(--accent-primary)" />
               </marker>
             </defs>
             {arrows}
@@ -216,7 +264,8 @@ export default function WorkflowFlowchart({ steps, onClose }: Props) {
             {levels.map((ids, level) => (
               <React.Fragment key={level}>
                 {ids.map(id => {
-                  const step = idToStep.get(id)!
+                  const step = idToStep.get(id)
+                  if (!step) return null
                   return (
                     <span key={id}
                           className="px-2 py-0.5 rounded text-xs"
