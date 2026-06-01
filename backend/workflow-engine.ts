@@ -182,15 +182,19 @@ class WorkflowEngine {
     const rw = this.running.get(instance.id);
     if (!rw || rw.cancelled) return;
 
-    const readySteps = this.resolveReadySteps(instance);
-    if (readySteps.length === 0) return;
+    // 每次循环重新计算就绪步骤，避免使用过时快照
+    while (true) {
+      if (rw.cancelled) return;
+      const readySteps = this.resolveReadySteps(instance);
+      if (readySteps.length === 0) return;
 
-    for (let i = 0; i < readySteps.length; i += MAX_CONCURRENT) {
-      if (rw.cancelled) return;
-      const batch = readySteps.slice(i, i + MAX_CONCURRENT);
-      await Promise.allSettled(batch.map(s => this.executeStep(sessionId, instance, s)));
-      if (rw.cancelled) return;
-      await this.executeSteps(sessionId, instance);
+      // 按批次执行，每批最多 MAX_CONCURRENT 个并行
+      for (let i = 0; i < readySteps.length; i += MAX_CONCURRENT) {
+        if (rw.cancelled) return;
+        const batch = readySteps.slice(i, i + MAX_CONCURRENT);
+        await Promise.allSettled(batch.map(s => this.executeStep(sessionId, instance, s)));
+      }
+      // 一轮批次全部完成后，回到 while 循环重新计算就绪步骤
     }
   }
 
@@ -212,6 +216,9 @@ class WorkflowEngine {
   private async executeStep(sessionId: string, instance: WorkflowInstance, step: WorkflowStepRun): Promise<void> {
     const rw = this.running.get(instance.id);
     if (!rw || rw.cancelled) return;
+
+    // 防止重复执行已完成或出错的步骤
+    if (step.status !== 'pending') return;
 
     const session = this.sessionManager.getSession(sessionId);
     if (!session) return;

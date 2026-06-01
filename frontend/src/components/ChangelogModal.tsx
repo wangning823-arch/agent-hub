@@ -16,6 +16,31 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.20260601.0001',
+    date: '2026-06-01',
+    sections: [
+      {
+        title: '改进',
+        color: 'var(--success, #22c55e)',
+        items: [
+          'Compact 超时从 3 分钟增加到 5 分钟，使用 SIGKILL 确保进程完全终止，解决大对话历史 compact 超时问题',
+          '上下文查询超时从 15 秒增加到 30 秒，适配 compact 后系统处理延迟',
+          '工作流引擎重构为 while 循环，防止深层工作流栈溢出，并新增步骤重复执行检查',
+          '文件属性面板的文件名和路径支持一键复制到剪贴板',
+          '流程图支持通过名称匹配依赖关系，兼容旧版工作流中使用步骤名称而非 ID 的情况',
+        ],
+      },
+      {
+        title: '修复',
+        color: 'var(--warning, #f59e0b)',
+        items: [
+          '修复工作流引擎中已完成/出错步骤可能被重复执行的问题',
+          '修复旧版工作流因依赖字段使用名称而非 ID 导致流程图布局计算崩溃的问题',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.3.20260510.0001',
     date: '2026-05-10',
     sections: [

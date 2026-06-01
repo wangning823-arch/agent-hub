@@ -1,0 +1,18 @@
+# Changelog
+
+All notable changes to Agent Hub will be documented in this file.
+
+## [0.3.20260601.0001] - 2026-06-01
+
+### Improved
+
+- **Compact 超时优化**: Claude Code compact 命令超时从 180 秒增加到 300 秒（5 分钟），并使用 SIGKILL 替代 SIGTERM 确保进程完全终止，解决大对话历史 compact 超时问题
+- **上下文查询超时优化**: `/context` 命令超时从 15 秒增加到 30 秒，适配 compact 后系统处理延迟
+- **工作流引擎稳定性**: 重构 `executeSteps` 为 while 循环替代递归调用，防止深层工作流栈溢出；新增步骤重复执行检查
+- **文件属性复制功能**: 文件属性面板中的文件名和路径支持一键复制到剪贴板
+- **工作流流程图兼容性**: 流程图支持通过名称匹配依赖关系（`dependsOn`），兼容旧版工作流中使用步骤名称而非 ID 的情况
+
+### Fixed
+
+- 修复工作流引擎中已完成/出错步骤可能被重复执行的问题
+- 修复旧版工作流因依赖字段使用名称而非 ID 导致流程图布局计算崩溃的问题

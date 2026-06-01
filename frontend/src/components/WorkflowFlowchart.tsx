@@ -27,6 +27,10 @@ const PADDING = 40
 function computeLayout(steps: StepDef[]) {
   const idSet = new Set(steps.map(s => s.id))
   const idToStep = new Map(steps.map(s => [s.id, s]))
+  // 建立 name → id 映射，处理老工作流 dependsOn 中使用名称而非 ID 的情况
+  const nameToId = new Map<string, string>()
+  steps.forEach(s => { if (s.name) nameToId.set(s.name, s.id) })
+
   const levelMap = new Map<string, number>()
 
   const getLevel = (id: string, visited = new Set<string>()): number => {
@@ -35,8 +39,11 @@ function computeLayout(steps: StepDef[]) {
     visited.add(id)
     const step = idToStep.get(id)
     if (!step) return 0
-    // 过滤掉不存在的依赖，防止崩溃
-    const validDeps = step.dependsOn.filter(depId => idSet.has(depId) && depId !== id)
+    // 解析依赖：先尝试 ID 匹配，再尝试名称匹配
+    const resolvedDeps = step.dependsOn
+      .map(dep => idSet.has(dep) ? dep : (nameToId.get(dep) || ''))
+      .filter(dep => dep && dep !== id)
+    const validDeps = resolvedDeps.filter(dep => idSet.has(dep))
     if (validDeps.length === 0) {
       levelMap.set(id, 0)
       return 0
@@ -122,8 +129,10 @@ export default function WorkflowFlowchart({ steps, onClose }: Props) {
   validSteps.forEach(step => {
     const target = positions.get(step.id)
     if (!target) return
-    // 只处理有效依赖
-    const validDeps = step.dependsOn.filter(depId => idSet.has(depId) && depId !== step.id)
+    // 解析依赖并过滤
+    const validDeps = step.dependsOn
+      .map(dep => idSet.has(dep) ? dep : (nameToId.get(dep) || ''))
+      .filter(dep => dep && dep !== step.id && idSet.has(dep))
     validDeps.forEach(depId => {
       const source = positions.get(depId)
       if (!source) return
@@ -151,7 +160,9 @@ export default function WorkflowFlowchart({ steps, onClose }: Props) {
   validSteps.forEach(step => {
     const pos = positions.get(step.id)
     if (!pos) return
-    const validDeps = step.dependsOn.filter(depId => idSet.has(depId) && depId !== step.id)
+    const validDeps = step.dependsOn
+      .map(dep => idSet.has(dep) ? dep : (nameToId.get(dep) || ''))
+      .filter(dep => dep && dep !== step.id && idSet.has(dep))
     const depCount = validDeps.length
     const isRoot = depCount === 0
     // 检查是否是并行步骤（同层级有多个）
