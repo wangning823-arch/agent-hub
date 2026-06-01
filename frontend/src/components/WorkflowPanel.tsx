@@ -34,9 +34,9 @@ interface WorkflowPanelProps {
   onClose: () => void
 }
 
-interface StepNode {
+interface FlatStep {
   step: WorkflowStep
-  children: StepNode[]
+  depth: number
 }
 
 const statusLabel = (status: string): string => {
@@ -51,49 +51,66 @@ const statusLabel = (status: string): string => {
   }
 }
 
-const buildDependencyGraph = (steps: WorkflowStep[]): StepNode[] => {
-  const stepMap = new Map<string, WorkflowStep>()
-  steps.forEach(s => stepMap.set(s.id, s))
+const topologicalSort = (steps: WorkflowStep[]): FlatStep[] => {
+  const stepMap = new Map(steps.map(s => [s.id, s]))
+  // 每个步骤的最大依赖深度（用于缩进）
+  const depthMap = new Map<string, number>()
 
+  steps.forEach(s => {
+    const getDepth = (id: string, visited = new Set<string>()): number => {
+      if (depthMap.has(id)) return depthMap.get(id)!
+      if (visited.has(id)) return 0
+      visited.add(id)
+      const step = stepMap.get(id)
+      if (!step || step.dependsOn.length === 0) {
+        depthMap.set(id, 0)
+        return 0
+      }
+      const maxDepDepth = Math.max(...step.dependsOn.map(depId => {
+        const dep = stepMap.get(depId)
+        return dep ? getDepth(depId, visited) : 0
+      }))
+      const depth = maxDepDepth + 1
+      depthMap.set(id, depth)
+      return depth
+    }
+    getDepth(s.id)
+  })
+
+  // BFS 拓扑排序：按依赖层级从浅到深
+  const inDegree = new Map<string, number>()
   const childrenMap = new Map<string, string[]>()
   steps.forEach(s => {
+    inDegree.set(s.id, s.dependsOn.filter(depId => stepMap.has(depId)).length)
     if (!childrenMap.has(s.id)) childrenMap.set(s.id, [])
   })
   steps.forEach(s => {
     s.dependsOn.forEach(depId => {
-      const list = childrenMap.get(depId)
-      if (list) list.push(s.id)
+      if (childrenMap.has(depId)) {
+        childrenMap.get(depId)!.push(s.id)
+      }
     })
   })
 
-  const visited = new Set<string>()
-  const roots: StepNode[] = []
+  const queue: string[] = []
+  inDegree.forEach((deg, id) => { if (deg === 0) queue.push(id) })
 
-  const buildNode = (stepId: string): StepNode | null => {
-    if (visited.has(stepId)) return null
-    visited.add(stepId)
-    const step = stepMap.get(stepId)
-    if (!step) return null
-    const childIds = childrenMap.get(stepId) || []
-    const children = childIds.map(cid => buildNode(cid)).filter(Boolean) as StepNode[]
-    return { step, children }
+  const result: FlatStep[] = []
+  while (queue.length > 0) {
+    const id = queue.shift()!
+    const step = stepMap.get(id)
+    if (step) {
+      result.push({ step, depth: depthMap.get(id) || 0 })
+    }
+    const children = childrenMap.get(id) || []
+    children.forEach(childId => {
+      const deg = inDegree.get(childId)! - 1
+      inDegree.set(childId, deg)
+      if (deg === 0) queue.push(childId)
+    })
   }
 
-  steps.forEach(s => {
-    if (s.dependsOn.length === 0) {
-      const node = buildNode(s.id)
-      if (node) roots.push(node)
-    }
-  })
-
-  steps.forEach(s => {
-    if (!visited.has(s.id)) {
-      const node = buildNode(s.id)
-      if (node) roots.push(node)
-    }
-  })
-
-  return roots
+  return result
 }
 
 const flattenWithDepth = (nodes: StepNode[], depth: number = 0, ancestorLast: boolean[] = []): Array<{ step: WorkflowStep; depth: number; isLast: boolean; ancestorLast: boolean[] }> => {
@@ -133,16 +150,11 @@ export default function WorkflowPanel({ workflow, onPause, onCancel, onRetryStep
   const running = workflow.steps.some(s => s.status === 'running')
   const isFinished = workflow.status === 'done' || workflow.status === 'error' || workflow.status === 'cancelled'
 
-  const graph = buildDependencyGraph(workflow.steps)
-  const flatSteps = flattenWithDepth(graph)
+  const flatSteps = topologicalSort(workflow.steps)
 
-  const connectorPrefix = (depth: number, isLast: boolean, ancestorLast: boolean[]): string => {
+  const connectorPrefix = (depth: number): string => {
     if (depth === 0) return ''
-    let indent = ''
-    for (let i = 0; i < depth - 1; i++) {
-      indent += ancestorLast[i] ? '    ' : '│   '
-    }
-    return indent + (isLast ? '└──→ ' : '├──→ ')
+    return '│   '.repeat(depth - 1) + '├──→ '
   }
 
   return (
@@ -196,7 +208,7 @@ export default function WorkflowPanel({ workflow, onPause, onCancel, onRetryStep
 
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-0">
         {flatSteps.map((item, idx) => {
-          const prefix = connectorPrefix(item.depth, item.isLast, item.ancestorLast)
+          const prefix = connectorPrefix(item.depth)
           return (
             <div key={item.step.id} className="flex items-start">
               {prefix && (

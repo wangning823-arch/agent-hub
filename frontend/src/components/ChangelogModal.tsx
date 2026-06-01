@@ -16,6 +16,21 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.20260601.0002',
+    date: '2026-06-01',
+    sections: [
+      {
+        title: '改进',
+        color: 'var(--success, #22c55e)',
+        items: [
+          '工作流面板重构：将树结构依赖图替换为拓扑排序，简化连接线显示逻辑',
+          '拓扑排序使用 BFS 算法按依赖层级从浅到深排列步骤，去除祖先追踪和最后节点判断',
+          '连接线显示统一为每级 └──→ 前缀，不再区分最后/非最后节点',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.3.20260601.0001',
     date: '2026-06-01',
     sections: [
