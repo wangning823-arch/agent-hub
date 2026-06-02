@@ -134,7 +134,20 @@ export default function ChatPanel({
   const toast = useToast()
   const notification = useNotification()
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [input, setInput] = useState('')
+  const [input, setInput] = useState(() => {
+    try { return localStorage.getItem(`draft_${sessionId}`) || '' } catch { return '' }
+  })
+  // 立即保存草稿到 localStorage（无防抖，避免切换文件查看器时丢失）
+  useEffect(() => {
+    try {
+      if (input) localStorage.setItem(`draft_${sessionId}`, input)
+      else localStorage.removeItem(`draft_${sessionId}`)
+    } catch {}
+  }, [input, sessionId])
+  const clearInput = () => {
+    setInput('')
+    try { localStorage.removeItem(`draft_${sessionId}`) } catch {}
+  }
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [statusMessage, setStatusMessage] = useState('')
@@ -981,7 +994,7 @@ export default function ChatPanel({
               type: 'user_input',
               content: e.detail.message
             }))
-            setInput('')
+            clearInput()
           }
         }, 100)
       }
@@ -1218,7 +1231,7 @@ export default function ChatPanel({
         setSplitAnalyzing(false)
       }
       setSendMode('normal') // 发送后自动切回普通模式，防止重复拆分
-      setInput('')
+      clearInput()
       setAttachments([])
       setQuoteReply(null)
       return
@@ -1239,7 +1252,7 @@ export default function ChatPanel({
       quote: quoteReply || undefined
     }))
 
-    setInput('')
+    clearInput()
     setAttachments([])
     setQuoteReply(null) // 清除引用
   }
@@ -1251,7 +1264,7 @@ export default function ChatPanel({
 
     setMessages(prev => [...prev, { type: 'user', content }])
     wsRef.current.send(JSON.stringify({ type: 'user_input', content }))
-    setInput('')
+    clearInput()
   }
 
   // 子任务处理函数

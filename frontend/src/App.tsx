@@ -770,7 +770,38 @@ export default function App() {
 
         {/* Chat area */}
         <div className="flex-1 overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-          {viewingFile ? (
+          {viewingFile && activeSession ? (
+            /* Split view: ChatPanel + FileViewer side by side */
+            <div className="flex h-full">
+              <div className="flex-1 min-w-0">
+                <ChatPanel
+                  key={activeSession}
+                  sessionId={activeSession}
+                  agentType={currentSession?.agentType || 'claude-code'}
+                  workdir={currentSession?.workdir || ''}
+                  options={currentOptions}
+                  isWorking={currentSession?.isWorking || false}
+                  isStarting={currentSession?.isStarting || false}
+                  isRestoringMemory={currentSession?.isRestoringMemory || false}
+                  onOptionsChange={(opts: Record<string, any>) => handleUpdateOptions(activeSession, opts)}
+                  onWorkingChange={(isWorking: boolean) => setSessionWorking(activeSession, isWorking)}
+                  onStartingChange={(isStarting: boolean) => setSessionStarting(activeSession, isStarting)}
+                  onSessionLoaded={() => setLoadingSessionId(null)}
+                  onSubtaskCountChange={setSubtaskInfo}
+                  onSubtaskPanelClose={() => setShowSubtaskFromHeader(false)}
+                  externalShowPanel={showSubtaskFromHeader}
+                />
+              </div>
+              <div className="w-[50%] min-w-[300px] border-l" style={{ borderColor: 'var(--border-subtle)' }}>
+                <FileViewer
+                  file={viewingFile.path}
+                  content={viewingFile.content}
+                  onClose={() => setViewingFile(null)}
+                  onSave={(newContent: string) => setViewingFile(prev => prev ? ({ ...prev, content: newContent }) : null)}
+                />
+              </div>
+            </div>
+          ) : viewingFile ? (
             <FileViewer
               file={viewingFile.path}
               content={viewingFile.content}

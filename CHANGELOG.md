@@ -2,6 +2,13 @@
 
 All notable changes to Agent Hub will be documented in this file.
 
+## [0.3.20260601.0003] - 2026-06-01
+
+### New Features
+
+- **文件查看分屏模式**: 查看文件时 ChatPanel 和 FileViewer 左右并排显示，各占 50% 宽度
+- **聊天草稿自动保存**: 输入内容自动保存到 localStorage，切换会话后恢复未发送的输入
+
 ## [0.3.20260601.0002] - 2026-06-01
 
 ### Improved

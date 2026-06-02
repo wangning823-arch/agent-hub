@@ -116,6 +116,10 @@ const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
           <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8, marginBottom: '1rem' }}>
             在底部输入框中输入消息，点击发送按钮或按 Shift+Enter 发送。支持上传图片、文档等附件。
           </p>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>草稿保存</h4>
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8, marginBottom: '1rem' }}>
+            输入内容会自动保存为草稿，切换会话或查看文件后返回时自动恢复，无需担心未发送的内容丢失。
+          </p>
           <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>中断任务</h4>
           <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8, marginBottom: '1rem' }}>
             Agent 正在工作时，发送按钮会变为停止按钮（红色方块），点击可中断当前任务。
@@ -195,6 +199,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
           </p>
           <ul style={{ color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: '1.25rem' }}>
             <li>点击文件可查看内容，支持代码高亮</li>
+            <li>查看文件时自动切换为分屏模式，聊天和文件查看并排显示</li>
             <li>右键文件可执行删除、AI 美化等操作</li>
             <li>使用 <kbd style={{ background: 'var(--bg-tertiary)', padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>Ctrl+S</kbd> 保存文件修改</li>
           </ul>
