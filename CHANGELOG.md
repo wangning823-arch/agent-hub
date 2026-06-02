@@ -2,6 +2,13 @@
 
 All notable changes to Agent Hub will be documented in this file.
 
+## [0.3.20260601.0004] - 2026-06-01
+
+### Improved
+
+- **OpenCode 模型缓存 TTL**: 添加 24 小时缓存过期时间，避免长期运行时缓存过期
+- **自动刷新缓存**: 服务器每 24 小时自动刷新 OpenCode 模型缓存并预加载，无需重启
+
 ## [0.3.20260601.0003] - 2026-06-01
 
 ### New Features

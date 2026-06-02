@@ -16,6 +16,20 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.20260601.0004',
+    date: '2026-06-01',
+    sections: [
+      {
+        title: '改进',
+        color: 'var(--success, #22c55e)',
+        items: [
+          'OpenCode 模型缓存添加 24 小时 TTL，避免长期运行时缓存过期',
+          '服务器每 24 小时自动刷新 OpenCode 模型缓存并预加载，无需重启',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.3.20260601.0003',
     date: '2026-06-01',
     sections: [

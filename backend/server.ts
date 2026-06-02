@@ -79,6 +79,21 @@ async function initApp(): Promise<void> {
     try { saveTokenStatsToFile(); } catch (e) { console.error('[DB] Token统计保存失败:', e); }
   }, 10000);
 
+  // 每 24 小时自动刷新 OpenCode 免费模型缓存（空闲时预加载，避免用户请求时阻塞）
+  setInterval(() => {
+    try {
+      const commands = require('./commands');
+      if (typeof commands.clearModelCache === 'function') {
+        commands.clearModelCache();
+        // 预加载：清除缓存后立即调用，下次用户请求无需等待
+        if (typeof commands.getModelsForAgent === 'function') {
+          commands.getModelsForAgent('opencode');
+        }
+        console.log('[OpenCode] 模型缓存已自动刷新');
+      }
+    } catch (e) { console.error('[OpenCode] 模型缓存刷新失败:', e); }
+  }, 24 * 60 * 60 * 1000);
+
   const tokenTracker = new TokenTracker();
   sessionManager = new SessionManager(tokenTracker);
   await sessionManager.init();

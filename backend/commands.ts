@@ -169,9 +169,11 @@ function loadClaudeModels(workdir?: string): ModelOption[] {
 
 // OpenCode - 动态获取免费模型 + 配置文件中的模型
 let _opencodeModelsCache: ModelOption[] | null = null;
+let _opencodeModelsCacheTime: number = 0;
+const OPENCODE_CACHE_TTL = 24 * 60 * 60 * 1000; // 24小时
 
 function loadOpenCodeModels(): ModelOption[] {
-  if (_opencodeModelsCache) return _opencodeModelsCache;
+  if (_opencodeModelsCache && (Date.now() - _opencodeModelsCacheTime < OPENCODE_CACHE_TTL)) return _opencodeModelsCache;
   const configPath = path.join(process.env.HOME || '/root', '.config', 'opencode', 'opencode.json');
   const models: ModelOption[] = [];
   const seen = new Set<string>();
@@ -298,6 +300,7 @@ function loadOpenCodeModels(): ModelOption[] {
   }
 
   _opencodeModelsCache = models;
+  _opencodeModelsCacheTime = Date.now();
   return models;
 }
 
@@ -506,6 +509,7 @@ function getCommandsForAgent(agentType: AgentType): CommandDef[] {
 
 function clearModelCache(): void {
   _opencodeModelsCache = null;
+  _opencodeModelsCacheTime = 0;
 }
 
 export {
