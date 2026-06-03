@@ -27,8 +27,24 @@ const storage = multer.diskStorage({
     cb(null, dayDir);
   },
   filename: (_req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
+    // 修复中文文件名乱码：某些浏览器/客户端发送的 filename 用 latin1 编码了 UTF-8 字节
+    let originalName = file.originalname;
+    try {
+      // 检测是否是 latin1 编码的 UTF-8 字节（包含高位字节）
+      const hasHighBytes = /[^\x00-\x7F]/.test(originalName);
+      if (hasHighBytes) {
+        // 尝试用 latin1 解码再用 utf8 编码，修复乱码
+        const fixed = Buffer.from(originalName, 'latin1').toString('utf8');
+        // 验证修复后的字符串是否包含合理的 Unicode 字符（不是替换字符）
+        if (!fixed.includes('�') && fixed.length > 0) {
+          originalName = fixed;
+        }
+      }
+    } catch {
+      // 解码失败，使用原始文件名
+    }
     // 生成唯一文件名
-    const ext = path.extname(file.originalname);
+    const ext = path.extname(originalName);
     const uniqueName = `${uuidv4()}${ext}`;
     cb(null, uniqueName);
   }
@@ -96,9 +112,20 @@ function handleUpload(req: Request, res: Response): void {
 
     const uploadedFiles: UploadedFile[] = (req.files as Express.Multer.File[]).map(file => {
       const relPath = path.relative(UPLOAD_DIR, file.path);
+      // 修复中文文件名乱码
+      let originalName = file.originalname;
+      try {
+        const hasHighBytes = /[^\x00-\x7F]/.test(originalName);
+        if (hasHighBytes) {
+          const fixed = Buffer.from(originalName, 'latin1').toString('utf8');
+          if (!fixed.includes('�') && fixed.length > 0) {
+            originalName = fixed;
+          }
+        }
+      } catch {}
       return {
         id: uuidv4(),
-        originalName: file.originalname,
+        originalName,
         filename: file.filename,
         path: file.path,
         size: file.size,
