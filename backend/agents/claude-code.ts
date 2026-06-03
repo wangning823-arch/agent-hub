@@ -142,11 +142,11 @@ class ClaudeCodeAgent extends Agent {
       let resolved = false;
       const done = () => { if (!resolved) { resolved = true; resolve(); } };
 
-      // 超时 30 秒自动终止，防止进程挂起阻塞主流程
+      // 超时 60 秒自动终止，防止进程挂起阻塞主流程
       const timeout = setTimeout(() => {
-        try { proc.kill('SIGTERM'); } catch {}
+        try { proc.kill('SIGKILL'); } catch {}
         done();
-      }, 30000);
+      }, 60000);
 
       let buffer = '';
       proc.stdout!.on('data', (data: Buffer) => {

@@ -336,11 +336,11 @@ export default (sessionManager: any, projectManager?: any) => { // TODO: type th
               }
             };
             session.agent.on('message', handler);
-            // 超时 30 秒（compact 后系统可能还在处理，需要更多时间）
+            // 超时 60 秒（compact 后系统可能还在处理，需要更多时间）
             setTimeout(() => {
               session.agent.removeListener('message', handler);
               resolve(null);
-            }, 30000);
+            }, 60000);
           });
           await session.agent.send('/context');
           contextUsage = await contextPromise;
