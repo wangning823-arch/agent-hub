@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useToast } from './Toast'
 import { Tag, TagFilter } from './Tag'
 import { API_BASE, getWebSocketUrl } from '../config'
+import ProjectManager from './ProjectManager'
 import {
   AgentPilotLogo,
   IconPlus,
@@ -187,6 +188,7 @@ export default function Sidebar({
   const [importing, setImporting] = useState(false)
   const [credentials, setCredentials] = useState<Array<{ id: string; host: string; type: string; username?: string; isPersonal?: boolean }>>([])
   const [selectedCredentialId, setSelectedCredentialId] = useState('')
+  const [showProjectManager, setShowProjectManager] = useState(false)
 
   const skillDescriptionTranslations: Record<string, string> = {
     // 通用命令
@@ -655,15 +657,24 @@ export default function Sidebar({
                   ))
                 )}
               </div>
-              <div className="border-t px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}>
+              <div className="border-t px-3 py-2 flex gap-1" style={{ borderColor: 'var(--border-subtle)' }}>
                 <button
                   onClick={() => { setShowProjectPopover(false); setShowCreateProject(true); fetchCredentials() }}
-                  className="w-full text-left px-2 py-1.5 rounded text-xs transition-colors"
+                  className="flex-1 text-left px-2 py-1.5 rounded text-xs transition-colors"
                   style={{ color: 'var(--accent-primary)' }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-tertiary)' }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                 >
                   + 新建项目
+                </button>
+                <button
+                  onClick={() => { setShowProjectPopover(false); setShowProjectManager(true) }}
+                  className="flex-1 text-left px-2 py-1.5 rounded text-xs transition-colors"
+                  style={{ color: 'var(--text-muted)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-tertiary)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  📁 管理项目
                 </button>
               </div>
             </div>
@@ -1311,6 +1322,15 @@ export default function Sidebar({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Project Manager Modal */}
+      {showProjectManager && (
+        <ProjectManager
+          onSelectProject={() => {}}
+          onNewSession={(project) => { setShowProjectManager(false); if (onNewSession) onNewSession(project) }}
+          onClose={() => { setShowProjectManager(false); loadProjects() }}
+        />
       )}
     </div>
   )

@@ -2,6 +2,12 @@
 
 All notable changes to Agent Hub will be documented in this file.
 
+## [0.3.20260601.0006] - 2026-06-01
+
+### Improved
+
+- **侧边栏项目管理入口**: 项目弹出框新增"管理项目"按钮，可直接打开项目管理弹窗
+
 ## [0.3.20260601.0005] - 2026-06-01
 
 ### New Features

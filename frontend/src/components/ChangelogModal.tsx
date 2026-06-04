@@ -16,6 +16,19 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.20260601.0006',
+    date: '2026-06-01',
+    sections: [
+      {
+        title: '改进',
+        color: 'var(--success, #22c55e)',
+        items: [
+          '侧边栏项目弹出框新增"管理项目"按钮，可直接打开项目管理弹窗',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.3.20260601.0005',
     date: '2026-06-01',
     sections: [
