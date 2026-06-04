@@ -283,7 +283,7 @@ export default function Sidebar({
 
   const loadProjects = async () => {
     try {
-      const data = await fetch(`${API_BASE}/projects`).then(r => r.json())
+      const data = await fetch(`${API_BASE}/projects?visible=true`).then(r => r.json())
       if (Array.isArray(data)) {
         setProjects(data)
       }

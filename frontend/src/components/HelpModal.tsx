@@ -67,6 +67,10 @@ const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
           <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8 }}>
             点击项目旁的星标图标可收藏项目，收藏的项目会优先显示在列表中。
           </p>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem', marginTop: '1rem' }}>项目隐藏</h4>
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+            点击项目旁的眼睛图标可隐藏项目，隐藏的项目不会显示在新建会话和侧边栏中。再次点击可恢复显示。
+          </p>
         </div>
       ),
     },

@@ -618,6 +618,7 @@ Violation of these rules will result in immediate termination of the session.
     );
     agent.on('stopped', () => {
       this.broadcast(id, { type: 'status', content: 'agent_stopped' });
+      session.updatedAt = new Date();
       this.saveSession(session);
       this._generateSummaryIfNeeded(session);
     });
@@ -701,6 +702,7 @@ Violation of these rules will result in immediate termination of the session.
     message = await this._processUploadRefs(message, session.workdir);
 
     session.messages.push({ role: 'user', content: message, time: Date.now(), ...(quote ? { quote } : {}) });
+    session.updatedAt = new Date();
     this.saveSession(session);
 
     // 注入工作流创建系统提示词（仅发送给Agent，不保存到会话历史）
@@ -834,6 +836,7 @@ Violation of these rules will result in immediate termination of the session.
     );
     agent.on('stopped', () => {
       this.broadcast(session.id, { type: 'status', content: 'agent_stopped' });
+      session.updatedAt = new Date();
       this.saveSession(session);
       this._generateSummaryIfNeeded(session);
     });

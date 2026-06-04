@@ -16,6 +16,8 @@ const tokenStatsDbPath: string = path.join(dataDir, 'token-stats.db');
 
 let db: SqlJsDatabase | null = null;
 let tokenStatsDb: SqlJsDatabase | null = null;
+let saving = false; // 防止并发写入导致 .tmp 文件竞争
+let lastSaveSessionCount = -1; // 上次成功保存时的 session 数量，用于检测数据丢失
 
 async function recoverFromBackup(SQL: any): Promise<boolean> {
   const backupDir = path.join(dataDir, 'backups');
@@ -511,12 +513,45 @@ async function initDb(): Promise<SqlJsDatabase> {
 
 function saveToFile(): void {
   if (db) {
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    // 原子写入：先写临时文件，再 rename，防止写入过程中崩溃导致文件损坏
-    const tmpPath = dbPath + '.tmp';
-    fs.writeFileSync(tmpPath, buffer);
-    fs.renameSync(tmpPath, dbPath);
+    if (saving) return; // 跳过并发调用，避免 .tmp 文件竞争
+    saving = true;
+    try {
+      // 保存前检查 session 数量
+      const countResult = db.exec('SELECT COUNT(*) FROM sessions');
+      const currentCount = countResult.length > 0 ? (countResult[0].values[0][0] as number) : 0;
+      if (lastSaveSessionCount >= 0 && currentCount < lastSaveSessionCount) {
+        console.error(`[DB] ⚠️ 检测到数据丢失！上次保存 ${lastSaveSessionCount} 个 session，当前 ${currentCount} 个，跳过写入`);
+        return;
+      }
+
+      const data = db.export();
+      const buffer = Buffer.from(data);
+      if (buffer.length === 0) {
+        console.error('[DB] saveToFile: db.export() 返回空 buffer，跳过写入（保留原文件）');
+        return;
+      }
+      const tmpPath = dbPath + '.tmp';
+      // 先写临时文件
+      fs.writeFileSync(tmpPath, buffer);
+      // 检查写入结果
+      const stat = fs.statSync(tmpPath);
+      if (stat.size !== buffer.length) {
+        console.error(`[DB] saveToFile: 写入大小不匹配 expected=${buffer.length} actual=${stat.size}，删除临时文件`);
+        try { fs.unlinkSync(tmpPath); } catch {}
+        return;
+      }
+      // rename 到正式文件
+      fs.renameSync(tmpPath, dbPath);
+      lastSaveSessionCount = currentCount;
+      console.log(`[DB] saveToFile 成功: ${buffer.length} bytes, ${currentCount} sessions`);
+    } catch (e) {
+      console.error('[DB] saveToFile 失败:', (e as Error).message, '（保留原数据库文件不动）');
+      // 绝不 fallback 直接写入正式文件，防止损坏数据覆盖原始数据
+      // 清理可能残留的 .tmp 文件
+      try { fs.unlinkSync(dbPath + '.tmp'); } catch {}
+    } finally {
+      saving = false;
+    }
   }
 }
 

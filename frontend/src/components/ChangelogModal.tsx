@@ -16,6 +16,30 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.20260601.0005',
+    date: '2026-06-01',
+    sections: [
+      {
+        title: '新功能',
+        color: 'var(--accent-primary, #6366f1)',
+        items: [
+          '项目隐藏功能：支持隐藏/显示项目，隐藏项目不显示在新建会话和侧边栏中',
+          '项目卡片新增隐藏/显示切换按钮（👁️/🙈）',
+        ],
+      },
+      {
+        title: '改进',
+        color: 'var(--success, #22c55e)',
+        items: [
+          '数据库保存增加并发保护，防止 .tmp 文件竞争',
+          '保存前检测 session 数量变化，发现数据丢失时跳过写入',
+          '保存前验证空 buffer 和写入大小，避免损坏数据',
+          '会话更新时间（updatedAt）在消息接收、工作流创建、消息发送时自动更新',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.3.20260601.0004',
     date: '2026-06-01',
     sections: [

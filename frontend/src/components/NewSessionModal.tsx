@@ -35,7 +35,7 @@ export default function NewSessionModal({ agents, onCreate, onClose, preselected
   useEffect(() => {
     const loadProjects = async () => {
       try {
-        const data = await fetch(`${API_BASE}/projects`).then(r => r.json())
+        const data = await fetch(`${API_BASE}/projects?visible=true`).then(r => r.json())
         const list: Project[] = Array.isArray(data) ? data : (data.projects || [])
         setProjects(list)
         // 如果有预选项目，用预选的；否则选第一个

@@ -10,6 +10,7 @@ interface Project {
   name: string
   workdir: string
   favorite?: boolean
+  hidden?: boolean
   gitHost?: string
   gitConfigured?: boolean
   hasPassword?: boolean
@@ -25,6 +26,7 @@ interface ProjectManagerProps {
 interface ProjectCardProps {
   project: Project
   onToggleFavorite: () => void
+  onToggleHidden: () => void
   onDelete: () => void
   onSetPassword: () => void
 }
@@ -202,6 +204,15 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose,
     }
   }
 
+  const toggleHidden = async (projectId: string) => {
+    try {
+      await fetch(`${API_BASE}/projects/${projectId}/hide`, { method: 'POST' })
+      loadProjects()
+    } catch (error) {
+      console.error('操作失败:', error)
+    }
+  }
+
   const deleteProject = async (projectId: string) => {
     if (!confirm('确定删除这个项目？')) return
     try {
@@ -319,8 +330,8 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose,
                   <ProjectCard
                     key={project.id}
                     project={project}
-
                     onToggleFavorite={() => toggleFavorite(project.id)}
+                    onToggleHidden={() => toggleHidden(project.id)}
                     onDelete={() => deleteProject(project.id)}
                     onSetPassword={() => { setSetPasswordModal({ project, loading: false, error: '' }); setNewPassword(''); setConfirmNewPassword('') }}
                   />
@@ -338,8 +349,8 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose,
                   <ProjectCard
                     key={project.id}
                     project={project}
-
                     onToggleFavorite={() => toggleFavorite(project.id)}
+                    onToggleHidden={() => toggleHidden(project.id)}
                     onDelete={() => deleteProject(project.id)}
                     onSetPassword={() => { setSetPasswordModal({ project, loading: false, error: '' }); setNewPassword(''); setConfirmNewPassword('') }}
                   />
@@ -363,8 +374,8 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose,
                   <ProjectCard
                     key={project.id}
                     project={project}
-
                     onToggleFavorite={() => toggleFavorite(project.id)}
+                    onToggleHidden={() => toggleHidden(project.id)}
                     onDelete={() => deleteProject(project.id)}
                     onSetPassword={() => { setSetPasswordModal({ project, loading: false, error: '' }); setNewPassword(''); setConfirmNewPassword('') }}
                   />
@@ -648,7 +659,7 @@ export default function ProjectManager({ onSelectProject, onNewSession, onClose,
   )
 }
 
-function ProjectCard({ project, onToggleFavorite, onDelete, onSetPassword }: ProjectCardProps) {
+function ProjectCard({ project, onToggleFavorite, onToggleHidden, onDelete, onSetPassword }: ProjectCardProps) {
   const [showCredPicker, setShowCredPicker] = useState(false)
   const [credentials, setCredentials] = useState<Credential[]>([])
   const [loadingCreds, setLoadingCreds] = useState(false)
@@ -724,13 +735,14 @@ function ProjectCard({ project, onToggleFavorite, onDelete, onSetPassword }: Pro
   }
 
   return (
-    <div className="rounded-lg p-4 border transition-colors" style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border-subtle)' }}>
+    <div className="rounded-lg p-4 border transition-colors" style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border-subtle)', opacity: project.hidden ? 0.5 : 1 }}>
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h4 className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>{project.name}</h4>
             {project.favorite && <span style={{ color: 'var(--warning)' }}>⭐</span>}
             {project.hasPassword && <span title="已设置密码保护">🔒</span>}
+            {project.hidden && <span title="已隐藏" className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--warning-soft)', color: 'var(--warning)' }}>已隐藏</span>}
           </div>
           <p className="text-sm truncate mt-1" style={{ color: 'var(--text-muted)' }}>{project.workdir}</p>
            {/* Git状态显示 */}
@@ -847,6 +859,14 @@ function ProjectCard({ project, onToggleFavorite, onDelete, onSetPassword }: Pro
         </div>
 
         <div className="flex items-center gap-2 ml-4">
+          <button
+            onClick={onToggleHidden}
+            className="p-1.5"
+            style={{ color: 'var(--text-muted)' }}
+            title={project.hidden ? '显示项目' : '隐藏项目'}
+          >
+            {project.hidden ? '👁️' : '🙈'}
+          </button>
           <button
             onClick={onSetPassword}
             className="p-1.5"
