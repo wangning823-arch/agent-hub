@@ -157,6 +157,9 @@ export default function ChatPanel({
   const [isLoadingSession, setIsLoadingSession] = useState(false)
   const [showComponentLib, setShowComponentLib] = useState(false)
 
+  // 工作流定义跨消息缓冲（Claude Code 流式响应可能将 [WORKFLOW_DEF] 拆分到多条消息）
+  const workflowBufferRef = useRef('')
+
   // 分页状态
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -770,16 +773,19 @@ export default function ChatPanel({
                   displayContent = texts.join('\n')
                 }
               }
-              // 检测 AI 工作流创建标记
-              const checkContent = (msg.type === 'text' || msg.type === 'assistant') && typeof displayContent === 'string' && displayContent.includes('[WORKFLOW_DEF]')
-              if (checkContent) {
-                const match = displayContent.match(/\[WORKFLOW_DEF\]([\s\S]*?)\[\/WORKFLOW_DEF\]/)
-                if (match) {
+
+              // 跨消息缓冲检测 [WORKFLOW_DEF]...[/WORKFLOW_DEF]
+              const isTextMsg = (msg.type === 'text' || msg.type === 'assistant') && typeof displayContent === 'string'
+              if (isTextMsg) {
+                // 追加到缓冲区
+                workflowBufferRef.current += displayContent
+                const buffer = workflowBufferRef.current
+                const completeMatch = buffer.match(/\[WORKFLOW_DEF\]([\s\S]*?)\[\/WORKFLOW_DEF\]/)
+                if (completeMatch) {
                   try {
-                    const def = JSON.parse(match[1].trim())
+                    const def = JSON.parse(completeMatch[1].trim())
                     // 补充 steps 的 id 和 dependsOn（将步骤名称映射为 id）
                     if (def.steps && Array.isArray(def.steps)) {
-                      // 第一遍：生成 id，建立 name→id 映射，保留原始 dependsOn
                       const nameToId: Record<string, string> = {}
                       def.steps = def.steps.map((s: any, i: number) => {
                         const id = s.id || `step_${Date.now()}_${i}`
@@ -793,7 +799,6 @@ export default function ChatPanel({
                           dependsOn: s.dependsOn || [],
                         }
                       })
-                      // 第二遍：将 dependsOn 中的名称替换为 id
                       const validIds = new Set(def.steps.map((s: any) => s.id))
                       def.steps = def.steps.map((s: any) => ({
                         ...s,
@@ -807,8 +812,16 @@ export default function ChatPanel({
                   } catch (e) {
                     console.error('解析工作流定义失败:', e)
                   }
-                  // 从显示内容中移除 WORKFLOW_DEF 标记
-                  displayContent = displayContent.replace(/\[WORKFLOW_DEF\][\s\S]*?\[\/WORKFLOW_DEF\]/, '').trim()
+                  // 从缓冲区移除已匹配的内容，只保留前后非标记部分
+                  workflowBufferRef.current = buffer.replace(/\[WORKFLOW_DEF\][\s\S]*?\[\/WORKFLOW_DEF\]/, '').trim()
+                  displayContent = workflowBufferRef.current
+                  workflowBufferRef.current = ''
+                } else if (buffer.includes('[WORKFLOW_DEF]') && !buffer.includes('[/WORKFLOW_DEF]')) {
+                  // 标记开始但未结束，继续缓冲，不显示中间内容
+                  displayContent = ''
+                } else {
+                  // 没有标记或标记不完整，正常显示并清空缓冲
+                  workflowBufferRef.current = ''
                 }
               }
               setMessages(prev => [...prev, { ...msg, content: displayContent, time: msg.time || Date.now() }])
