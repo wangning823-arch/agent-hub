@@ -574,8 +574,10 @@ export default function ChatPanel({
          // 显示连接成功提示（在重置重连计数之前检查）
          const wasReconnect = reconnectAttempts > 0
          if (wasReconnect) {
-           setStatusMessage('✅ 已重新连接到服务器')
+           setStatusMessage('✅ 已重新连接到服务器，正在刷新消息...')
            setTimeout(() => setStatusMessage(''), 3000)
+           // 重连后重新加载消息，确保不丢失断线期间的消息
+           loadHistory()
          } else {
            // 清除任何之前的状态消息
            setStatusMessage('')
@@ -774,16 +776,38 @@ export default function ChatPanel({
                 }
               }
 
-              // 跨消息缓冲检测 [WORKFLOW_DEF]...[/WORKFLOW_DEF]
+              // 跨消息缓冲检测工作流定义（支持 [WORKFLOW_DEF] 标记和 ```json 代码块两种格式）
               const isTextMsg = (msg.type === 'text' || msg.type === 'assistant') && typeof displayContent === 'string'
               if (isTextMsg) {
                 // 追加到缓冲区
                 workflowBufferRef.current += displayContent
                 const buffer = workflowBufferRef.current
-                const completeMatch = buffer.match(/\[WORKFLOW_DEF\]([\s\S]*?)\[\/WORKFLOW_DEF\]/)
-                if (completeMatch) {
+
+                // 尝试解析工作流定义，返回 [解析结果, 匹配的原始文本]
+                const tryParseWorkflow = (text: string): [any | null, string] => {
+                  // 格式1: [WORKFLOW_DEF]...[/WORKFLOW_DEF] 标记
+                  const markerMatch = text.match(/\[WORKFLOW_DEF\]([\s\S]*?)\[\/WORKFLOW_DEF\]/)
+                  if (markerMatch) {
+                    try { return [JSON.parse(markerMatch[1].trim()), markerMatch[0]] } catch {}
+                  }
+                  // 格式2: ```json ... ``` 代码块中包含工作流定义
+                  const codeBlockMatch = text.match(/```(?:json)?\s*\n([\s\S]*?)\n\s*```/)
+                  if (codeBlockMatch) {
+                    try {
+                      const parsed = JSON.parse(codeBlockMatch[1].trim())
+                      if (parsed && parsed.steps && Array.isArray(parsed.steps) && parsed.steps.length > 0) {
+                        return [parsed, codeBlockMatch[0]]
+                      }
+                    } catch {}
+                  }
+                  return [null, '']
+                }
+
+                const [parsedDef, matchedText] = tryParseWorkflow(buffer)
+                console.log('[Workflow]', { bufLen: buffer.length, hasOpen: buffer.includes('[WORKFLOW_DEF]'), hasClose: buffer.includes('[/WORKFLOW_DEF]'), parsed: !!parsedDef })
+                if (parsedDef) {
                   try {
-                    const def = JSON.parse(completeMatch[1].trim())
+                    const def = parsedDef
                     // 补充 steps 的 id 和 dependsOn（将步骤名称映射为 id）
                     if (def.steps && Array.isArray(def.steps)) {
                       const nameToId: Record<string, string> = {}
@@ -812,8 +836,8 @@ export default function ChatPanel({
                   } catch (e) {
                     console.error('解析工作流定义失败:', e)
                   }
-                  // 从缓冲区移除已匹配的内容，只保留前后非标记部分
-                  workflowBufferRef.current = buffer.replace(/\[WORKFLOW_DEF\][\s\S]*?\[\/WORKFLOW_DEF\]/, '').trim()
+                  // 从缓冲区移除已匹配的内容
+                  workflowBufferRef.current = buffer.replace(matchedText, '').trim()
                   displayContent = workflowBufferRef.current
                   workflowBufferRef.current = ''
                 } else if (buffer.includes('[WORKFLOW_DEF]') && !buffer.includes('[/WORKFLOW_DEF]')) {

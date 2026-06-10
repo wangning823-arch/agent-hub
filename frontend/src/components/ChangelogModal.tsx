@@ -16,6 +16,21 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.20260601.0007',
+    date: '2026-06-01',
+    sections: [
+      {
+        title: '改进',
+        color: 'var(--success, #22c55e)',
+        items: [
+          '工作流定义解析支持两种格式：[WORKFLOW_DEF] 标记和 ```json 代码块',
+          'WebSocket 重连后自动刷新消息，确保不丢失断线期间的消息',
+          'Agent 列表请求等待 accessToken 就绪，避免未授权请求',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.3.20260601.0006',
     date: '2026-06-01',
     sections: [

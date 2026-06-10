@@ -310,11 +310,12 @@ export default function App() {
   }, [isMobile])
 
   useEffect(() => {
+    if (!accessToken) return
     fetch(`${API_BASE}/agents`)
       .then(res => res.json())
       .then(data => setAgents(data.agents || []))
       .catch(console.error)
-  }, [])
+  }, [accessToken])
 
   useEffect(() => {
     if (!accessToken) return

@@ -2,6 +2,14 @@
 
 All notable changes to Agent Hub will be documented in this file.
 
+## [0.3.20260601.0007] - 2026-06-01
+
+### Improved
+
+- **工作流定义解析增强**: 支持 `[WORKFLOW_DEF]` 标记和 `json 代码块` 两种格式解析工作流定义
+- **WebSocket 重连消息刷新**: 重连后自动调用 loadHistory() 刷新消息，确保不丢失断线期间的消息
+- **Agent 列表加载优化**: 等待 accessToken 就绪后再请求，避免未授权请求
+
 ## [0.3.20260601.0006] - 2026-06-01
 
 ### Improved
