@@ -31,7 +31,42 @@ const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
             <strong style={{ color: 'var(--text-primary)' }}>AgentPilot</strong> 是一个多 Agent 协作开发平台，允许同时使用多个 AI 编程助手，每个助手在独立的项目窗口中工作。
           </p>
           <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8 }}>
-            支持的 Agent 类型包括 Claude Code、OpenCode 和 Codex，你可以根据需要选择最适合的 AI 助手来协助开发。
+            支持的 Agent 类型包括 Claude Code、OpenCode、Codex 和 Mimo，你可以根据需要选择最适合的 AI 助手来协助开发。
+          </p>
+        </div>
+      ),
+    },
+    {
+      id: 'mimo',
+      title: 'Mimo Agent',
+      icon: (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+        </svg>
+      ),
+      content: (
+        <div>
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8, marginBottom: '1rem' }}>
+            Mimo 是小米推出的 AI Agent，支持多种 MiMo 模型，提供免费和付费模型选择。
+          </p>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>可用模型</h4>
+          <ul style={{ color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: '1.25rem', marginBottom: '1rem' }}>
+            <li><strong>MiMo Auto</strong> - 自动选择最佳模型（免费）</li>
+            <li><strong>MiMo-V2-Flash</strong> - 快速响应，256K 上下文</li>
+            <li><strong>MiMo-V2-Omni</strong> - 多模态，支持图像输入</li>
+            <li><strong>MiMo-V2-Pro</strong> - 专业版，深度推理</li>
+            <li><strong>MiMo-V2.5</strong> - 最新版本，全面能力</li>
+            <li><strong>MiMo-V2.5-Pro</strong> - 专业增强版</li>
+          </ul>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>模式选项</h4>
+          <ul style={{ color: 'var(--text-secondary)', lineHeight: 2, paddingLeft: '1.25rem', marginBottom: '1rem' }}>
+            <li><strong>默认</strong> - 标准权限模式</li>
+            <li><strong>自动</strong> - 自动批准安全操作</li>
+            <li><strong>跳过权限</strong> - 跳过所有权限检查（危险）</li>
+          </ul>
+          <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>命令</h4>
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+            Mimo 支持快速命令：实现功能、代码审查、重构、写测试、修复 Bug、解释代码等。
           </p>
         </div>
       ),

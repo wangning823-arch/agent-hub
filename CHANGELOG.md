@@ -2,6 +2,20 @@
 
 All notable changes to Agent Hub will be documented in this file.
 
+## [0.3.20260611.0001] - 2026-06-11
+
+### New Features
+
+- **Mimo Agent 支持**: 新增小米 MiMo AI Agent 适配器，支持多种 MiMo 模型（Auto、V2-Flash、V2-Pro、V2.5 等）
+- **Mimo 动态模型列表**: 从 mimo CLI 动态读取可用模型，支持 24 小时缓存自动刷新
+- **Mimo 命令集**: 支持实现功能、代码审查、重构、写测试、修复 Bug、解释代码等命令
+- **Mimo 模式选项**: 支持默认、自动、跳过权限三种模式
+
+### Improved
+
+- **Claude Code 标签颜色**: 侧边栏 Claude Code 代理标签颜色从橙色改为紫色，与 Mimo 橙色标签区分
+- **WebSocket 模型切换日志**: 添加 set_model 操作的调试日志
+
 ## [0.3.20260601.0007] - 2026-06-01
 
 ### Improved

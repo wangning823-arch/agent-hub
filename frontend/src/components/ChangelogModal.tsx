@@ -16,6 +16,30 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.20260611.0001',
+    date: '2026-06-11',
+    sections: [
+      {
+        title: '新功能',
+        color: 'var(--accent-primary, #6366f1)',
+        items: [
+          '新增小米 MiMo AI Agent 支持，可使用 Auto、V2-Flash、V2-Pro、V2.5 等多种模型',
+          'Mimo 动态模型列表：从 mimo CLI 自动读取可用模型，24 小时缓存自动刷新',
+          'Mimo 命令集：实现功能、代码审查、重构、写测试、修复 Bug、解释代码等',
+          'Mimo 模式选项：默认、自动、跳过权限三种模式',
+        ],
+      },
+      {
+        title: '改进',
+        color: 'var(--success, #22c55e)',
+        items: [
+          'Claude Code 侧边栏标签颜色从橙色改为紫色，与 Mimo 标签区分',
+          'WebSocket 模型切换添加调试日志',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.3.20260601.0007',
     date: '2026-06-01',
     sections: [
