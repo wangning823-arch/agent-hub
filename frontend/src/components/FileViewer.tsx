@@ -18,6 +18,7 @@ export default function FileViewer({ file, content, onClose, onSave }: FileViewe
   const [editedContent, setEditedContent] = useState(content)
   const [saving, setSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
+  const [wordWrap, setWordWrap] = useState(true)
   const toast = useToast()
   const codeRef = useRef<HTMLDivElement>(null)
 
@@ -187,6 +188,19 @@ export default function FileViewer({ file, content, onClose, onSave }: FileViewe
             {lines.length} 行
           </span>
 
+          {/* 换行切换按钮 */}
+          <button
+            onClick={() => setWordWrap(!wordWrap)}
+            className="hidden md:inline-flex px-2 py-1 text-xs rounded transition-colors"
+            style={{ 
+              background: wordWrap ? 'var(--accent-primary)' : 'var(--bg-primary)', 
+              color: wordWrap ? 'white' : 'var(--text-secondary)' 
+            }}
+            title={wordWrap ? '关闭自动换行' : '开启自动换行'}
+          >
+            {wordWrap ? '↩ 换行' : '→ 不换行'}
+          </button>
+
           {/* 编辑/保存按钮 */}
           {isEditing ? (
             <>
@@ -249,7 +263,7 @@ export default function FileViewer({ file, content, onClose, onSave }: FileViewe
             />
           ) : (
             <pre className="p-4" style={{ background: 'transparent' }}>
-              <code className={`text-sm font-mono leading-6 whitespace-pre-wrap language-${getHljsLanguage(filename)}`}
+              <code className={`text-sm font-mono leading-6 ${wordWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre overflow-x-auto'} language-${getHljsLanguage(filename)}`}
                 style={{ color: 'var(--text-primary)' }}>
                 {content}
               </code>
