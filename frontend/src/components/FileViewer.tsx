@@ -248,8 +248,8 @@ export default function FileViewer({ file, content, onClose, onSave }: FileViewe
               spellCheck={false}
             />
           ) : (
-            <pre className="p-4 overflow-x-auto" style={{ background: 'transparent' }}>
-              <code className={`text-sm font-mono leading-6 whitespace-pre language-${getHljsLanguage(filename)}`}
+            <pre className="p-4" style={{ background: 'transparent' }}>
+              <code className={`text-sm font-mono leading-6 whitespace-pre-wrap language-${getHljsLanguage(filename)}`}
                 style={{ color: 'var(--text-primary)' }}>
                 {content}
               </code>

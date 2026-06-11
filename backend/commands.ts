@@ -88,6 +88,13 @@ const CODEX_MODES: ModeOption[] = [
   { id: 'fullAuto', name: 'Full Auto', description: '自动批准所有变更' }
 ];
 
+// 模式选项 - Mimo
+const MIMO_MODES: ModeOption[] = [
+  { id: 'default', name: '默认', description: '标准权限模式' },
+  { id: 'auto', name: '自动', description: '自动批准安全操作' },
+  { id: 'bypassPermissions', name: '跳过权限', description: '跳过所有权限检查（危险）' }
+];
+
 // 按 agentType 获取模式列表
 function getModesForAgent(agentType: AgentType): ModeOption[] {
   switch (agentType) {
@@ -97,6 +104,8 @@ function getModesForAgent(agentType: AgentType): ModeOption[] {
       return OPENCODE_MODES;
     case 'codex':
       return CODEX_MODES;
+    case 'mimo':
+      return MIMO_MODES;
     default:
       return PERMISSION_MODES;
   }
@@ -372,6 +381,108 @@ function getDefaultCodexModels(): ModelOption[] {
   return defaults.map(m => ({ id: m, name: m, description: '' }));
 }
 
+// Mimo - 从 mimo CLI 获取模型列表
+let _mimoModelsCache: ModelOption[] | null = null;
+let _mimoModelsCacheTime: number = 0;
+const MIMO_CACHE_TTL = 24 * 60 * 60 * 1000; // 24小时
+
+function loadMimoModels(): ModelOption[] {
+  if (_mimoModelsCache && (Date.now() - _mimoModelsCacheTime < MIMO_CACHE_TTL)) return _mimoModelsCache;
+
+  const models: ModelOption[] = [];
+  const seen = new Set<string>();
+
+  // 格式化上下文大小
+  const formatCtx = (tokens: number): string => {
+    if (!tokens) return '';
+    if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(0)}M`;
+    if (tokens >= 1000) return `${Math.round(tokens / 1000)}K`;
+    return String(tokens);
+  };
+
+  // 动态运行 mimo models --verbose 获取模型列表
+  try {
+    const mimoBin = process.env.MIMO_CLI_PATH || 'mimo';
+    const output = execSync(`${mimoBin} models --verbose`, {
+      encoding: 'utf-8',
+      timeout: 30000,
+      maxBuffer: 10 * 1024 * 1024,
+      env: process.env
+    });
+
+    // 输出是多组 "provider/model\n{JSON}" 格式，用大括号计数解析
+    const lines = output.split('\n');
+    let jsonStart = -1;
+    let braceCount = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.trim().startsWith('{') && jsonStart === -1) {
+        jsonStart = i;
+        braceCount = 0;
+      }
+      if (jsonStart !== -1) {
+        for (const ch of line) {
+          if (ch === '{') braceCount++;
+          if (ch === '}') braceCount--;
+        }
+        if (braceCount === 0) {
+          const jsonStr = lines.slice(jsonStart, i + 1).join('\n');
+          try {
+            const model = JSON.parse(jsonStr);
+            if (model.id && model.providerID) {
+              const fullId = `${model.providerID}/${model.id}`;
+              if (!seen.has(fullId)) {
+                const ctx = formatCtx(model.limit?.context);
+                const caps: string[] = [];
+                if (model.capabilities?.reasoning) caps.push('推理');
+                if (model.capabilities?.input?.image) caps.push('图像');
+                if (model.capabilities?.toolcall) caps.push('工具');
+
+                // 判断是否免费
+                const isFree = model.cost && model.cost.input === 0 && model.cost.output === 0;
+                const freeTag = isFree ? ' · 免费' : '';
+
+                models.push({
+                  id: fullId,
+                  name: model.name || model.id,
+                  description: `${model.providerID}${ctx ? ' · ' + ctx + ' ctx' : ''}${freeTag}${caps.length ? ' · ' + caps.join('/') : ''}`,
+                  contextLimit: model.limit?.context || 0,
+                  free: isFree
+                });
+                seen.add(fullId);
+              }
+            }
+          } catch (e) { /* 忽略解析失败 */ }
+          jsonStart = -1;
+        }
+      }
+    }
+    console.log(`[Mimo] 动态读取到 ${models.length} 个模型`);
+  } catch (e: any) {
+    console.warn('[Mimo] 动态读取模型失败，使用硬编码列表:', e.message);
+    return getDefaultMimoModels();
+  }
+
+  _mimoModelsCache = models.length > 0 ? models : getDefaultMimoModels();
+  _mimoModelsCacheTime = Date.now();
+  return _mimoModelsCache;
+}
+
+function getDefaultMimoModels(): ModelOption[] {
+  // Mimo 官方模型作为默认选项
+  const defaults = [
+    { id: 'mimo/mimo-auto', name: 'MiMo Auto', description: 'mimo · 1M ctx · 免费 · 推理/图像/工具', free: true, contextLimit: 1000000 },
+    { id: 'xiaomi/mimo-v2-flash', name: 'MiMo-V2-Flash', description: 'xiaomi · 256K ctx · 推理/工具', contextLimit: 262144 },
+    { id: 'xiaomi/mimo-v2-omni', name: 'MiMo-V2-Omni', description: 'xiaomi · 256K ctx · 推理/图像/工具', contextLimit: 262144 },
+    { id: 'xiaomi/mimo-v2-pro', name: 'MiMo-V2-Pro', description: 'xiaomi · 256K ctx · 推理/工具', contextLimit: 262144 },
+    { id: 'xiaomi/mimo-v2.5', name: 'MiMo-V2.5', description: 'xiaomi · 256K ctx · 推理/图像/工具', contextLimit: 262144 },
+    { id: 'xiaomi/mimo-v2.5-pro', name: 'MiMo-V2.5-Pro', description: 'xiaomi · 256K ctx · 推理/图像/工具', contextLimit: 262144 },
+    { id: 'xiaomi/mimo-v2.5-pro-ultraspeed', name: 'MiMo-V2.5-Pro-UltraSpeed', description: 'xiaomi · 256K ctx · 推理/工具', contextLimit: 262144 },
+  ];
+  return defaults.map(m => ({ id: m.id, name: m.name, description: m.description, contextLimit: m.contextLimit, free: m.free }));
+}
+
 // 按 agentType 获取模型列表
 function getModelsForAgent(agentType: AgentType, workdir?: string): ModelOption[] {
   switch (agentType) {
@@ -381,6 +492,8 @@ function getModelsForAgent(agentType: AgentType, workdir?: string): ModelOption[
       return loadOpenCodeModels();
     case 'codex':
       return loadCodexModels();
+    case 'mimo':
+      return loadMimoModels();
     default:
       return loadClaudeModels(workdir);
   }
@@ -405,6 +518,13 @@ const OPENCODE_VARIANTS: EffortOption[] = [
   { id: 'max', name: '最大', description: '最深入分析' }
 ];
 
+// 推理强度选项 - Mimo
+const MIMO_VARIANTS: EffortOption[] = [
+  { id: 'minimal', name: '极简', description: '最快响应' },
+  { id: 'high', name: '高', description: '深入推理' },
+  { id: 'max', name: '最大', description: '最深入分析' }
+];
+
 // 按 agentType 获取努力程度列表
 function getEffortsForAgent(agentType: AgentType): EffortOption[] {
   switch (agentType) {
@@ -414,6 +534,8 @@ function getEffortsForAgent(agentType: AgentType): EffortOption[] {
       return OPENCODE_VARIANTS;
     case 'codex':
       return []; // Codex 没有努力程度选项
+    case 'mimo':
+      return MIMO_VARIANTS;
     default:
       return EFFORT_LEVELS;
   }
@@ -439,6 +561,17 @@ const CODEX_COMMANDS: CommandDef[] = [
   { id: 'test', name: '写测试', description: '编写测试用例', category: '开发', usage: 'Write tests' },
   { id: 'fix', name: '修复Bug', description: '修复问题', category: '开发', usage: 'Fix the bug' },
   { id: 'explain', name: '解释代码', description: '解释代码逻辑', category: '分析', usage: 'Explain this code' }
+];
+
+// Mimo 命令定义
+const MIMO_COMMANDS: CommandDef[] = [
+  { id: 'implement', name: '实现功能', description: '实现新功能', category: '开发', usage: 'Implement the requested feature' },
+  { id: 'review', name: '代码审查', description: '审查代码变更', category: '审查', usage: 'Review the code changes' },
+  { id: 'refactor', name: '重构', description: '重构代码', category: '开发', usage: 'Refactor the code for better quality' },
+  { id: 'test', name: '写测试', description: '编写测试用例', category: '开发', usage: 'Write tests' },
+  { id: 'fix', name: '修复Bug', description: '修复问题', category: '开发', usage: 'Fix the bug' },
+  { id: 'explain', name: '解释代码', description: '解释代码逻辑', category: '分析', usage: 'Explain this code' },
+  { id: 'continue', name: '继续上次', description: '继续上次的对话', category: '会话', usage: 'Continue from our last conversation' }
 ];
 
 // --- 动态命令发现 ---
@@ -502,6 +635,8 @@ function getCommandsForAgent(agentType: AgentType): CommandDef[] {
       return OPENCODE_COMMANDS;
     case 'codex':
       return CODEX_COMMANDS;
+    case 'mimo':
+      return MIMO_COMMANDS;
     default:
       return discoverClaudeCommands();
   }
@@ -516,6 +651,7 @@ export {
   CLAUDE_COMMANDS,
   OPENCODE_COMMANDS,
   CODEX_COMMANDS,
+  MIMO_COMMANDS,
   PERMISSION_MODES,
   MODELS,
   EFFORT_LEVELS,

@@ -87,8 +87,10 @@ export default (sessionManager: SessionManager, TOKEN_FILE: string) => {
         break;
 
       case 'set_model':
+        console.log('[WS] set_model:', params.model, 'for session:', sessionId);
         if (agent?.updateOptions) {
           agent.updateOptions({ model: params.model });
+          console.log('[WS] agent.options.model updated to:', agent.options?.model);
         }
         session.options = { ...session.options, model: params.model };
         sessionManager.saveSession(session);

@@ -285,6 +285,7 @@ app.get('/api/agents', (req: Request, res: Response) => {
     { id: 'claude-code', name: 'Claude Code', available: true },
     { id: 'opencode', name: 'OpenCode', available: true },
     { id: 'codex', name: 'Codex', available: true },
+    { id: 'mimo', name: 'Mimo', available: true },
   ];
 
   // 管理员返回全部

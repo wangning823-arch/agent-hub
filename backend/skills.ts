@@ -312,6 +312,10 @@ function getSkillsForAgent(agentType: AgentType): SkillItem[] {
     case 'codex':
       skills = loadCodexExtensions();
       break;
+    case 'mimo':
+      // Mimo 暂不支持 skills，返回空列表
+      skills = [];
+      break;
     default:
       skills = [];
   }

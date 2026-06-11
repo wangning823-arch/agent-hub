@@ -476,7 +476,7 @@ export default () => {
 
   router.get('/sync/backups', (_req: Request, res: Response) => {
     const backups: Record<string, any> = {}; // TODO: type this
-    for (const tool of ['claude-code', 'opencode', 'codex']) {
+    for (const tool of ['claude-code', 'opencode', 'codex', 'mimo']) {
       const backup = readBackup(tool);
       if (backup) {
         backups[tool] = {};
@@ -493,7 +493,7 @@ export default () => {
 
   router.get('/sync/backups/:tool', (req: Request, res: Response) => {
     const tool = req.params.tool;
-    if (!['claude-code', 'opencode', 'codex'].includes(tool)) {
+    if (!['claude-code', 'opencode', 'codex', 'mimo'].includes(tool)) {
       return res.status(400).json({ error: '无效的工具名称' });
     }
     const backup = readBackup(tool);
@@ -505,7 +505,7 @@ export default () => {
 
   router.post('/sync/undo/:tool', (req: Request, res: Response) => {
     const tool = req.params.tool;
-    if (!['claude-code', 'opencode', 'codex'].includes(tool)) {
+    if (!['claude-code', 'opencode', 'codex', 'mimo'].includes(tool)) {
       return res.status(400).json({ error: '无效的工具名称' });
     }
 

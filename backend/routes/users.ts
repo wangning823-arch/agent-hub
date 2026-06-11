@@ -389,7 +389,7 @@ router.put('/:id/agent-types', (req: Request, res: Response) => {
       return res.status(404).json({ error: '用户不存在' });
     }
 
-    const validTypes = ['claude-code', 'opencode', 'codex'];
+    const validTypes = ['claude-code', 'opencode', 'codex', 'mimo'];
     const now = new Date().toISOString();
     db.run(`DELETE FROM user_agent_types WHERE user_id = '${userId}'`);
     for (const at of agentTypes) {

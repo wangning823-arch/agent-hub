@@ -511,9 +511,10 @@ export default function Sidebar({
 
   const getAgentLabel = (type: string): AgentLabel => {
     const labels: Record<string, AgentLabel> = {
-      'claude-code': { text: 'CC', color: '#e8a838' },
+      'claude-code': { text: 'CC', color: '#a78bfa' },
       'opencode': { text: 'OC', color: '#4ade80' },
       'codex': { text: 'CX', color: '#60a5fa' },
+      'mimo': { text: 'MI', color: '#f97316' },
     }
     return labels[type] || { text: type?.toUpperCase()?.slice(0, 2) || '??', color: '#888' }
   }

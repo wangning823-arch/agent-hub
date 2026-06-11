@@ -1,6 +1,7 @@
 import ClaudeCodeAgent from './claude-code';
 import OpenCodeAgent from './opencode';
 import CodexAgent from './codex';
+import MimoAgent from './mimo';
 import Agent from './base';
 import { AgentType, AgentOptions, SessionMessage } from '../types';
 
@@ -8,6 +9,7 @@ const AGENT_CLASSES: Record<AgentType, typeof Agent> = {
   'claude-code': ClaudeCodeAgent as any,
   'opencode': OpenCodeAgent as any,
   'codex': CodexAgent as any,
+  'mimo': MimoAgent as any,
 };
 
 function createAgent(workdir: string, agentType: AgentType, options: AgentOptions = {}): Agent {

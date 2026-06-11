@@ -5,7 +5,7 @@ import { Request, Response, NextFunction } from 'express';
 
 // ==================== Agent Types ====================
 
-export type AgentType = 'claude-code' | 'opencode' | 'codex';
+export type AgentType = 'claude-code' | 'opencode' | 'codex' | 'mimo';
 
 export interface AgentMessage {
   type: 'text' | 'status' | 'error' | 'token_usage' | 'tool_use' | 'tool_result' | 'conversation_id' | 'title_update' | 'context_usage' | 'subtask_status' | 'assistant';

@@ -13,7 +13,7 @@ export default (sessionManager: any, projectManager?: any) => { // TODO: type th
         return res.status(400).json({ error: 'workdir是必需的' });
       }
 
-      const validAgentTypes = ['claude-code', 'opencode', 'codex'];
+      const validAgentTypes = ['claude-code', 'opencode', 'codex', 'mimo'];
       if (!validAgentTypes.includes(agentType)) {
         return res.status(400).json({ error: `不支持的Agent类型: ${agentType}` });
       }

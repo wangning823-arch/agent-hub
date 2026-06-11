@@ -162,9 +162,68 @@ async function summarizeWithOpenCode(messages: SessionMessage[], workdir?: strin
 }
 
 /**
+ * 用 mimo CLI 生成摘要
+ */
+async function summarizeWithMimo(messages: SessionMessage[], workdir?: string): Promise<SummaryResult> {
+  const conversationText = messages
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .map(m => {
+      const role = m.role === 'user' ? '用户' : '助手';
+      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+      return `[${role}]: ${content}`;
+    })
+    .join('\n\n');
+
+  const prompt = `请简洁地总结以下对话的要点，保留关键决策和技术细节，用中文回答：\n\n${conversationText}`;
+
+  const mimoPath = process.env.MIMO_CLI_PATH || 'mimo';
+
+  return new Promise((resolve, reject) => {
+    const args = ['run', '--format', 'json', ...prompt.split(/\s+/)];
+    const proc = spawn(mimoPath, args, {
+      cwd: workdir || process.env.HOME || '/root',
+      env: { ...process.env },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 60000
+    });
+    proc.stdin.end();
+
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+    proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+    proc.on('close', (code) => {
+      // 尝试从 JSON 输出中提取文本
+      const lines = stdout.split('\n');
+      let summary = '';
+      for (const line of lines) {
+        try {
+          const msg = JSON.parse(line);
+          if (msg.type === 'text' && msg.part?.text) {
+            summary += msg.part.text;
+          }
+        } catch (e) {}
+      }
+      if (summary) {
+        resolve({ summary });
+      } else if (code !== 0) {
+        reject(new Error(`Mimo 摘要生成失败: ${stderr || 'exit ' + code}`));
+      } else {
+        resolve({ summary: stdout.trim() || '无法生成摘要' });
+      }
+    });
+
+    proc.on('error', (err: Error) => {
+      reject(new Error(`Mimo 摘要生成失败: ${err.message}`));
+    });
+  });
+}
+
+/**
  * 总结会话对话历史
  * @param messages - 会话消息列表 [{role, content, time}]
- * @param agentType - agent 类型 ('claude-code' | 'opencode')
+ * @param agentType - agent 类型 ('claude-code' | 'opencode' | 'codex' | 'mimo')
  * @param workdir - 工作目录（opencode 需要）
  */
 async function summarizeSession(messages: SessionMessage[], agentType: AgentType = 'claude-code', workdir?: string): Promise<SummaryResult> {
@@ -172,7 +231,10 @@ async function summarizeSession(messages: SessionMessage[], agentType: AgentType
   if (agentType === 'opencode') {
     return summarizeWithOpenCode(messages, workdir);
   }
-  // claude-code 用 claude CLI
+  if (agentType === 'mimo') {
+    return summarizeWithMimo(messages, workdir);
+  }
+  // claude-code 和 codex 用 claude CLI
   return summarizeWithClaudeCode(messages, workdir);
 }
 
