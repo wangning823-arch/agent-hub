@@ -707,8 +707,10 @@ Violation of these rules will result in immediate termination of the session.
 
     // 注入工作流创建系统提示词（仅发送给Agent，不保存到会话历史）
     // /compact 等命令不附加提示词，否则 agent 端无法识别
+    // 只在用户明确提及工作流时才注入，避免普通问题也触发工作流创建
     const isCommand = message.trim().startsWith('/');
-    const messageForAgent = isCommand ? message : message + WORKFLOW_CREATION_SYSTEM_PROMPT;
+    const isWorkflowRequest = /工作流|workflow/i.test(message);
+    const messageForAgent = (isCommand || !isWorkflowRequest) ? message : message + WORKFLOW_CREATION_SYSTEM_PROMPT;
 
     session.isWorking = true;
     this.broadcast(sessionId, { type: 'status', content: 'task_started' });
@@ -911,8 +913,14 @@ Violation of these rules will result in immediate termination of the session.
   async removeSession(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (session) {
+      console.log(`[removeSession] 删除会话 ${sessionId}, agentType=${session.agentType}, hasAgent=${!!session.agent}`);
       if (session.agent) {
-        await session.agent.stop();
+        try {
+          await session.agent.stop();
+          console.log(`[removeSession] Agent stop 完成`);
+        } catch (e) {
+          console.error(`[removeSession] Agent stop 失败:`, e);
+        }
       }
       this.sessions.delete(sessionId);
       this.wsClients.delete(sessionId);

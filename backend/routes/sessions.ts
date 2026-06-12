@@ -100,6 +100,7 @@ export default (sessionManager: any, projectManager?: any) => { // TODO: type th
       if (!session) {
         return res.status(404).json({ error: '会话不存在' });
       }
+      console.log(`[interrupt] 会话 ${req.params.id}, agentType=${session.agentType}, hasAgent=${!!session.agent}, agentRunning=${session.agent?.isRunning}`);
       // 中断当前任务，保持Agent可用
       if (session.agent && typeof session.agent.interrupt === 'function') {
         try {
@@ -287,17 +288,20 @@ export default (sessionManager: any, projectManager?: any) => { // TODO: type th
         return res.status(400).json({ error: 'Agent不支持此操作' });
       }
 
-      // OpenCode 不支持 /compact，通过重启会话并恢复记忆来清空上下文
-      if (session.agentType === 'opencode') {
+      // OpenCode/Mimo run 模式不支持 /compact，通过重启会话并恢复记忆来清空上下文
+      if (session.agentType === 'opencode' || session.agentType === 'mimo') {
         const agent = session.agent as any;
-        // 重置 opencode 会话 ID
+        // 重置会话 ID
         if (agent.opencodeSessionId) {
           agent.opencodeSessionId = null;
+        }
+        if (agent.mimoSessionId) {
+          agent.mimoSessionId = null;
         }
         // 恢复记忆：生成摘要并注入到 pendingHistory
         if (session.messages.length >= 5) {
           const { summarizeSession } = require('../summary-service');
-          const result = await summarizeSession(session.messages, 'opencode', session.workdir);
+          const result = await summarizeSession(session.messages, session.agentType, session.workdir);
           const summaryContent = `[之前对话的摘要]\n${result.summary}`;
           // 保留最近10条，其余用摘要替代
           const keepLast = Math.min(10, session.messages.length);

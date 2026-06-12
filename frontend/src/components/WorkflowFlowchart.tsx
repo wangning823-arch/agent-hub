@@ -105,6 +105,7 @@ export default function WorkflowFlowchart({ steps, onClose }: Props) {
 
   const { levels, levelMap, idSet } = useMemo(() => computeLayout(validSteps), [validSteps])
   const idToStep = useMemo(() => new Map(validSteps.map(s => [s.id, s])), [validSteps])
+  const nameToId = useMemo(() => new Map(validSteps.map(s => [s.name, s.id])), [validSteps])
 
   const cols = levels.length
   const maxRows = Math.max(...levels.map(l => l.length), 1)

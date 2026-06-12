@@ -451,7 +451,6 @@ const CodeBeautifyModal: React.FC<CodeBeautifyModalProps> = ({
                     language={effectiveLanguage}
                     style={oneDark}
                     showLineNumbers
-                    wrapLongLines
                     customStyle={{
                       margin: 0,
                       borderRadius: 0,
@@ -459,6 +458,7 @@ const CodeBeautifyModal: React.FC<CodeBeautifyModalProps> = ({
                       fontSize: '13px',
                       lineHeight: '1.5',
                       minHeight: '100%',
+                      overflowWrap: 'anywhere',
                     }}
                     lineNumberStyle={{
                       minWidth: '3em',

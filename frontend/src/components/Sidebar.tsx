@@ -500,7 +500,7 @@ export default function Sidebar({
   }
 
   const handleCommand = (cmd: CommandItem) => {
-    const event = new CustomEvent('send-message', { detail: { message: cmd.usage } })
+    const event = new CustomEvent('send-message', { detail: { message: cmd.usage, prefix: cmd.usage.endsWith(' ') ? cmd.usage : undefined } })
     window.dispatchEvent(event)
   }
 

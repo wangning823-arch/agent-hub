@@ -145,10 +145,9 @@ export default function FileViewer({ file, content, onClose, onSave }: FileViewe
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isEditing, hasChanges, saving, editedContent])
 
-  // 同步行号和代码的滚动
   const handleCodeScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const lineNumbers = (e.target as HTMLDivElement).previousElementSibling
-    if (lineNumbers) {
+    if (lineNumbers && lineNumbers.classList.contains('border-r')) {
       lineNumbers.scrollTop = (e.target as HTMLDivElement).scrollTop
     }
   }
@@ -241,15 +240,17 @@ export default function FileViewer({ file, content, onClose, onSave }: FileViewe
 
       {/* 文件内容 */}
       <div className="flex-1 overflow-hidden flex">
-        {/* 行号 */}
-        <div className="flex-shrink-0 py-4 px-2 text-right select-none border-r overflow-hidden"
-          style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border-subtle)' }}>
-          {lines.map((_: string, i: number) => (
-            <div key={i} className="text-xs leading-6" style={{ color: 'var(--text-muted)' }}>
-              {i + 1}
-            </div>
-          ))}
-        </div>
+        {/* 行号 - 换行模式下隐藏行号，避免换行导致行号错位 */}
+        {!wordWrap && (
+          <div className="flex-shrink-0 py-4 px-2 text-right select-none border-r overflow-hidden"
+            style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border-subtle)' }}>
+            {lines.map((_: string, i: number) => (
+              <div key={i} className="text-xs leading-6" style={{ color: 'var(--text-muted)' }}>
+                {i + 1}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* 代码内容 */}
         <div className="flex-1 overflow-auto" onScroll={handleCodeScroll} ref={codeRef}>

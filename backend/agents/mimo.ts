@@ -4,7 +4,53 @@
  */
 import Agent from './base';
 import { execSync, spawn, ChildProcess } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import type { AgentMessage, AgentOptions } from '../types';
+
+function findMimoPath(): string {
+  const envPath = process.env.MIMOCODE_BIN_PATH;
+  if (envPath && fs.existsSync(envPath)) return envPath;
+
+  const candidates: string[] = [
+    '/root/.nvm/versions/node/v22.22.3/lib/node_modules/@mimo-ai/cli/bin/.mimocode',
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+
+  try {
+    const mimoWrapper = execSync('which mimo 2>/dev/null', { encoding: 'utf-8' }).trim();
+    if (mimoWrapper) {
+      const realWrapper = fs.realpathSync(mimoWrapper);
+      const binDir = path.dirname(realWrapper);
+      const cached = path.join(binDir, '.mimocode');
+      if (fs.existsSync(cached)) return cached;
+
+      const platformMap: Record<string, string> = { darwin: 'darwin', linux: 'linux', win32: 'windows' };
+      const archMap: Record<string, string> = { x64: 'x64', arm64: 'arm64' };
+      const platform = platformMap[process.platform] || process.platform;
+      const arch = archMap[process.arch] || process.arch;
+      const cliRoot = path.resolve(binDir, '..');
+      const nodeModules = path.join(cliRoot, 'node_modules');
+      const names = [
+        `@mimo-ai/mimocode-${platform}-${arch}`,
+        `@mimo-ai/mimocode-${platform}-${arch}-baseline`,
+        `@mimo-ai/mimocode-${platform}-${arch}-musl`,
+        `@mimo-ai/mimocode-${platform}-${arch}-baseline-musl`,
+      ];
+      for (const name of names) {
+        const candidate = path.join(nodeModules, name, 'bin', 'mimo');
+        if (fs.existsSync(candidate)) return candidate;
+      }
+    }
+  } catch (e) { /* ignore */ }
+
+  return 'mimo';
+}
+
+const MIMO_PATH: string = findMimoPath();
+console.log('[Mimo] 使用路径:', MIMO_PATH);
 
 interface MimoOptions extends AgentOptions {
   model?: string;
@@ -88,8 +134,7 @@ class MimoAgent extends Agent {
     this.isRunning = true;
     // 检查 mimo CLI 是否可用
     try {
-      const mimoBin = process.env.MIMO_CLI_PATH || 'mimo';
-      execSync(`"${mimoBin}" --version`, { stdio: 'ignore' });
+      execSync(`"${MIMO_PATH}" --version`, { stdio: 'ignore' });
     } catch (e) {
       this.isRunning = false;
       throw new Error('Mimo CLI 未发现或不可用，请确保 MIMO_CLI_PATH 指向正确的二进制，或在 PATH 中可访问。');
@@ -138,8 +183,6 @@ class MimoAgent extends Agent {
     }
 
     return new Promise((resolve, reject) => {
-      const mimoPath = process.env.MIMO_CLI_PATH || 'mimo';
-
       // 构建命令参数（参考 opencode）
       const args: string[] = ['run'];
 
@@ -172,10 +215,10 @@ class MimoAgent extends Agent {
       // 添加用户消息
       args.push(finalMessage);
 
-      console.log('[Mimo] spawn:', mimoPath, args.join(' '));
+      console.log('[Mimo] spawn:', MIMO_PATH, args.join(' '));
 
       // 直接用 spawn 传递参数数组，避免 shell 转义问题
-      const proc: ChildProcess = spawn(mimoPath, args, {
+      const proc: ChildProcess = spawn(MIMO_PATH, args, {
         cwd: this.workdir,
         env: { ...process.env },
         stdio: ['pipe', 'pipe', 'pipe']
@@ -217,8 +260,11 @@ class MimoAgent extends Agent {
           this.handleOutput(buffer.trim());
         }
 
-        // 清理活跃进程引用
-        this.activeProc = null;
+        // 只有当关闭的进程仍然是当前活跃进程时才清除引用
+        // 避免新进程启动后，旧进程的 close 事件误清新进程的引用
+        if (this.activeProc === proc) {
+          this.activeProc = null;
+        }
 
         if (code !== 0 && !hasOutput) {
           const err = new Error(`Mimo 退出码: ${code}`);
@@ -348,6 +394,7 @@ class MimoAgent extends Agent {
    * 中断当前正在运行的任务，保持Agent可用
    */
   async interrupt(): Promise<void> {
+    console.log('[Mimo] interrupt, activeProc:', this.activeProc ? `pid=${this.activeProc.pid}` : 'null');
     if (this.activeProc) {
       try {
         this.activeProc.kill('SIGKILL');
@@ -362,8 +409,7 @@ class MimoAgent extends Agent {
    */
   static healthCheck(): HealthCheckResult {
     try {
-      const mimoBin = process.env.MIMO_CLI_PATH || 'mimo';
-      execSync(`"${mimoBin}" --version`, { stdio: 'ignore' });
+      execSync(`"${MIMO_PATH}" --version`, { stdio: 'ignore' });
       return { ok: true, info: 'Mimo CLI available' };
     } catch (e) {
       return { ok: false, error: (e as Error).message };

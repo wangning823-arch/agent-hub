@@ -2,6 +2,20 @@
 
 All notable changes to Agent Hub will be documented in this file.
 
+## [0.3.20260612.0001] - 2026-06-12
+
+### New Features
+
+- **Mimo Agent 完整实现**: 新增 Mimo Agent 适配器（mimo.ts），支持 `mimo run --format json` 模式，包含完整的会话管理、Token 追踪和错误处理
+- **Mimo 命令集**: 支持实现功能、代码审查、重构、写测试、修复 Bug、解释代码等快速命令
+- **Mimo 模式选项**: 默认、自动、跳过权限三种模式，通过 commands.ts 统一注册
+- **文件查看器自动换行**: 文件查看器工具栏新增自动换行切换按钮，长代码行自动换行显示
+
+### Improved
+
+- **Mimo 模型列表**: 支持从 mimo CLI 动态读取可用模型，24 小时缓存自动刷新
+- **Mimo 摘要服务**: 增强会话摘要功能，支持 Mimo 会话的标题自动生成
+
 ## [0.3.20260611.0001] - 2026-06-11
 
 ### New Features

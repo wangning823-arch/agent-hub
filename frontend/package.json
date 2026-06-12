@@ -1,6 +1,6 @@
 {
   "name": "agentpilot-frontend",
-  "version": "0.3.20260611.0001",
+  "version": "0.3.20260612.0001",
   "type": "module",
   "scripts": {
     "dev": "vite",

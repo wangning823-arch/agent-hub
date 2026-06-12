@@ -16,6 +16,30 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.20260612.0001',
+    date: '2026-06-12',
+    sections: [
+      {
+        title: '新功能',
+        color: 'var(--accent-primary, #6366f1)',
+        items: [
+          'Mimo Agent 完整实现：新增 Mimo Agent 适配器，支持 mimo run --format json 模式，包含完整的会话管理、Token 追踪和错误处理',
+          'Mimo 命令集：支持实现功能、代码审查、重构、写测试、修复 Bug、解释代码等快速命令',
+          'Mimo 模式选项：默认、自动、跳过权限三种模式',
+          '文件查看器自动换行：新增自动换行切换按钮，长代码行自动换行显示',
+        ],
+      },
+      {
+        title: '改进',
+        color: 'var(--success, #22c55e)',
+        items: [
+          'Mimo 模型列表支持从 mimo CLI 动态读取，24 小时缓存自动刷新',
+          '增强会话摘要服务，支持 Mimo 会话的标题自动生成',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.3.20260611.0001',
     date: '2026-06-11',
     sections: [

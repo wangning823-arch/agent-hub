@@ -1023,13 +1023,18 @@ export default function ChatPanel({
   useEffect(() => {
     const handleSendMessage = (e: CustomEvent) => {
       if (e.detail?.message) {
-        setInput(e.detail.message)
+        // 如果命令带 prefix 且输入框有内容，拼接输入框内容
+        let finalMessage = e.detail.message
+        if (e.detail.prefix && input.trim()) {
+          finalMessage = e.detail.prefix + input.trim()
+        }
+        setInput(finalMessage)
         setTimeout(() => {
           if (wsRef.current && wsRef.current.readyState === 1) {
-            setMessages(prev => [...prev, { type: 'user', content: e.detail.message }])
+            setMessages(prev => [...prev, { type: 'user', content: finalMessage }])
             wsRef.current.send(JSON.stringify({
               type: 'user_input',
-              content: e.detail.message
+              content: finalMessage
             }))
             clearInput()
           }
@@ -1039,7 +1044,7 @@ export default function ChatPanel({
 
     window.addEventListener('send-message', handleSendMessage as EventListener)
     return () => window.removeEventListener('send-message', handleSendMessage as EventListener)
-  }, [])
+  }, [input])
 
   // 删除消息
   const handleDeleteMessage = async (time?: number) => {

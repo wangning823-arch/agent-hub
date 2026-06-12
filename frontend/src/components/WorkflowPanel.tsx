@@ -113,6 +113,11 @@ const topologicalSort = (steps: WorkflowStep[]): FlatStep[] => {
   return result
 }
 
+interface StepNode {
+  step: WorkflowStep
+  children: StepNode[]
+}
+
 const flattenWithDepth = (nodes: StepNode[], depth: number = 0, ancestorLast: boolean[] = []): Array<{ step: WorkflowStep; depth: number; isLast: boolean; ancestorLast: boolean[] }> => {
   const result: Array<{ step: WorkflowStep; depth: number; isLast: boolean; ancestorLast: boolean[] }> = []
   nodes.forEach((node, idx) => {
