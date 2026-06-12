@@ -113,6 +113,7 @@ class MimoAgent extends Agent {
   options: MimoOptions;
   activeProc: ChildProcess | null;
   pendingHistory: string | null;
+  contextWindow: number;
 
   constructor(workdir: string, options: MimoOptions = {}) {
     super('mimo', workdir);
@@ -128,6 +129,7 @@ class MimoAgent extends Agent {
     this.options = options;
     this.activeProc = null;
     this.pendingHistory = null;
+    this.contextWindow = 200000; // 默认值，start() 时从配置获取实际值
   }
 
   async start(): Promise<void> {
@@ -139,6 +141,10 @@ class MimoAgent extends Agent {
       this.isRunning = false;
       throw new Error('Mimo CLI 未发现或不可用，请确保 MIMO_CLI_PATH 指向正确的二进制，或在 PATH 中可访问。');
     }
+
+    // 获取模型的上下文窗口大小
+    this.contextWindow = this._fetchContextWindow();
+
     this.emit('started');
 
     // 发送欢迎消息
@@ -146,6 +152,32 @@ class MimoAgent extends Agent {
       type: 'status',
       content: '✅ Mimo 已就绪'
     });
+  }
+
+  /**
+   * 从 mimo debug config 获取当前模型的上下文窗口大小
+   */
+  _fetchContextWindow(): number {
+    try {
+      const output = execSync(`"${MIMO_PATH}" debug config`, {
+        encoding: 'utf-8',
+        timeout: 10000,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      const config = JSON.parse(output);
+      const modelId = this.options.model || 'mimo/mimo-auto';
+      const modelName = modelId.includes('/') ? modelId.split('/').pop()! : modelId;
+      const provider = config.provider || {};
+      for (const pdata of Object.values(provider) as any[]) {
+        const models = pdata?.models || {};
+        if (models[modelName]?.limit?.context) {
+          return models[modelName].limit.context;
+        }
+      }
+    } catch (e) {
+      console.log('[Mimo] 获取上下文窗口大小失败，使用默认值 200k');
+    }
+    return 200000;
   }
 
   /**
@@ -323,7 +355,7 @@ class MimoAgent extends Agent {
               cacheReadTokens: t.cache?.read || 0,
               cacheWriteTokens: t.cache?.write || 0,
               totalTokens: t.total || 0,
-              contextWindow: 200000,
+              contextWindow: this.contextWindow,
               cost: msg.part.cost || 0,
               model: this.options.model || 'mimo/mimo-auto'
             }
