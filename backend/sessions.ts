@@ -151,6 +151,7 @@ class SessionManager {
   wsClients: WSClientsLike;
   tokenTracker: TokenTrackerLike | null;
   initialized: boolean;
+  goalMonitor: any; // GoalMonitor 实例，延迟注入
 
   constructor(tokenTracker: TokenTrackerLike | null = null) {
     ensureImports();
@@ -158,6 +159,14 @@ class SessionManager {
     this.wsClients = new _WSClients!();
     this.tokenTracker = tokenTracker;
     this.initialized = false;
+    this.goalMonitor = null;
+  }
+
+  /**
+   * 设置 GoalMonitor 实例
+   */
+  setGoalMonitor(goalMonitor: any): void {
+    this.goalMonitor = goalMonitor;
   }
 
   // ==================== Git Credential Helpers ====================
@@ -616,11 +625,17 @@ Violation of these rules will result in immediate termination of the session.
     agent.on('error', (err: Error) =>
       this.broadcast(id, { type: 'error', content: err.toString() }),
     );
-    agent.on('stopped', () => {
+    agent.on('stopped', (data?: { code?: number }) => {
       this.broadcast(id, { type: 'status', content: 'agent_stopped' });
       session.updatedAt = new Date();
       this.saveSession(session);
       this._generateSummaryIfNeeded(session);
+      // 通知 GoalMonitor
+      if (this.goalMonitor) {
+        this.goalMonitor.onAgentStopped(id, data?.code).catch((err: Error) => {
+          console.error('[GoalMonitor] onAgentStopped 错误:', err.message);
+        });
+      }
     });
     agent.on('compact', () => this._handleCompact(session));
 
@@ -805,7 +820,14 @@ Violation of these rules will result in immediate termination of the session.
 
     const agent = _createAgent!(session.workdir, agentType, options);
 
-    if (!session.conversationId && session.messages.length > 0) {
+    // mimo/opencode 重启后无法恢复原生会话（--session 传入不认识的ID会挂起），
+    // 始终通过 pendingHistory 注入历史上下文作为补偿
+    // claude-code 使用 --resume 从 .jsonl 恢复，仅在无 conversationId 时回退
+    const needsPendingHistory = (agentType === 'mimo' || agentType === 'opencode')
+      ? session.messages.length > 0
+      : !session.conversationId && session.messages.length > 0;
+
+    if (needsPendingHistory) {
       const historyLines: string[] = [];
       const summaryMsg = session.messages.find(
         (m) =>
@@ -837,11 +859,17 @@ Violation of these rules will result in immediate termination of the session.
     agent.on('error', (err: Error) =>
       this.broadcast(session.id, { type: 'error', content: err.toString() }),
     );
-    agent.on('stopped', () => {
+    agent.on('stopped', (data?: { code?: number }) => {
       this.broadcast(session.id, { type: 'status', content: 'agent_stopped' });
       session.updatedAt = new Date();
       this.saveSession(session);
       this._generateSummaryIfNeeded(session);
+      // 通知 GoalMonitor
+      if (this.goalMonitor) {
+        this.goalMonitor.onAgentStopped(session.id, data?.code).catch((err: Error) => {
+          console.error('[GoalMonitor] onAgentStopped 错误:', err.message);
+        });
+      }
     });
     agent.on('compact', () => this._handleCompact(session));
 

@@ -348,6 +348,74 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   workflowScheduler.loadPending();
   const wsConnectionHandler = wsHandler(sessionManager, TOKEN_FILE);
 
+  // 初始化 GoalMonitor
+  const GoalMonitor = (await import('./goal-monitor')).default;
+  const goalMonitor = new GoalMonitor(sessionManager);
+  sessionManager.setGoalMonitor(goalMonitor);
+
+  // 设置摘要服务（延迟注入，避免循环依赖）
+  const { summarizeSession } = require('./summary-service');
+  goalMonitor.setSummaryService({ summarizeSession });
+
+  // 设置 LLM 判断函数（使用 Anthropic SDK）
+  try {
+    const { default: Anthropic } = await import('@anthropic-ai/sdk');
+    const fs = await import('fs');
+    const path = await import('path');
+
+    function getLlmApiKey(): { apiKey: string; baseURL?: string } | null {
+      // 1. 从数据库 providers 表获取
+      try {
+        const db = getDb();
+        const result = db.exec(
+          "SELECT base_url_anthropic, api_key FROM providers WHERE owner_id IS NULL ORDER BY updated_at DESC LIMIT 1"
+        );
+        if (result.length > 0 && result[0].values.length > 0) {
+          const [baseURL, apiKey] = result[0].values[0] as [string, string];
+          if (apiKey) return { apiKey, baseURL: baseURL || undefined };
+        }
+      } catch (e) { /* ignore */ }
+
+      // 2. 从 ~/.claude/settings.json 获取
+      try {
+        const homeDir = process.env.HOME || '/root';
+        const settingsPath = path.join(homeDir, '.claude', 'settings.json');
+        if (fs.existsSync(settingsPath)) {
+          const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+          const env = settings.env || {};
+          const apiKey = env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY;
+          if (apiKey) return { apiKey, baseURL: env.ANTHROPIC_BASE_URL };
+        }
+      } catch (e) { /* ignore */ }
+
+      return null;
+    }
+
+    const llmConfig = getLlmApiKey();
+    if (llmConfig) {
+      const anthropic = new (Anthropic as any)({
+        apiKey: llmConfig.apiKey,
+        baseURL: llmConfig.baseURL,
+      });
+      goalMonitor.setLlmJudgeFn(async (prompt: string) => {
+        const message = await anthropic.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 100,
+          messages: [{ role: 'user', content: prompt }],
+        });
+        return message.content
+          .filter((c: any) => c.type === 'text')
+          .map((c: any) => c.text)
+          .join('');
+      });
+      console.log('[GoalMonitor] LLM 判断函数已设置');
+    } else {
+      console.log('[GoalMonitor] 未找到 API Key，LLM 判断不可用，将使用启发式判断');
+    }
+  } catch (e) {
+    console.log('[GoalMonitor] Anthropic SDK 不可用，LLM 判断不可用');
+  }
+
   // Register route factories
   app.use('/api/auth', authRouter);
   app.use('/api/users', usersRouter);
@@ -376,6 +444,9 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   app.use('/api/ai', beautifyRouter());
   app.use('/api/component-libs', componentLibsRouter());
   app.use('/api/design-systems', designSystemsRouter());
+  // Goal Monitor 路由
+  const goalsRouter = (await import('./routes/goals')).default;
+  app.use('/api/goals', goalsRouter(goalMonitor));
 
   // Authenticated uploads route
   app.get('/uploads/:userId/:date/:filename', (req: Request, res: Response) => {

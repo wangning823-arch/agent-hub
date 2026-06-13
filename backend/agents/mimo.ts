@@ -57,6 +57,7 @@ interface MimoOptions extends AgentOptions {
   variant?: string;
   sessionId?: string;
   mode?: string;
+  agent?: string;
 }
 
 interface MimoJsonMessage {
@@ -117,15 +118,12 @@ class MimoAgent extends Agent {
 
   constructor(workdir: string, options: MimoOptions = {}) {
     super('mimo', workdir);
-    // mimo自己的session ID（格式为 ses_xxx）
-    // 如果传入的 sessionId 是 ses_ 开头的格式，直接使用
-    if (options.sessionId && options.sessionId.startsWith('ses_')) {
-      this.mimoSessionId = options.sessionId;
-    } else {
-      this.mimoSessionId = null;
-    }
+    // mimo自己的session ID（格式为 ses_xxx），从mimo返回的消息中获取
+    // 对齐opencode行为：始终从null开始，不从DB恢复
+    // --session 传入mimo不认识的ID会导致进程挂起
+    this.mimoSessionId = null;
     // agent-hub的sessionId，用于内部标识
-    this.hubSessionId = options.sessionId || null;
+    this.hubSessionId = options.sessionId || options.conversationId || null;
     this.options = options;
     this.activeProc = null;
     this.pendingHistory = null;
@@ -248,6 +246,11 @@ class MimoAgent extends Agent {
         args.push('--dangerously-skip-permissions');
       }
 
+      // Agent模式 (plan/build/compose)
+      if (this.options.agent && ['plan', 'build', 'compose'].includes(this.options.agent)) {
+        args.push('--agent', this.options.agent);
+      }
+
       // JSON格式输出
       args.push('--format', 'json');
 
@@ -282,12 +285,10 @@ class MimoAgent extends Agent {
         else reject(value);
       };
 
-      // 安全超时：整个 send 操作最长等待 5 分钟
+      // 超时提醒：10min 未响应则提示用户，可选择继续等待或点击停止按钮
       const safetyTimer = setTimeout(() => {
-        console.log('[Mimo] 安全超时(5min)，强制终止进程');
-        this.emit('message', { type: 'error', content: '任务执行超时（5分钟），已自动终止' });
-        try { proc.kill('SIGKILL'); } catch {}
-      }, 300000);
+        this.emit('message', { type: 'status', content: '⏳ 响应已超时超过10分钟，如需等待请点击停止按钮终止任务...' });
+      }, 600000);
 
       // 主回复完成后的清理定时器：等待 mimo 内部 title 生成等后台任务
       // 2 秒后如果进程还没退出就强制终止，不等 title 生成

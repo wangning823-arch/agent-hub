@@ -304,6 +304,42 @@ export interface WorkflowTemplate {
   usageCount: number;
 }
 
+// ==================== Goal Monitor Types ====================
+
+export type GoalStatus = 'active' | 'completed' | 'cancelled' | 'error';
+
+export interface Goal {
+  id: string;
+  sessionId: string;
+  originalPrompt: string;
+  status: GoalStatus;
+  attemptCount: number;
+  maxAttempts: number;
+  progress: string;
+  startedAt: number;
+  lastAttemptAt: number;
+  completedAt?: number;
+  error?: string;
+  agentType: AgentType;
+  workdir: string;
+}
+
+export interface GoalJSON {
+  id: string;
+  sessionId: string;
+  originalPrompt: string;
+  status: GoalStatus;
+  attemptCount: number;
+  maxAttempts: number;
+  progress: string;
+  startedAt: number;
+  lastAttemptAt: number;
+  completedAt?: number;
+  error?: string;
+  agentType: AgentType;
+  workdir: string;
+}
+
 // ==================== User Management Types ====================
 
 export interface UserContext {

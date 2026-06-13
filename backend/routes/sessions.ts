@@ -9,6 +9,12 @@ export default (sessionManager: any, projectManager?: any) => { // TODO: type th
     try {
       const { workdir, agentType = 'claude-code', mode = 'auto', model = null, effort = 'high', ...options } = req.body;
 
+      // 对于 mimo，将 plan/build/compose 模式转换为 agent 参数
+      let agent = options.agent || null;
+      if (agentType === 'mimo' && ['plan', 'build', 'compose'].includes(mode)) {
+        agent = mode;
+      }
+
       if (!workdir) {
         return res.status(400).json({ error: 'workdir是必需的' });
       }
@@ -28,7 +34,7 @@ export default (sessionManager: any, projectManager?: any) => { // TODO: type th
         }
       }
 
-      const session = await sessionManager.createSession(workdir, agentType, { mode, model, effort, ...options }, req.user?.userId);
+      const session = await sessionManager.createSession(workdir, agentType, { mode, model, effort, agent, ...options }, req.user?.userId);
       if (!session) {
         return res.status(500).json({ error: 'Agent 启动失败，请检查配置后重试' });
       }

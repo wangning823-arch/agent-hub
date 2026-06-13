@@ -5,6 +5,7 @@ import QuoteReply from './QuoteReply'
 import SubtaskPanel from './SubtaskPanel'
 import WorkflowPanel from './WorkflowPanel'
 import WorkflowEditor from './WorkflowEditor'
+import GoalStatusBar from './GoalStatusBar'
 import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
 import { API_BASE, getWebSocketUrl } from '../config'
@@ -637,51 +638,57 @@ export default function ChatPanel({
              return // 不继续处理主消息流
            }
 
-           // 工作流消息处理
-           if (msg.workflow_id) {
-             if (msg.type === 'workflow_status') {
-               setWorkflows(prev => prev.map(w =>
-                 w.id === msg.workflow_id
-                   ? { ...w, status: msg.status || w.status }
-                   : w
-               ))
-               setActiveWorkflow(prev => {
-                 if (prev && prev.id === msg.workflow_id) {
-                   return { ...prev, status: msg.status || prev.status }
-                 }
-                 return prev
-               })
-             } else if (msg.type === 'workflow_step_status') {
-               const updateStep = (w: WorkflowInstance) => {
-                 if (w.id !== msg.workflow_id) return w
-                 return {
-                   ...w,
-                   steps: w.steps.map(s =>
-                     s.id === msg.step_id
-                       ? { ...s, status: (msg.status || s.status) as any, result: msg.result || s.result, error: msg.error || s.error }
-                       : s
-                   )
-                 }
-               }
-               setWorkflows(prev => prev.map(updateStep))
-               setActiveWorkflow(prev => prev ? updateStep(prev) : null)
-             } else if (msg.type === 'workflow_step_message') {
-               const updateStepMsg = (w: WorkflowInstance) => {
-                 if (w.id !== msg.workflow_id) return w
-                 return {
-                   ...w,
-                   steps: w.steps.map(s => {
-                     if (s.id !== msg.step_id) return s
-                     const newMsg = { type: msg.content_type || msg.type, content: msg.content || '', time: Date.now() }
-                     return { ...s, messages: [...s.messages, newMsg].slice(-100) }
-                   })
-                 }
-               }
-               setWorkflows(prev => prev.map(updateStepMsg))
-               setActiveWorkflow(prev => prev ? updateStepMsg(prev) : null)
-             }
-             return
-           }
+            // 工作流消息处理
+            if (msg.workflow_id) {
+              if (msg.type === 'workflow_status') {
+                setWorkflows(prev => prev.map(w =>
+                  w.id === msg.workflow_id
+                    ? { ...w, status: msg.status || w.status }
+                    : w
+                ))
+                setActiveWorkflow(prev => {
+                  if (prev && prev.id === msg.workflow_id) {
+                    return { ...prev, status: msg.status || prev.status }
+                  }
+                  return prev
+                })
+              } else if (msg.type === 'workflow_step_status') {
+                const updateStep = (w: WorkflowInstance) => {
+                  if (w.id !== msg.workflow_id) return w
+                  return {
+                    ...w,
+                    steps: w.steps.map(s =>
+                      s.id === msg.step_id
+                        ? { ...s, status: (msg.status || s.status) as any, result: msg.result || s.result, error: msg.error || s.error }
+                        : s
+                    )
+                  }
+                }
+                setWorkflows(prev => prev.map(updateStep))
+                setActiveWorkflow(prev => prev ? updateStep(prev) : null)
+              } else if (msg.type === 'workflow_step_message') {
+                const updateStepMsg = (w: WorkflowInstance) => {
+                  if (w.id !== msg.workflow_id) return w
+                  return {
+                    ...w,
+                    steps: w.steps.map(s => {
+                      if (s.id !== msg.step_id) return s
+                      const newMsg = { type: msg.content_type || msg.type, content: msg.content || '', time: Date.now() }
+                      return { ...s, messages: [...s.messages, newMsg].slice(-100) }
+                    })
+                  }
+                }
+                setWorkflows(prev => prev.map(updateStepMsg))
+                setActiveWorkflow(prev => prev ? updateStepMsg(prev) : null)
+              }
+              return
+            }
+
+            // 目标监控消息处理
+            if (msg.type === 'goal_status') {
+              // GoalStatusBar 组件会通过轮询获取状态，这里不需要额外处理
+              return
+            }
 
           // 处理工具调用消息的合并逻辑
           if (msg.type === 'tool_use' || msg.type === 'tool_result') {
@@ -1662,6 +1669,9 @@ export default function ChatPanel({
           )}
         </div>
       )}
+
+      {/* Goal Status Bar */}
+      <GoalStatusBar sessionId={sessionId} />
 
       {/* Main Chat Tab */}
       {activeTab === 'main' && (
