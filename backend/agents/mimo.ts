@@ -195,6 +195,13 @@ class MimoAgent extends Agent {
       return Promise.resolve();
     }
 
+    // 拦截 /compact 命令 - mimo run 模式不支持内部命令，通过事件通知 session manager 处理
+    if (trimmed === '/compact') {
+      console.log('[Mimo] 检测到 /compact 命令，通知 session manager 处理');
+      this.emit('compact', { agentType: 'mimo', workdir: this.workdir });
+      return Promise.resolve();
+    }
+
     // 若已有正在运行的子进程，优雅地中止
     if (this.activeProc) {
       try {
@@ -264,6 +271,42 @@ class MimoAgent extends Agent {
 
       let buffer = '';
       let hasOutput = false;
+      let settled = false;
+
+      const settle = (action: 'resolve' | 'reject', value?: any) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(safetyTimer);
+        if (postResponseTimer) clearTimeout(postResponseTimer);
+        if (action === 'resolve') resolve(value);
+        else reject(value);
+      };
+
+      // 安全超时：整个 send 操作最长等待 5 分钟
+      const safetyTimer = setTimeout(() => {
+        console.log('[Mimo] 安全超时(5min)，强制终止进程');
+        this.emit('message', { type: 'error', content: '任务执行超时（5分钟），已自动终止' });
+        try { proc.kill('SIGKILL'); } catch {}
+      }, 300000);
+
+      // 主回复完成后的清理定时器：等待 mimo 内部 title 生成等后台任务
+      // 2 秒后如果进程还没退出就强制终止，不等 title 生成
+      let postResponseTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const startPostResponseTimer = () => {
+        if (postResponseTimer) return;
+        postResponseTimer = setTimeout(() => {
+          if (settled) return;
+          console.log('[Mimo] 主回复已完成，等待超时(2s)，终止 title 等后台任务');
+          try { proc.kill('SIGTERM'); } catch {}
+          // 给 SIGTERM 3 秒宽限，之后 SIGKILL
+          setTimeout(() => {
+            if (!settled && proc.exitCode === null) {
+              try { proc.kill('SIGKILL'); } catch {}
+            }
+          }, 3000);
+        }, 2000);
+      };
 
       // 实时处理 stdout 输出
       proc.stdout!.on('data', (data: Buffer) => {
@@ -302,11 +345,11 @@ class MimoAgent extends Agent {
           const err = new Error(`Mimo 退出码: ${code}`);
           console.error('[Mimo] exit error:', err.message);
           this.emit('message', { type: 'error', content: `Mimo 执行失败: ${err.message}` });
-          reject(err);
+          settle('reject', err);
         } else {
           // 通知会话 agent 已停止
           this.emit('stopped', { code: 0 });
-          resolve();
+          settle('resolve');
         }
       });
 
@@ -314,8 +357,20 @@ class MimoAgent extends Agent {
         console.error('[Mimo] spawn error:', err.message);
         this.emit('message', { type: 'error', content: `Mimo 执行失败: ${err.message}` });
         this.activeProc = null;
-        reject(err);
+        settle('reject', err);
       });
+
+      // 挂载到实例上以便 interrupt 能清理定时器
+      (this as any)._safetyTimer = safetyTimer;
+
+      // 监听 step_finish 事件来判断主回复是否完成
+      const onMessage = (msg: AgentMessage) => {
+        if (msg.type === 'status' && msg.content === '__mimo_main_response_done') {
+          startPostResponseTimer();
+          this.removeListener('message', onMessage);
+        }
+      };
+      this.on('message', onMessage);
     });
   }
 
@@ -344,6 +399,10 @@ class MimoAgent extends Agent {
       } else if (msg.type === 'step_start') {
         // 步骤开始
       } else if (msg.type === 'step_finish') {
+        // 主回复完成（reason=stop），通知 send() 可以开始清理定时器
+        if (msg.part?.reason === 'stop') {
+          this.emit('message', { type: 'status', content: '__mimo_main_response_done' });
+        }
         // 步骤完成，检查 token 统计
         if (msg.part?.tokens) {
           const t = msg.part.tokens;
@@ -427,6 +486,11 @@ class MimoAgent extends Agent {
    */
   async interrupt(): Promise<void> {
     console.log('[Mimo] interrupt, activeProc:', this.activeProc ? `pid=${this.activeProc.pid}` : 'null');
+    // 清理定时器
+    if ((this as any)._safetyTimer) {
+      clearTimeout((this as any)._safetyTimer);
+      (this as any)._safetyTimer = null;
+    }
     if (this.activeProc) {
       try {
         this.activeProc.kill('SIGKILL');

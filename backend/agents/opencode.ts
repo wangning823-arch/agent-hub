@@ -124,20 +124,43 @@ function execAsync(cmd: string, options?: ExecOptions): Promise<ExecAsyncResult>
 }
 
 // 读取 opencode 配置获取当前模型的 context window
-function getOpenCodeContextWindow(): number {
+function getOpenCodeContextWindow(modelId?: string): number {
   try {
+    // 先尝试从配置文件读取
     const path = require('path');
     const configPath = path.join(process.env.HOME || '/root', '.config', 'opencode', 'opencode.json');
     const config: OpenCodeConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    const modelId = config.model; // e.g. "volcengine-plan/glm-5.1"
-    if (!modelId) return 200000;
-    const [providerId, modelKey] = modelId.split('/');
-    const provider = config.provider?.[providerId];
-    const model = provider?.models?.[modelKey];
-    return model?.limit?.context || 200000;
+    const cfgModelId = modelId || config.model;
+    if (cfgModelId) {
+      const [providerId, modelKey] = cfgModelId.split('/');
+      const provider = config.provider?.[providerId];
+      const model = provider?.models?.[modelKey];
+      if (model?.limit?.context) return model.limit.context;
+    }
+
+    // 配置文件没有，从 opencode models --verbose 获取
+    const output = execSync(`${OPENCODE_PATH} models --verbose`, {
+      encoding: 'utf-8',
+      timeout: 15000,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    const targetModel = modelId || 'opencode/mimo-v2.5-free';
+    const modelShort = targetModel.includes('/') ? targetModel.split('/').pop()! : targetModel;
+    // 按空行或模型名分割，找匹配的 JSON 块
+    const blocks = output.split(/(?=^opencode\/)/m);
+    for (const block of blocks) {
+      if (block.includes(modelShort) || block.includes(targetModel)) {
+        const jsonMatch = block.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const obj = JSON.parse(jsonMatch[0]);
+          if (obj.limit?.context) return obj.limit.context;
+        }
+      }
+    }
   } catch (e) {
-    return 200000;
+    // ignore
   }
+  return 200000;
 }
 
 class OpenCodeAgent extends Agent {
@@ -147,6 +170,7 @@ class OpenCodeAgent extends Agent {
   activeProc: ChildProcess | null;
   pendingHistory: string | null;
   _lastStatusLine: string | null;
+  contextWindow: number;
 
   constructor(workdir: string, options: OpenCodeOptions = {}) {
     super('opencode', workdir);
@@ -161,6 +185,7 @@ class OpenCodeAgent extends Agent {
     this.pendingHistory = null;
     // 最近的一条命令行输出（用于替换成单行状态提示）
     this._lastStatusLine = null;
+    this.contextWindow = 200000; // 默认值，start() 时从配置获取实际值
   }
 
   async start(): Promise<void> {
@@ -171,6 +196,10 @@ class OpenCodeAgent extends Agent {
       this.isRunning = false;
       throw new Error('OpenCode 可用性检查失败，请确认 OpenCode 已安装并在 PATH 中可访问。');
     }
+
+    // 获取模型的上下文窗口大小
+    this.contextWindow = getOpenCodeContextWindow(this.options.model);
+
     this.emit('started');
 
     // 发送欢迎消息
@@ -192,6 +221,13 @@ class OpenCodeAgent extends Agent {
     let trimmed = typeof message !== 'string' ? String(message) : message;
     trimmed = trimmed.trim();
     if (!trimmed) {
+      return Promise.resolve();
+    }
+
+    // 拦截 /compact 命令 - opencode run 模式不支持内部命令，通过事件通知 session manager 处理
+    if (trimmed === '/compact') {
+      console.log('[OpenCode] 检测到 /compact 命令，通知 session manager 处理');
+      this.emit('compact', { agentType: 'opencode', workdir: this.workdir });
       return Promise.resolve();
     }
 
@@ -375,7 +411,7 @@ class OpenCodeAgent extends Agent {
               cacheReadTokens: t.cache?.read || 0,
               cacheWriteTokens: t.cache?.write || 0,
               totalTokens: t.total || 0,
-              contextWindow: getOpenCodeContextWindow(),
+              contextWindow: this.contextWindow,
               cost: t.cost || 0,
               model: this.options.model || 'opencode'
             }

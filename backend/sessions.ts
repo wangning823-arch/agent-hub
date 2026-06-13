@@ -622,6 +622,7 @@ Violation of these rules will result in immediate termination of the session.
       this.saveSession(session);
       this._generateSummaryIfNeeded(session);
     });
+    agent.on('compact', () => this._handleCompact(session));
 
     try {
       await agent.start();
@@ -842,6 +843,7 @@ Violation of these rules will result in immediate termination of the session.
       this.saveSession(session);
       this._generateSummaryIfNeeded(session);
     });
+    agent.on('compact', () => this._handleCompact(session));
 
     try {
       await agent.start();
@@ -1452,6 +1454,53 @@ Violation of these rules will result in immediate termination of the session.
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('会话不存在');
     return session.subtasks || [];
+  }
+
+  /**
+   * 处理 /compact 命令（由 agent 事件触发）
+   * mimo/opencode run 模式不支持内部命令，通过重置会话并恢复记忆来清空上下文
+   */
+  async _handleCompact(session: SessionInstance): Promise<void> {
+    console.log(`[Compact] 处理会话 ${session.id} 的 compact 请求`);
+
+    const agent = session.agent as any;
+    if (!agent) return;
+
+    // 重置会话 ID
+    if (agent.mimoSessionId) {
+      agent.mimoSessionId = null;
+    }
+    if (agent.opencodeSessionId) {
+      agent.opencodeSessionId = null;
+    }
+
+    // 恢复记忆：生成摘要并注入到 pendingHistory
+    if (session.messages.length >= 5) {
+      try {
+        const { summarizeSession } = require('../summary-service');
+        const result = await summarizeSession(session.messages, session.agentType, session.workdir);
+        const summaryContent = `[之前对话的摘要]\n${result.summary}`;
+        // 保留最近10条，其余用摘要替代
+        const keepLast = Math.min(10, session.messages.length);
+        const recentMessages = session.messages.slice(-keepLast);
+        session.messages = [
+          { role: 'user', content: summaryContent, time: Date.now() },
+          { role: 'assistant', content: '已了解之前的对话内容，可以继续交流。', time: Date.now() },
+          ...recentMessages
+        ];
+        session.updatedAt = new Date();
+        this.saveSession(session);
+        // 注入摘要到 pendingHistory，下一条消息会带上
+        agent.pendingHistory = summaryContent;
+        this.broadcast(session.id, { type: 'status', content: '✅ 上下文已重置并恢复记忆' });
+      } catch (err) {
+        console.error('[Compact] 摘要生成失败:', err);
+        this.broadcast(session.id, { type: 'status', content: '⚠️ 压缩失败，将在后续对话中自动管理上下文' });
+      }
+    } else {
+      // 消息太少，直接重置
+      this.broadcast(session.id, { type: 'status', content: '✅ 上下文已重置' });
+    }
   }
 }
 

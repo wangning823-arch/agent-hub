@@ -755,7 +755,7 @@ export default function ChatPanel({
               // 过滤内部状态消息，只显示给用户的状态
               if (msg.content !== 'task_started' && msg.content !== 'task_done' &&
                   msg.content !== 'agent_starting' && msg.content !== 'agent_started' &&
-                  msg.content !== 'agent_stopped') {
+                  msg.content !== 'agent_stopped' && !msg.content.startsWith('__mimo_')) {
                 setStatusMessage(msg.content)
               }
             } else if (msg.type === 'error') {
