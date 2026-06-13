@@ -820,12 +820,10 @@ Violation of these rules will result in immediate termination of the session.
 
     const agent = _createAgent!(session.workdir, agentType, options);
 
-    // mimo/opencode 重启后无法恢复原生会话（--session 传入不认识的ID会挂起），
-    // 始终通过 pendingHistory 注入历史上下文作为补偿
-    // claude-code 使用 --resume 从 .jsonl 恢复，仅在无 conversationId 时回退
-    const needsPendingHistory = (agentType === 'mimo' || agentType === 'opencode')
-      ? session.messages.length > 0
-      : !session.conversationId && session.messages.length > 0;
+    // mimo/opencode: 有 conversationId 时通过 --session 恢复原生会话，无需注入历史
+    //               无 conversationId 时回退到 pendingHistory 注入最近消息
+    // claude-code: 有 conversationId 时使用 --resume 恢复，无则回退到 pendingHistory
+    const needsPendingHistory = !session.conversationId && session.messages.length > 0;
 
     if (needsPendingHistory) {
       const historyLines: string[] = [];

@@ -1,11 +1,12 @@
 /**
  * Mimo Agent适配器
- * 参考 OpenCode 实现，使用 mimo run --format json 模式
+ * 使用 mimo serve + --attach 模式，支持多会话并发和完整上下文恢复
  */
 import Agent from './base';
 import { execSync, spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getMimoServerManager } from '../mimo-server';
 import type { AgentMessage, AgentOptions } from '../types';
 
 function findMimoPath(): string {
@@ -115,19 +116,20 @@ class MimoAgent extends Agent {
   activeProc: ChildProcess | null;
   pendingHistory: string | null;
   contextWindow: number;
+  private serverManager: ReturnType<typeof getMimoServerManager>;
+  private useServer: boolean;
 
   constructor(workdir: string, options: MimoOptions = {}) {
     super('mimo', workdir);
-    // mimo自己的session ID（格式为 ses_xxx），从mimo返回的消息中获取
-    // 对齐opencode行为：始终从null开始，不从DB恢复
-    // --session 传入mimo不认识的ID会导致进程挂起
-    this.mimoSessionId = null;
-    // agent-hub的sessionId，用于内部标识
+    // server 模式下从 conversationId 恢复 mimo 原生会话
+    this.mimoSessionId = options.conversationId || null;
     this.hubSessionId = options.sessionId || options.conversationId || null;
     this.options = options;
     this.activeProc = null;
     this.pendingHistory = null;
-    this.contextWindow = 200000; // 默认值，start() 时从配置获取实际值
+    this.contextWindow = 200000;
+    this.serverManager = getMimoServerManager();
+    this.useServer = true;
   }
 
   async start(): Promise<void> {
@@ -140,16 +142,23 @@ class MimoAgent extends Agent {
       throw new Error('Mimo CLI 未发现或不可用，请确保 MIMO_CLI_PATH 指向正确的二进制，或在 PATH 中可访问。');
     }
 
+    // 尝试启动 mimo server，失败则回退到直接模式
+    try {
+      await this.serverManager.ensureRunning();
+      console.log(`[Mimo] server 已就绪: ${this.serverManager.getServerUrl()}`);
+    } catch (err) {
+      console.warn(`[Mimo] server 启动失败，回退到直接模式: ${(err as Error).message}`);
+      this.useServer = false;
+    }
+
     // 获取模型的上下文窗口大小
     this.contextWindow = this._fetchContextWindow();
 
     this.emit('started');
 
     // 发送欢迎消息
-    this.emit('message', {
-      type: 'status',
-      content: '✅ Mimo 已就绪'
-    });
+    const mode = this.useServer ? '✅ Mimo 已就绪 (server模式)' : '✅ Mimo 已就绪 (直接模式)';
+    this.emit('message', { type: 'status', content: mode });
   }
 
   /**
@@ -165,15 +174,17 @@ class MimoAgent extends Agent {
       const config = JSON.parse(output);
       const modelId = this.options.model || 'mimo/mimo-auto';
       const modelName = modelId.includes('/') ? modelId.split('/').pop()! : modelId;
+      console.log('[Mimo] _fetchContextWindow: modelId=', modelId, 'modelName=', modelName, 'options.model=', this.options.model);
       const provider = config.provider || {};
       for (const pdata of Object.values(provider) as any[]) {
         const models = pdata?.models || {};
         if (models[modelName]?.limit?.context) {
+          console.log('[Mimo] _fetchContextWindow: found context=', models[modelName].limit.context);
           return models[modelName].limit.context;
         }
       }
     } catch (e) {
-      console.log('[Mimo] 获取上下文窗口大小失败，使用默认值 200k');
+      console.log('[Mimo] 获取上下文窗口大小失败，使用默认值 200k', e);
     }
     return 200000;
   }
@@ -220,20 +231,27 @@ class MimoAgent extends Agent {
     }
 
     return new Promise((resolve, reject) => {
-      // 构建命令参数（参考 opencode）
       const args: string[] = ['run'];
 
-      // 使用 --pure 避免 plugins 导致进程挂起
-      args.push('--pure');
-
-      // 恢复会话 - 只在有mimo自己的session ID时使用
-      if (this.mimoSessionId) {
-        args.push('--session', this.mimoSessionId);
+      if (this.useServer) {
+        // Server 模式：通过 --attach 连接常驻 server
+        args.push('--attach', this.serverManager.getServerUrl());
+        args.push('--dir', this.workdir);
+        // server 模式下 --session 安全可用（单进程访问 DB，无锁竞争）
+        if (this.mimoSessionId) {
+          args.push('--session', this.mimoSessionId);
+        }
+      } else {
+        // 回退模式：直接 spawn，使用 --pure 避免插件挂起
+        args.push('--pure');
+        if (this.mimoSessionId) {
+          args.push('--session', this.mimoSessionId);
+        }
       }
 
       // 指定模型，如果没有指定则使用默认模型 mimo/mimo-auto
       const model = this.options.model || 'mimo/mimo-auto';
-      console.log('[Mimo] 使用模型:', model, '(options.model:', this.options.model, ')');
+      console.log('[Mimo] 使用模型:', model, '(options.model:', this.options.model, ', useServer:', this.useServer, ')');
       args.push('--model', model);
 
       // 推理强度
@@ -478,7 +496,8 @@ class MimoAgent extends Agent {
       this.activeProc = null;
     }
     this.isRunning = false;
-    // 保留 mimoSessionId 以便恢复会话时可以继续对话
+    // 释放 server 引用
+    this.serverManager.release();
     this.emit('stopped', { code: 0 });
   }
 
