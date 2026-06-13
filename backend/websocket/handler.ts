@@ -12,12 +12,42 @@ export default (sessionManager: SessionManager, TOKEN_FILE: string) => {
     ACCESS_TOKEN = fs.readFileSync(TOKEN_FILE, 'utf-8').trim();
   } catch (_e) {}
 
+  function isLocalhost(req: IncomingMessage): boolean {
+    const ip = req.socket?.remoteAddress || '';
+    const host = req.headers.host || '';
+    
+    // 检查常见localhost地址
+    const localhostPatterns = [
+      '127.0.0.1',
+      '::1',
+      '::ffff:127.0.0.1',
+      'localhost',
+    ];
+    
+    return localhostPatterns.some(pattern => 
+      ip.includes(pattern) || host.includes(pattern)
+    );
+  }
+
   function authenticateWs(req: IncomingMessage): { user?: UserContext; error?: string } {
     let url: URL;
     try {
       url = new URL(req.url || '', `http://${req.headers.host}`);
     } catch (e) {
       url = new URL(req.url || '', 'http://localhost');
+    }
+
+    // 0. Localhost免认证，设置默认admin用户
+    if (isLocalhost(req)) {
+      const ALLOWED_ROOT = process.env.ALLOWED_ROOT || process.env.HOME || '/root';
+      return {
+        user: {
+          userId: '__localhost__',
+          username: '__localhost__',
+          role: 'admin',
+          homeDir: ALLOWED_ROOT,
+        }
+      };
     }
 
     // 1. Try JWT from Authorization header

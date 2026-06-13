@@ -632,6 +632,13 @@ Violation of these rules will result in immediate termination of the session.
     agent.on('stopped', (data?: { code?: number }) => {
       this.broadcast(id, { type: 'status', content: 'agent_stopped' });
       session.updatedAt = new Date();
+      // 重置isWorking状态
+      if (session.isWorking) {
+        console.log(`[Session] Agent停止，重置isWorking为false`);
+        session.isWorking = false;
+      }
+      // 清理agent引用，允许下次发送消息时重新创建
+      // 但保留session.agent以供后续使用
       this.saveSession(session);
       this._generateSummaryIfNeeded(session);
       // 通知 GoalMonitor
@@ -713,7 +720,18 @@ Violation of these rules will result in immediate termination of the session.
       }
     }
 
-    if (!session.agent) {
+    // 检查agent是否已停止，需要重新启动
+    if (session.agent && !session.agent.isRunning) {
+      console.log(`[Session] Agent已停止，重新启动`);
+      session.isStarting = true;
+      this.broadcast(sessionId, { type: 'status', content: 'agent_starting' });
+      try {
+        await this._resumeAgent(session);
+      } finally {
+        session.isStarting = false;
+        this.broadcast(sessionId, { type: 'status', content: 'agent_started' });
+      }
+    } else if (!session.agent) {
       session.isStarting = true;
       this.broadcast(sessionId, { type: 'status', content: 'agent_starting' });
       try {

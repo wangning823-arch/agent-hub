@@ -51,8 +51,38 @@ function getUserFromDb(userId: string): UserContext | null {
   };
 }
 
+function isLocalhost(req: Request): boolean {
+  const ip = req.ip || req.connection?.remoteAddress || '';
+  const host = req.hostname || '';
+  
+  // 检查常见localhost地址
+  const localhostPatterns = [
+    '127.0.0.1',
+    '::1',
+    '::ffff:127.0.0.1',
+    'localhost',
+  ];
+  
+  return localhostPatterns.some(pattern => 
+    ip.includes(pattern) || host === pattern || host === 'localhost'
+  );
+}
+
 export default function userAuth(req: Request, res: Response, next: NextFunction): any {
+  // 白名单路径直接放行
   if (isWhitelisted(req.path)) {
+    return next();
+  }
+
+  // localhost访问免认证，设置默认admin用户
+  if (isLocalhost(req)) {
+    const ALLOWED_ROOT = process.env.ALLOWED_ROOT || process.env.HOME || '/root';
+    req.user = {
+      userId: '__localhost__',
+      username: '__localhost__',
+      role: 'admin',
+      homeDir: ALLOWED_ROOT,
+    };
     return next();
   }
 

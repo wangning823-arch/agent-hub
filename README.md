@@ -9,6 +9,7 @@
 | Agent | 说明 |
 |-------|------|
 | Claude Code | Anthropic 官方 CLI，功能最全，支持会话恢复、模型选择、effort 等级 |
+| Mimo | 小米 MiMo CLI，支持 build/plan/compose 三种模式，server 模式支持多会话并发 |
 | OpenCode | 内置多个免费模型，零成本使用，支持 build/plan 模式 |
 | Codex | OpenAI Codex CLI，full-auto 模式，支持多 provider 切换 |
 
@@ -183,9 +184,11 @@ agent-pilot/
 │   ├── agents/                      # Agent 适配器
 │   │   ├── base.ts                 # Agent 基类（EventEmitter）
 │   │   ├── claude-code.ts          # Claude Code CLI 适配器
+│   │   ├── mimo.ts                 # Mimo CLI 适配器（server 模式 + 回退）
 │   │   ├── opencode.ts             # OpenCode CLI 适配器
 │   │   ├── codex.ts                # Codex CLI 适配器
 │   │   └── factory.ts              # Agent 工厂
+│   ├── mimo-server.ts              # Mimo Server 管理器（mimo serve 生命周期）
 │   ├── workflow-engine.ts          # 工作流执行引擎
 │   ├── summary-service.ts          # 会话摘要服务
 │   └── credentialManager.ts        # 凭证管理器

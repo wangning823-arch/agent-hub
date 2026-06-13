@@ -22,15 +22,27 @@ interface SummaryServiceLike {
 
 // 完成关键词列表（需要在独立声明中匹配，避免误判普通输出中的词汇）
 const COMPLETION_KEYWORDS = [
+  // 明确的完成声明
   '任务已完成', '任务完成', '已完成任务', '已完成所有',
   'all tasks done', 'task completed', 'successfully completed',
   '实现完成', '功能已完成', '代码已完成', '开发已完成',
+  // 工作完成模式
+  '已更新', '已创建', '已实现', '已修复', '已完成',
+  '已经完成', '已经更新', '已经创建', '已经实现',
+  'updated', 'created', 'implemented', 'fixed', 'completed',
+  // 文件操作完成
+  '文件已保存', '文件已创建', '文件已更新', '文件已写入',
+  'saved', 'written', 'updated successfully',
+  // 明确的任务完成声明
+  '任务完成', '工作完成', '任务结束', '工作结束',
+  'done', 'finished', 'all done', 'task done',
 ];
 
 // 失败/错误关键词列表
 const FAILURE_KEYWORDS = [
   '失败', '错误', 'error', 'failed', 'crash',
   '无法', '不能', 'exception', 'fatal',
+  '未完成', 'not completed', 'incomplete',
 ];
 
 export default class GoalMonitor extends EventEmitter {
@@ -140,12 +152,31 @@ export default class GoalMonitor extends EventEmitter {
           console.log(`[GoalMonitor] sendMessage 完成`);
         } else {
           console.log(`[GoalMonitor] 会话 ${sessionId} 正在工作中，等待完成后发送`);
-          // 等待当前任务完成后再发送
-          const waitForCompletion = () => {
-            return new Promise<void>((resolve) => {
+          // 等待当前任务完成后再发送（带超时）
+          const waitForCompletion = (): Promise<void> => {
+            return new Promise<void>((resolve, reject) => {
+              const timeout = 300000; // 5分钟超时
+              const startTime = Date.now();
               const checkInterval = setInterval(() => {
+                // 检查超时
+                if (Date.now() - startTime > timeout) {
+                  clearInterval(checkInterval);
+                  reject(new Error('等待会话空闲超时'));
+                  return;
+                }
                 const s = this.sessionManager.getSession(sessionId);
-                if (s && !s.isWorking) {
+                // 检查session是否存在
+                if (!s) {
+                  clearInterval(checkInterval);
+                  reject(new Error(`会话 ${sessionId} 不存在`));
+                  return;
+                }
+                // 检查agent是否还在运行
+                if (s.agent && !s.agent.isRunning && s.isWorking) {
+                  console.log(`[GoalMonitor] 检测到agent已停止但isWorking仍为true，重置状态`);
+                  s.isWorking = false;
+                }
+                if (!s.isWorking) {
                   clearInterval(checkInterval);
                   resolve();
                 }
@@ -296,36 +327,57 @@ export default class GoalMonitor extends EventEmitter {
       }
     }
 
-    // 策略3: 启发式关键词检测（仅在最后一条消息中检查，且需要更严格的匹配）
-    const lastMessages = this.getRecentMessages(session, 3);
+    // 策略3: 启发式关键词检测（检查更多消息，提高准确性）
+    const lastMessages = this.getRecentMessages(session, 10);
     const lastAssistantText = lastMessages
       .filter((m: any) => m.role === 'assistant')
       .map((m: any) => typeof m.content === 'string' ? m.content : JSON.stringify(m.content))
       .join('\n');
 
-    // 检查完成关键词 - 需要在最后一行或独立声明中匹配
-    const hasCompletionKeyword = COMPLETION_KEYWORDS.some(kw => {
-      // 检查是否在最后一行
-      const lines = lastAssistantText.split('\n');
-      const lastLine = lines[lines.length - 1]?.trim() || '';
-      if (lastLine.includes(kw)) return true;
-      // 检查是否是独立的完成声明（前后有换行或标点）
-      const regex = new RegExp(`(?:^|[\\n。！？])\\s*${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(?:[\\n。！？]|$)`);
-      return regex.test(lastAssistantText);
-    });
+    // 检查是否只有计划文件（没有实际修改）
+    const hasOnlyPlanFile = this.checkOnlyPlanFile(lastAssistantText);
+    if (hasOnlyPlanFile) {
+      console.log(`[GoalMonitor] 检测到只有计划文件，未完成`);
+      return false;
+    }
+
+    // 检查是否有实际的代码修改
+    const hasCodeModification = this.checkCodeModification(lastAssistantText);
+    
+    // 检查是否有测试执行
+    const hasTestExecution = this.checkTestExecution(lastAssistantText);
+
+    // 检查完成关键词 - 使用更灵活的匹配
+    const hasCompletionKeyword = this.checkCompletionKeywords(lastAssistantText);
 
     // 检查失败关键词
     const hasFailureKeyword = FAILURE_KEYWORDS.some(kw =>
       lastAssistantText.includes(kw)
     );
 
-    if (hasCompletionKeyword && !hasFailureKeyword) {
-      console.log(`[GoalMonitor] 检测到完成关键词`);
+    // 记录检测结果
+    console.log(`[GoalMonitor] 启发式检测: 完成关键词=${hasCompletionKeyword}, 代码修改=${hasCodeModification}, 测试执行=${hasTestExecution}, 失败关键词=${hasFailureKeyword}`);
+
+    // 严格判断：必须有完成关键词、没有失败关键词、有实际代码修改
+    if (hasCompletionKeyword && !hasFailureKeyword && hasCodeModification) {
+      console.log(`[GoalMonitor] 检测到完成关键词且有代码修改`);
       return true;
     }
 
+    // 如果有完成关键词和测试执行，即使没有显式代码修改也可能完成
+    if (hasCompletionKeyword && !hasFailureKeyword && hasTestExecution) {
+      console.log(`[GoalMonitor] 检测到完成关键词且有测试执行`);
+      return true;
+    }
+
+    // 如果有完成关键词但没有代码修改，可能只是生成了计划
+    if (hasCompletionKeyword && !hasCodeModification && !hasTestExecution) {
+      console.log(`[GoalMonitor] 有完成关键词但没有代码修改或测试，可能只是生成了计划`);
+      return false;
+    }
+
     // 默认: 退出码为0且有完成关键词时认为完成
-    if (exitCode === 0 && hasCompletionKeyword) {
+    if (exitCode === 0 && hasCompletionKeyword && hasCodeModification) {
       return true;
     }
 
@@ -344,13 +396,28 @@ export default class GoalMonitor extends EventEmitter {
       goal.workdir
     );
 
-    const judgePrompt = `你是一个任务完成度判断器。请根据以下信息判断任务是否已完成。
+    const judgePrompt = `你是一个任务完成度判断器。请根据以下信息严格判断任务是否真正完成。
 
-原始任务: ${goal.originalPrompt}
+## 原始任务要求
+${goal.originalPrompt}
 
-执行摘要: ${summary}
+## 当前执行摘要
+${summary}
 
-之前的进度: ${goal.progress || '(无)'}
+## 之前的进度
+${goal.progress || '(无)'}
+
+## 判断标准（必须同时满足以下所有条件才算完成）
+1. **代码修改已完成**：所有要求的修改都已实际实现，而不是只生成了计划文件
+2. **测试已通过**：所有相关测试都已执行并通过
+3. **功能正常**：修改后的功能可以正常工作，没有明显错误
+4. **没有遗漏**：原始任务中的所有要求都已逐一完成
+
+## 特别注意
+- 如果只是生成了计划文件但没有执行修改，算作"未完成"
+- 如果修改了代码但没有测试，算作"未完成"
+- 如果测试失败或有明显错误，算作"未完成"
+- 只有当所有要求都完成且验证通过时，才算"已完成"
 
 请只回答 "已完成" 或 "未已完成"，不要有其他内容。`;
 
@@ -367,6 +434,129 @@ export default class GoalMonitor extends EventEmitter {
   private getRecentMessages(session: any, count: number): any[] {
     if (!session.messages) return [];
     return session.messages.slice(-count);
+  }
+
+  /**
+   * 检查是否只有计划文件（没有实际修改）
+   */
+  private checkOnlyPlanFile(text: string): boolean {
+    const planPatterns = [
+      /生成.*plan/i,
+      /创建.*计划/i,
+      /制定.*方案/i,
+      /review.*plan/i,
+      /修改计划/i,
+      /plan.*文件/i,
+    ];
+    
+    // 如果文本主要是计划相关内容，且没有实际修改
+    const hasPlanContent = planPatterns.some(pattern => pattern.test(text));
+    const hasActualModification = this.checkCodeModification(text);
+    
+    // 如果有计划内容但没有实际修改，认为只有计划文件
+    return hasPlanContent && !hasActualModification;
+  }
+
+  /**
+   * 检查是否有实际的代码修改
+   */
+  private checkCodeModification(text: string): boolean {
+    const modificationPatterns = [
+      /编辑.*文件/i,
+      /修改.*代码/i,
+      /更新.*文件/i,
+      /添加.*功能/i,
+      /实现.*功能/i,
+      /修复.*问题/i,
+      /优化.*性能/i,
+      /重构.*代码/i,
+      /写入.*文件/i,
+      /保存.*文件/i,
+      /创建.*文件/i,
+      /删除.*文件/i,
+      /移动.*文件/i,
+      /重命名.*文件/i,
+      /git.*commit/i,
+      /git.*push/i,
+      /npm.*install/i,
+      /npm.*run/i,
+      /测试.*通过/i,
+      /test.*pass/i,
+      /构建.*成功/i,
+      /build.*success/i,
+    ];
+    
+    return modificationPatterns.some(pattern => pattern.test(text));
+  }
+
+  /**
+   * 检查是否有测试执行
+   */
+  private checkTestExecution(text: string): boolean {
+    const testPatterns = [
+      /运行.*测试/i,
+      /执行.*测试/i,
+      /测试.*通过/i,
+      /测试.*失败/i,
+      /npm.*test/i,
+      /jest.*test/i,
+      /vitest.*test/i,
+      /mocha.*test/i,
+      /test.*pass/i,
+      /test.*fail/i,
+      /所有.*测试/i,
+      /单元测试/i,
+      /集成测试/i,
+      /端到端测试/i,
+    ];
+    
+    return testPatterns.some(pattern => pattern.test(text));
+  }
+
+  /**
+   * 更灵活地检查完成关键词
+   */
+  private checkCompletionKeywords(text: string): boolean {
+    if (!text) return false;
+    
+    const lines = text.split('\n');
+    const lastLines = lines.slice(-10); // 检查最后10行
+    
+    // 检查最后一行是否包含完成关键词
+    const lastLine = lastLines[lastLines.length - 1]?.trim() || '';
+    for (const kw of COMPLETION_KEYWORDS) {
+      if (lastLine.includes(kw)) {
+        console.log(`[GoalMonitor] 最后一行包含完成关键词: "${kw}"`);
+        return true;
+      }
+    }
+    
+    // 检查是否有独立的完成声明（前后有换行或标点）
+    for (const kw of COMPLETION_KEYWORDS) {
+      const escapedKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`(?:^|[\\n。！？])\\s*${escapedKw}\\s*(?:[\\n。！？]|$)`, 'i');
+      if (regex.test(text)) {
+        console.log(`[GoalMonitor] 检测到独立完成声明: "${kw}"`);
+        return true;
+      }
+    }
+    
+    // 检查最后几行中是否有多个完成关键词（提高置信度）
+    const lastText = lastLines.join('\n');
+    let completionCount = 0;
+    for (const kw of COMPLETION_KEYWORDS) {
+      if (lastText.includes(kw)) {
+        completionCount++;
+      }
+    }
+    
+    // 如果最后几行中有2个或更多完成关键词，认为完成
+    if (completionCount >= 2) {
+      console.log(`[GoalMonitor] 最后几行中有${completionCount}个完成关键词`);
+      return true;
+    }
+    
+    return false;
   }
 
   /**
@@ -453,22 +643,64 @@ export default class GoalMonitor extends EventEmitter {
     const messages = session.messages || [];
     const assistantMessages = messages
       .filter((m: any) => m.role === 'assistant')
-      .slice(-10);
+      .slice(-15);
 
     if (assistantMessages.length === 0) {
       return '尚无进展';
     }
 
-    // 提取最近的工具调用和文本输出
-    const recentActivity: string[] = [];
+    // 统计工具调用
+    const toolCalls: string[] = [];
+    const textOutputs: string[] = [];
+    const filesModified: Set<string> = new Set();
+
     for (const msg of assistantMessages) {
       const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-      // 截取关键信息
-      const lines = content.split('\n').filter((l: string) => l.trim());
-      recentActivity.push(lines.slice(0, 5).join('\n'));
+      
+      // 提取工具调用
+      const toolMatch = content.match(/"tool":"([^"]+)"/g);
+      if (toolMatch) {
+        toolCalls.push(...toolMatch.map((m: string) => m.replace(/"/g, '')));
+      }
+      
+      // 提取文件修改
+      const fileMatch = content.match(/"filePath":"([^"]+)"/g);
+      if (fileMatch) {
+        fileMatch.forEach((m: string) => {
+          const path = m.replace(/"filePath":"/, '').replace(/"$/, '');
+          filesModified.add(path);
+        });
+      }
+      
+      // 提取文本输出（排除工具调用）
+      const textContent = content.replace(/\{[^}]*"tool"[^}]*\}/g, '').trim();
+      if (textContent && textContent.length > 10) {
+        const lines = textContent.split('\n').filter((l: string) => l.trim());
+        textOutputs.push(lines.slice(0, 3).join('\n'));
+      }
     }
 
-    return `最近活动:\n${recentActivity.join('\n---\n')}`;
+    // 构建摘要
+    const summaryParts: string[] = [];
+    
+    if (toolCalls.length > 0) {
+      const uniqueTools = [...new Set(toolCalls)];
+      summaryParts.push(`执行了 ${uniqueTools.length} 种工具操作: ${uniqueTools.join(', ')}`);
+    }
+    
+    if (filesModified.size > 0) {
+      summaryParts.push(`修改了 ${filesModified.size} 个文件: ${Array.from(filesModified).slice(0, 5).join(', ')}${filesModified.size > 5 ? '...' : ''}`);
+    }
+    
+    if (textOutputs.length > 0) {
+      summaryParts.push(`输出了 ${textOutputs.length} 段文本`);
+    }
+
+    if (summaryParts.length === 0) {
+      return '执行了操作，但无法提取详细信息';
+    }
+
+    return summaryParts.join('\n');
   }
 
   /**

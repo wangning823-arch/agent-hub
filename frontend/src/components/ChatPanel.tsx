@@ -16,6 +16,15 @@ import DesignSystemPanel from './DesignSystemPanel'
 import CodeBeautifyModal from './CodeBeautifyModal'
 import ScheduleModal from './ScheduleModal'
 
+function isSafeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url, window.location.origin)
+    return ['http:', 'https:', 'data:image/'].some(scheme => parsed.protocol === scheme || url.startsWith(scheme))
+  } catch {
+    return false
+  }
+}
+
 // ---- 类型定义 ----
 
 interface ChatMessage {
@@ -2010,7 +2019,7 @@ export default function ChatPanel({
                   className="relative group card p-2 flex items-center gap-2 max-w-[200px]"
                 >
                   {att.type === 'image' ? (
-                    <img src={att.url} alt={att.name} className="w-10 h-10 object-cover rounded-lg" />
+                    <img src={isSafeUrl(att.url) ? att.url : ''} alt={att.name} className="w-10 h-10 object-cover rounded-lg" />
                   ) : (
                     <div className="w-10 h-10 rounded-lg flex items-center justify-center"
                       style={{ background: 'var(--bg-hover)' }}>📄</div>

@@ -7,6 +7,16 @@ import * as fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { Request, Response } from 'express';
 
+// SVG安全清理：移除危险元素和属性
+function sanitizeSvg(content: string): string {
+  return content
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '')
+    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
+    .replace(/javascript\s*:/gi, '')
+    .replace(/data\s*:\s*text\/html/gi, '');
+}
+
 // 上传目录
 const UPLOAD_DIR: string = path.join(__dirname, '..', '..', 'uploads');
 
@@ -57,7 +67,7 @@ const fileFilter = (_req: Request, file: Express.Multer.File, cb: multer.FileFil
     // 图片
     'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
     // 文本/代码
-    'text/plain', 'text/html', 'text/css', 'text/javascript',
+    'text/plain', 'text/css', 'text/javascript',
     'application/json', 'application/xml',
     'application/javascript',
     // 文档
@@ -111,6 +121,13 @@ function handleUpload(req: Request, res: Response): void {
     }
 
     const uploadedFiles: UploadedFile[] = (req.files as Express.Multer.File[]).map(file => {
+      // SVG安全清理
+      if (file.mimetype === 'image/svg+xml') {
+        try {
+          const content = fs.readFileSync(file.path, 'utf-8');
+          fs.writeFileSync(file.path, sanitizeSvg(content), 'utf-8');
+        } catch {}
+      }
       const relPath = path.relative(UPLOAD_DIR, file.path);
       // 修复中文文件名乱码
       let originalName = file.originalname;

@@ -6,6 +6,15 @@ import 'highlight.js/styles/github-dark.css'
 import { IconCopy, IconQuote, IconTrash, IconResend, IconCheck } from './Icons'
 import { Sparkles } from 'lucide-react'
 
+function isSafeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url, window.location.origin)
+    return ['http:', 'https:', 'data:image/'].some(scheme => parsed.protocol === scheme || url.startsWith(scheme))
+  } catch {
+    return false
+  }
+}
+
 // ---- 类型定义 ----
 
 interface Attachment {
@@ -311,16 +320,17 @@ export default React.memo(function Message({ message, index, onDelete, onCopy, o
 
 function AttachmentPreview({ attachment, isUser }: AttachmentPreviewProps) {
   const { type, name, url, size } = attachment
+  const safeUrl = isSafeUrl(url) ? url : '#'
   if (type === 'image') {
     return (
       <div className="rounded-lg overflow-hidden">
-        <img src={url} alt={name} className="max-w-[200px] max-h-[150px] object-cover cursor-pointer hover:opacity-90"
-          onClick={() => window.open(url, '_blank')} />
+        <img src={safeUrl} alt={name} className="max-w-[200px] max-h-[150px] object-cover cursor-pointer hover:opacity-90"
+          onClick={() => safeUrl !== '#' && window.open(safeUrl, '_blank')} />
       </div>
     )
   }
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer"
+    <a href={safeUrl} target="_blank" rel="noopener noreferrer"
       className="flex items-center gap-2 p-2 rounded-lg transition-colors"
       style={{ background: isUser ? 'rgba(255,255,255,0.15)' : 'var(--bg-hover)' }}
       onMouseEnter={(e) => e.currentTarget.style.opacity = '0.85'}

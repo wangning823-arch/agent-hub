@@ -105,7 +105,7 @@ app.use(express.json({ limit: '5mb' }));
 
 // ==================== Security Headers ====================
 app.use((_req: Request, res: Response, next: NextFunction) => {
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self'");
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('X-XSS-Protection', '1; mode=block');
@@ -148,7 +148,7 @@ function renderDirectoryListing(dirPath: string, urlPath: string, baseUrl: strin
   }).filter(Boolean).join('\n');
 
   const parentLink = urlPath
-    ? `<tr><td></td><td><a href="${path.dirname(baseUrl)}">../</a></td><td></td></tr>`
+    ? `<tr><td></td><td><a href="${escapeHtml(path.dirname(baseUrl))}">../</a></td><td></td></tr>`
     : '';
 
   return `<!DOCTYPE html>
@@ -156,7 +156,7 @@ function renderDirectoryListing(dirPath: string, urlPath: string, baseUrl: strin
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Index of ${urlPath || '/'}</title>
+  <title>Index of ${escapeHtml(urlPath || '/')}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; color: #333; background: #fafafa; }
@@ -172,7 +172,7 @@ function renderDirectoryListing(dirPath: string, urlPath: string, baseUrl: strin
   </style>
 </head>
 <body>
-  <h1>Index of /${urlPath || ''}</h1>
+  <h1>Index of /${escapeHtml(urlPath || '')}</h1>
   <table>
     ${parentLink}
     ${rows}

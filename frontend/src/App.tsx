@@ -708,8 +708,14 @@ export default function App() {
                     try {
                       const res = await fetch(`${API_BASE}/projects/${projectId}/preview-url`)
                       const data = await res.json()
-                      if (import.meta.env.DEV && data.apiUrl) window.open(data.apiUrl, '_blank')
-                      else if (data.url) window.open(data.url, '_blank')
+                      const safeOpen = (url: string) => {
+                        try {
+                          const u = new URL(url, window.location.origin)
+                          if (u.protocol === 'http:' || u.protocol === 'https:') window.open(url, '_blank')
+                        } catch {}
+                      }
+                      if (import.meta.env.DEV && data.apiUrl) safeOpen(data.apiUrl)
+                      else if (data.url) safeOpen(data.url)
                     } catch (e) {
                       toast.error('获取预览地址失败')
                     }
