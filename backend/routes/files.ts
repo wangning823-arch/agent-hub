@@ -17,8 +17,12 @@ export default (ALLOWED_ROOT: string, projectManager?: any) => {
     const userRoot = getUserRoot(req);
 
     if (!projectId || !filePath || !projectManager) {
-      const resolved = path.resolve(filePath || '');
-      if (!resolved.startsWith(userRoot)) {
+      try {
+        const resolved = fs.realpathSync(path.resolve(filePath || ''));
+        if (!resolved.startsWith(fs.realpathSync(userRoot))) {
+          return res.status(403).json({ error: '路径不在允许的范围内' });
+        }
+      } catch {
         return res.status(403).json({ error: '路径不在允许的范围内' });
       }
       return next();
@@ -29,13 +33,17 @@ export default (ALLOWED_ROOT: string, projectManager?: any) => {
       return res.status(404).json({ error: '项目不存在' });
     }
 
-    const resolved = path.resolve(filePath);
+    try {
+      const resolved = fs.realpathSync(path.resolve(filePath));
 
-    if (!resolved.startsWith(userRoot)) {
+      if (!resolved.startsWith(fs.realpathSync(userRoot))) {
+        return res.status(403).json({ error: '路径不在允许的范围内' });
+      }
+      if (!resolved.startsWith(project.workdir)) {
+        return res.status(403).json({ error: '无权访问此项目目录外的文件' });
+      }
+    } catch {
       return res.status(403).json({ error: '路径不在允许的范围内' });
-    }
-    if (!resolved.startsWith(project.workdir)) {
-      return res.status(403).json({ error: '无权访问此项目目录外的文件' });
     }
 
     next();
@@ -48,8 +56,12 @@ export default (ALLOWED_ROOT: string, projectManager?: any) => {
     }
 
     const userRoot = getUserRoot(req);
-    const resolved = path.resolve(dirPath);
-    if (!resolved.startsWith(userRoot)) {
+    try {
+      const resolved = fs.realpathSync(path.resolve(dirPath));
+      if (!resolved.startsWith(fs.realpathSync(userRoot))) {
+        return res.status(403).json({ error: '路径不在允许的范围内' });
+      }
+    } catch {
       return res.status(403).json({ error: '路径不在允许的范围内' });
     }
 

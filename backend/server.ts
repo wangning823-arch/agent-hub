@@ -73,11 +73,11 @@ let sessionManager!: SessionManager;
 async function initApp(): Promise<void> {
   await initDb();
 
-  // 每 10 秒自动保存数据库到磁盘，防止 OOM 崩溃导致数据丢失
+  // 每 60 秒自动保存数据库到磁盘，防止 OOM 崩溃导致数据丢失
   setInterval(() => {
     try { saveToFile(); } catch (e) { console.error('[DB] 主数据库保存失败:', e); }
     try { saveTokenStatsToFile(); } catch (e) { console.error('[DB] Token统计保存失败:', e); }
-  }, 10000);
+  }, 60000);
 
   // 每 24 小时自动刷新 OpenCode 免费模型缓存（空闲时预加载，避免用户请求时阻塞）
   setInterval(() => {
@@ -102,10 +102,24 @@ async function initApp(): Promise<void> {
 // ==================== Static Middleware ====================
 
 app.use(express.json({ limit: '5mb' }));
-app.use(express.static(DIST_PATH));
+
+// ==================== Security Headers ====================
+app.use((_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self'");
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  next();
+});
+
+app.use(express.static(DIST_PATH, { maxAge: '1h', etag: true }));
 
 // ==================== Project Preview Route ====================
 // 公开访问：通过 /:username/:project 提供项目静态文件
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function renderDirectoryListing(dirPath: string, urlPath: string, baseUrl: string): string {
   const entries = fs.readdirSync(dirPath, { withFileTypes: true });
   const items = entries
@@ -116,8 +130,8 @@ function renderDirectoryListing(dirPath: string, urlPath: string, baseUrl: strin
     });
 
   const rows = items.map(entry => {
-    const name = entry.isDirectory() ? `${entry.name}/` : entry.name;
-    const href = `${baseUrl}/${entry.name}`;
+    const name = escapeHtml(entry.isDirectory() ? `${entry.name}/` : entry.name);
+    const href = escapeHtml(`${baseUrl}/${entry.name}`);
     const icon = entry.isDirectory()
       ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>'
       : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>';
@@ -227,35 +241,37 @@ function projectPreviewHandler(req: Request, res: Response, next: NextFunction):
     }
 
     const targetFile = path.join(workdir, filePath);
-    const resolved = path.resolve(targetFile);
-    if (!resolved.startsWith(path.resolve(workdir))) {
+    try {
+      const resolved = fs.realpathSync(path.resolve(targetFile));
+      if (!resolved.startsWith(fs.realpathSync(path.resolve(workdir)))) {
+        res.status(403).json({ error: 'Access denied' });
+        return;
+      }
+
+      if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+        if (!req.url.endsWith('/')) {
+          res.redirect(301, req.url + '/');
+          return;
+        }
+        const indexPath = path.join(resolved, 'index.html');
+        const resolvedIndex = path.resolve(indexPath);
+        if (resolvedIndex.startsWith(path.resolve(workdir)) && fs.existsSync(resolvedIndex)) {
+          res.sendFile(resolvedIndex);
+          return;
+        }
+        const baseUrl = `/${username}/${projectName}/${filePath}`.replace(/\/+$/, '');
+        res.send(renderDirectoryListing(resolved, filePath, baseUrl));
+        return;
+      }
+
+      res.sendFile(resolved, (err) => {
+        if (err) {
+          res.status(404).json({ error: 'File not found' });
+        }
+      });
+    } catch {
       res.status(403).json({ error: 'Access denied' });
-      return;
     }
-
-    if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
-      // 目录无尾部斜杠时重定向，确保浏览器正确解析相对路径
-      if (!req.url.endsWith('/')) {
-        res.redirect(301, req.url + '/');
-        return;
-      }
-      // 子目录也优先尝试 serve index.html
-      const indexPath = path.join(resolved, 'index.html');
-      const resolvedIndex = path.resolve(indexPath);
-      if (resolvedIndex.startsWith(path.resolve(workdir)) && fs.existsSync(resolvedIndex)) {
-        res.sendFile(resolvedIndex);
-        return;
-      }
-      const baseUrl = `/${username}/${projectName}/${filePath}`.replace(/\/+$/, '');
-      res.send(renderDirectoryListing(resolved, filePath, baseUrl));
-      return;
-    }
-
-    res.sendFile(resolved, (err) => {
-      if (err) {
-        res.status(404).json({ error: 'File not found' });
-      }
-    });
   } catch (error) {
     next(error);
   }

@@ -17,7 +17,6 @@ const WHITELIST_PATHS = [
 
 const WHITELIST_PREFIXES = [
   '/assets',
-  '/uploads',
   '/api/preview',
   '/api/design-systems',
 ];

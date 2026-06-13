@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 
 import type {
   AgentType,
@@ -121,6 +121,7 @@ const WORKFLOW_CREATION_SYSTEM_PROMPT = `
 let _createAgent: ((workdir: string, agentType: AgentType, options: Record<string, unknown>) => AgentBase) | null = null;
 let _getDb: (() => SqlDb) | null = null;
 let _saveToFile: (() => void) | null = null;
+let _scheduleSaveToFile: (() => void) | null = null;
 let _credentialManager: CredentialManagerLike | null = null;
 let _WSClients: (new () => WSClientsLike) | null = null;
 
@@ -133,9 +134,10 @@ function ensureImports(): void {
   _createAgent = factoryMod.createAgent;
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const dbMod = require('./db') as { getDb: () => SqlDb; saveToFile: () => void };
+  const dbMod = require('./db') as { getDb: () => SqlDb; saveToFile: () => void; scheduleSaveToFile: () => void };
   _getDb = dbMod.getDb;
   _saveToFile = dbMod.saveToFile;
+  _scheduleSaveToFile = dbMod.scheduleSaveToFile;
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   _credentialManager = require('./credentialManager').default as CredentialManagerLike;
@@ -145,6 +147,8 @@ function ensureImports(): void {
 }
 
 // ==================== SessionManager ====================
+
+const MAX_IN_MEMORY_MESSAGES = 500;
 
 class SessionManager {
   sessions: Map<string, SessionInstance>;
@@ -321,16 +325,16 @@ Violation of these rules will result in immediate termination of the session.
         fs.chmodSync(credentialsFile, parseInt('600', 8));
         return { success: true, message: 'Token凭证已配置' };
       } else if (cred.type === 'ssh') {
-        execSync(
-          'git config --local core.sshCommand "ssh -o StrictHostKeyChecking=no"',
+        execFileSync(
+          'git', ['config', '--local', 'core.sshCommand', 'ssh -o StrictHostKeyChecking=accept-new'],
           { cwd: workdir },
         );
         if (cred.keyData) {
           const keyPath = path.join(workdir, '.git', 'id_rsa');
           fs.writeFileSync(keyPath, cred.keyData, { encoding: 'utf8' });
           fs.chmodSync(keyPath, parseInt('600', 8));
-          execSync(
-            `git config --local core.sshCommand "ssh -i ${keyPath} -o StrictHostKeyChecking=no"`,
+          execFileSync(
+            'git', ['config', '--local', 'core.sshCommand', `ssh -i ${keyPath} -o StrictHostKeyChecking=accept-new`],
             { cwd: workdir },
           );
         }
@@ -512,7 +516,7 @@ Violation of these rules will result in immediate termination of the session.
 
       session.lastSavedMessageCount = session.messages.length;
 
-      _saveToFile!();
+      _scheduleSaveToFile!();
     } catch (error) {
       console.error(`[Session] 保存会话 ${session.id} 失败:`, error);
     }
@@ -700,7 +704,13 @@ Violation of these rules will result in immediate termination of the session.
     }
 
     if (session.isWorking) {
-      throw new Error('Agent正在执行任务，请等待完成后再发送');
+      // 安全检查：如果agent实际上没有在运行，重置isWorking状态
+      if (session.agent && !session.agent.isRunning) {
+        console.log(`[Session] isWorking状态异常，重置为false`);
+        session.isWorking = false;
+      } else {
+        throw new Error('Agent正在执行任务，请等待完成后再发送');
+      }
     }
 
     if (!session.agent) {
@@ -718,6 +728,9 @@ Violation of these rules will result in immediate termination of the session.
     message = await this._processUploadRefs(message, session.workdir);
 
     session.messages.push({ role: 'user', content: message, time: Date.now(), ...(quote ? { quote } : {}) });
+    if (session.messages.length > MAX_IN_MEMORY_MESSAGES) {
+      session.messages = session.messages.slice(-MAX_IN_MEMORY_MESSAGES);
+    }
     session.updatedAt = new Date();
     this.saveSession(session);
 
@@ -911,6 +924,9 @@ Violation of these rules will result in immediate termination of the session.
       ];
       if (!metaTypes.includes(msg.type) && !msg.subtask_id && !(msg as any).workflow_id) {
         session.messages.push({ role: 'assistant', content: msg, time: Date.now() });
+        if (session.messages.length > MAX_IN_MEMORY_MESSAGES) {
+          session.messages = session.messages.slice(-MAX_IN_MEMORY_MESSAGES);
+        }
         this.saveSession(session);
       }
 
@@ -956,7 +972,7 @@ Violation of these rules will result in immediate termination of the session.
       const db = _getDb!();
       db.run('DELETE FROM messages WHERE session_id = ?', [sessionId]);
       db.run('DELETE FROM sessions WHERE id = ?', [sessionId]);
-      _saveToFile!();
+      _scheduleSaveToFile!();
     }
   }
 

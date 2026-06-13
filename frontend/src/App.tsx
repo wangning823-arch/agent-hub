@@ -359,25 +359,12 @@ export default function App() {
   useEffect(() => {
     const checkAgentStatus = async (): Promise<void> => {
       try {
-        const res = await fetch(`${API_BASE}/sessions`)
-        const data = await res.json()
-        if (!Array.isArray(data)) return
-
-        const statusPromises = data
-          .map(async (s: Session) => {
-            try {
-              const statusRes = await fetch(`${API_BASE}/sessions/${s.id}/status`)
-              const status = await statusRes.json()
-              return { id: s.id, isActive: status.isActive, isWorking: status.isWorking, isStarting: status.isStarting }
-            } catch {
-              return { id: s.id, isActive: false, isWorking: false, isStarting: false }
-            }
-          })
-
-        const statuses = await Promise.all(statusPromises)
+        const res = await fetch(`${API_BASE}/sessions/status/batch`)
+        const statuses = await res.json()
+        if (!Array.isArray(statuses)) return
 
         setSessions(prev => prev.map(s => {
-          const status = statuses.find(st => st.id === s.id)
+          const status = statuses.find((st: any) => st.id === s.id)
           if (status) {
             return { ...s, isActive: status.isActive, isWorking: status.isWorking, isStarting: status.isStarting }
           }
@@ -388,7 +375,7 @@ export default function App() {
       }
     }
 
-    const interval = setInterval(checkAgentStatus, 3000)
+    const interval = setInterval(checkAgentStatus, 10000)
     return () => clearInterval(interval)
   }, [])
 
@@ -611,7 +598,14 @@ export default function App() {
   const currentOptions: Record<string, any> = activeSession ? sessionOptions[activeSession] || {} : {}
   const currentSession: Session | undefined = sessions.find(s => s.id === activeSession)
 
-  if (!authChecked) return null
+  if (!authChecked) return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg-primary)' }}>
+      <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+        <div className="loading-dots" style={{ marginBottom: 12 }}><span></span><span></span><span></span></div>
+        <p>加载中...</p>
+      </div>
+    </div>
+  )
   const currentToken: string = localStorage.getItem('access_token') || accessToken
   if (!currentToken) return <Login onLogin={handleLogin} />
 

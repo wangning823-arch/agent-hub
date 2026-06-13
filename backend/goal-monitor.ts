@@ -20,11 +20,11 @@ interface SummaryServiceLike {
   summarizeSession(messages: SessionMessage[], agentType: AgentType, workdir?: string): Promise<{ summary: string }>;
 }
 
-// 完成关键词列表
+// 完成关键词列表（需要在独立声明中匹配，避免误判普通输出中的词汇）
 const COMPLETION_KEYWORDS = [
-  '任务已完成', '任务完成', '已完成', '完成', '成功完成',
-  'all done', 'completed', 'finished', 'successfully',
-  '实现完成', '功能完成', '代码完成', '开发完成',
+  '任务已完成', '任务完成', '已完成任务', '已完成所有',
+  'all tasks done', 'task completed', 'successfully completed',
+  '实现完成', '功能已完成', '代码已完成', '开发已完成',
 ];
 
 // 失败/错误关键词列表
@@ -287,17 +287,32 @@ export default class GoalMonitor extends EventEmitter {
       // 不直接返回 false，继续其他检查
     }
 
-    // 策略2: 启发式关键词检测
-    const lastMessages = this.getRecentMessages(session, 5);
+    // 策略2: LLM 判断（优先使用，更准确）
+    if (this.llmJudgeFn && this.summaryService) {
+      try {
+        return await this.llmJudgeCompletion(goal, session);
+      } catch (err) {
+        console.error(`[GoalMonitor] LLM 判断失败:`, (err as Error).message);
+      }
+    }
+
+    // 策略3: 启发式关键词检测（仅在最后一条消息中检查，且需要更严格的匹配）
+    const lastMessages = this.getRecentMessages(session, 3);
     const lastAssistantText = lastMessages
       .filter((m: any) => m.role === 'assistant')
       .map((m: any) => typeof m.content === 'string' ? m.content : JSON.stringify(m.content))
       .join('\n');
 
-    // 检查完成关键词
-    const hasCompletionKeyword = COMPLETION_KEYWORDS.some(kw =>
-      lastAssistantText.includes(kw)
-    );
+    // 检查完成关键词 - 需要在最后一行或独立声明中匹配
+    const hasCompletionKeyword = COMPLETION_KEYWORDS.some(kw => {
+      // 检查是否在最后一行
+      const lines = lastAssistantText.split('\n');
+      const lastLine = lines[lines.length - 1]?.trim() || '';
+      if (lastLine.includes(kw)) return true;
+      // 检查是否是独立的完成声明（前后有换行或标点）
+      const regex = new RegExp(`(?:^|[\\n。！？])\\s*${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(?:[\\n。！？]|$)`);
+      return regex.test(lastAssistantText);
+    });
 
     // 检查失败关键词
     const hasFailureKeyword = FAILURE_KEYWORDS.some(kw =>
@@ -307,15 +322,6 @@ export default class GoalMonitor extends EventEmitter {
     if (hasCompletionKeyword && !hasFailureKeyword) {
       console.log(`[GoalMonitor] 检测到完成关键词`);
       return true;
-    }
-
-    // 策略3: LLM 判断（如果可用）
-    if (this.llmJudgeFn && this.summaryService) {
-      try {
-        return await this.llmJudgeCompletion(goal, session);
-      } catch (err) {
-        console.error(`[GoalMonitor] LLM 判断失败:`, (err as Error).message);
-      }
     }
 
     // 默认: 退出码为0且有完成关键词时认为完成

@@ -2,10 +2,19 @@ import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
+import rateLimit from 'express-rate-limit';
 import { getDb, getJwtSecret, saveToFile } from '../db';
 import { hashPassword, verifyPassword } from '../crypto-utils';
 
 const router = Router();
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: '请求过于频繁，请稍后再试' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const ACCESS_TOKEN_EXPIRY = '24h';
 const REFRESH_TOKEN_EXPIRY = '7d';
@@ -72,7 +81,7 @@ function getInitAdminUsername(): string | null {
   return null;
 }
 
-router.post('/register', (req: Request, res: Response) => {
+router.post('/register', authLimiter, (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
 
@@ -87,8 +96,8 @@ router.post('/register', (req: Request, res: Response) => {
     if (!/^[a-z0-9_]{3,32}$/.test(normalizedUsername)) {
       return res.status(400).json({ error: '用户名只能包含字母、数字和下划线，长度 3-32 字符' });
     }
-    if (password.length < 6) {
-      return res.status(400).json({ error: '密码至少 6 个字符' });
+    if (password.length < 8) {
+      return res.status(400).json({ error: '密码至少 8 个字符' });
     }
 
     const existing = getUserByUsername(normalizedUsername);
@@ -136,11 +145,12 @@ router.post('/register', (req: Request, res: Response) => {
     if (error.message?.includes('UNIQUE constraint')) {
       return res.status(409).json({ error: '用户名已存在' });
     }
-    res.status(500).json({ error: error.message });
+    console.error('[注册失败]', error);
+    res.status(500).json({ error: '注册失败' });
   }
 });
 
-router.post('/login', (req: Request, res: Response) => {
+router.post('/login', authLimiter, (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
 
@@ -168,8 +178,9 @@ router.post('/login', (req: Request, res: Response) => {
       user: { id: user.id, username: user.username, role: user.role, homeDir: user.home_dir },
       ...tokens,
     });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    console.error('[登录失败]', error);
+    res.status(500).json({ error: '登录失败' });
   }
 });
 
@@ -243,8 +254,8 @@ router.put('/password', (req: Request, res: Response) => {
     if (!oldPassword || !newPassword) {
       return res.status(400).json({ error: '旧密码和新密码是必需的' });
     }
-    if (newPassword.length < 6) {
-      return res.status(400).json({ error: '新密码至少 6 个字符' });
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: '新密码至少 8 个字符' });
     }
 
     const user = getUserByUsername(req.user.username);
@@ -256,13 +267,15 @@ router.put('/password', (req: Request, res: Response) => {
     const newHash = hashPassword(newPassword);
     const now = new Date().toISOString();
     db.run(
-      `UPDATE users SET password_hash = '${newHash.replace(/'/g, "''")}', updated_at = '${now}' WHERE id = '${req.user.userId.replace(/'/g, "''")}'`
+      'UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?',
+      [newHash, now, req.user.userId]
     );
     saveToFile();
 
     res.json({ success: true, message: '密码已更新' });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    console.error('[密码更新失败]', error);
+    res.status(500).json({ error: '密码更新失败' });
   }
 });
 
@@ -282,7 +295,8 @@ router.patch('/me/preferences', (req: Request, res: Response) => {
     const db = getDb();
     const now = new Date().toISOString();
     db.run(
-      `UPDATE users SET preferences = '${JSON.stringify(preferences).replace(/'/g, "''")}', updated_at = '${now}' WHERE id = '${req.user.userId.replace(/'/g, "''")}'`
+      'UPDATE users SET preferences = ?, updated_at = ? WHERE id = ?',
+      [JSON.stringify(preferences), now, req.user.userId]
     );
     saveToFile();
     res.json({ success: true, preferences });

@@ -20,7 +20,14 @@ export default function Login({ onLogin }: LoginProps) {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!username.trim() || !password.trim()) return
+    if (!username.trim()) {
+      setError('请输入用户名')
+      return
+    }
+    if (!password.trim()) {
+      setError('请输入密码')
+      return
+    }
     setLoading(true)
     setError('')
 

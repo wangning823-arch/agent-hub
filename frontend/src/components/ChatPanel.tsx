@@ -138,12 +138,15 @@ export default function ChatPanel({
   const [input, setInput] = useState(() => {
     try { return localStorage.getItem(`draft_${sessionId}`) || '' } catch { return '' }
   })
-  // 立即保存草稿到 localStorage（无防抖，避免切换文件查看器时丢失）
+  // 保存草稿到 localStorage（防抖 500ms）
   useEffect(() => {
-    try {
-      if (input) localStorage.setItem(`draft_${sessionId}`, input)
-      else localStorage.removeItem(`draft_${sessionId}`)
-    } catch {}
+    const timer = setTimeout(() => {
+      try {
+        if (input) localStorage.setItem(`draft_${sessionId}`, input)
+        else localStorage.removeItem(`draft_${sessionId}`)
+      } catch {}
+    }, 500)
+    return () => clearTimeout(timer)
   }, [input, sessionId])
   const clearInput = () => {
     setInput('')
@@ -1235,7 +1238,11 @@ export default function ChatPanel({
   // 发送消息
   const sendMessage = async () => {
     if (isWorking || isStarting || isRestoringMemory || splitAnalyzing) return
-    if ((!input.trim() && attachments.length === 0) || !wsRef.current || wsRef.current.readyState !== 1) {
+    if (!wsRef.current || wsRef.current.readyState !== 1) {
+      toast.warning('未连接到服务器，请稍后再试')
+      return
+    }
+    if (!input.trim() && attachments.length === 0) {
       return
     }
 

@@ -1,6 +1,7 @@
-import React, { useRef } from 'react'
+import React, { useRef, useMemo } from 'react'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
+import DOMPurify from 'dompurify'
 import 'highlight.js/styles/github-dark.css'
 import { IconCopy, IconQuote, IconTrash, IconResend, IconCheck } from './Icons'
 import { Sparkles } from 'lucide-react'
@@ -54,7 +55,7 @@ interface AttachmentPreviewProps {
   isUser: boolean
 }
 
-export default function Message({ message, index, onDelete, onCopy, onQuote, onResend, onBeautify }: MessageProps) {
+export default React.memo(function Message({ message, index, onDelete, onCopy, onQuote, onResend, onBeautify }: MessageProps) {
   const { type, content: rawContent, metadata, attachments, replace } = message
   // 确保 content 始终是字符串，防止 React 崩溃
   const content: string = rawContent != null ? (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent)) : ''
@@ -92,17 +93,19 @@ export default function Message({ message, index, onDelete, onCopy, onQuote, onR
     if (onQuote) onQuote({ role: type, content, timestamp: message.timestamp || Date.now() })
   }
 
-  const renderMarkdown = (text: any): React.ReactNode => {
-    if (!text) return null
-    if (typeof text !== 'string') text = JSON.stringify(text, null, 2)
-    try {
-      const html = marked.parse(text)
-      return <div dangerouslySetInnerHTML={{ __html: html }} />
-    } catch (err) {
-      console.error('Markdown渲染失败:', err)
-      return <div>{text}</div>
+  const renderMarkdown = useMemo(() => {
+    return (text: any): React.ReactNode => {
+      if (!text) return null
+      if (typeof text !== 'string') text = JSON.stringify(text, null, 2)
+      try {
+        const html = marked.parse(text) as string
+        return <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />
+      } catch (err) {
+        console.error('Markdown渲染失败:', err)
+        return <div>{text}</div>
+      }
     }
-  }
+  }, [])
 
   const ActionButton = ({ onClick, title, hoverColor, children }: ActionButtonProps) => (
     <button
@@ -304,7 +307,7 @@ export default function Message({ message, index, onDelete, onCopy, onQuote, onR
       </div>
     </div>
   )
-}
+})
 
 function AttachmentPreview({ attachment, isUser }: AttachmentPreviewProps) {
   const { type, name, url, size } = attachment

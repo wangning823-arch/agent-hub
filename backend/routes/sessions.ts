@@ -65,6 +65,17 @@ export default (sessionManager: any, projectManager?: any) => { // TODO: type th
     res.json(session.toJSON());
   });
 
+  router.get('/status/batch', (req: Request, res: Response) => {
+    const sessions = sessionManager.getSessions ? sessionManager.getSessions() : [];
+    const statuses = sessions.map((s: any) => ({
+      id: s.id,
+      isActive: sessionManager.isAgentRunning(s.id),
+      isWorking: s.isWorking || false,
+      isStarting: s.isStarting || false,
+    }));
+    res.json(statuses);
+  });
+
   router.get('/:id/status', (req: Request, res: Response) => {
     const session = sessionManager.getSession(req.params.id);
     if (!session) {

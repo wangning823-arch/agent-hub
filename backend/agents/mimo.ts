@@ -358,6 +358,7 @@ class MimoAgent extends Agent {
         // 避免新进程启动后，旧进程的 close 事件误清新进程的引用
         if (this.activeProc === proc) {
           this.activeProc = null;
+          this.isRunning = false;
         }
 
         if (code !== 0 && !hasOutput) {

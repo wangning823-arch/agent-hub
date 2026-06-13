@@ -16,7 +16,18 @@ const tokenStatsDbPath: string = path.join(dataDir, 'token-stats.db');
 
 let db: SqlJsDatabase | null = null;
 let tokenStatsDb: SqlJsDatabase | null = null;
-let saving = false; // 防止并发写入导致 .tmp 文件竞争
+let saving = false;
+let saveToFileTimer: ReturnType<typeof setTimeout> | null = null;
+
+const SAVE_DEBOUNCE_MS = 5000;
+
+function scheduleSaveToFile(): void {
+  if (saveToFileTimer) return;
+  saveToFileTimer = setTimeout(() => {
+    saveToFileTimer = null;
+    saveToFile();
+  }, SAVE_DEBOUNCE_MS);
+}
 
 async function recoverFromBackup(SQL: any): Promise<boolean> {
   const backupDir = path.join(dataDir, 'backups');
@@ -512,7 +523,7 @@ async function initDb(): Promise<SqlJsDatabase> {
 
 function saveToFile(): void {
   if (db) {
-    if (saving) return; // 跳过并发调用，避免 .tmp 文件竞争
+    if (saving) return;
     saving = true;
     try {
       const data = db.export();
@@ -1048,4 +1059,4 @@ function getJwtSecret(): string {
   return secret;
 }
 
-export { initDb, getDb, saveToFile, saveTokenStatsToFile, getTokenStatsDb, saveTokenStats, getJwtSecret };
+export { initDb, getDb, saveToFile, saveTokenStatsToFile, getTokenStatsDb, saveTokenStats, getJwtSecret, scheduleSaveToFile };
