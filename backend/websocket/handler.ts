@@ -1,4 +1,3 @@
-import fs from 'fs';
 import jwt from 'jsonwebtoken';
 import { WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
@@ -6,12 +5,7 @@ import SessionManager from '../sessions';
 import { getDb, getJwtSecret } from '../db';
 import { UserContext } from '../types';
 
-export default (sessionManager: SessionManager, TOKEN_FILE: string) => {
-  let ACCESS_TOKEN = '';
-  try {
-    ACCESS_TOKEN = fs.readFileSync(TOKEN_FILE, 'utf-8').trim();
-  } catch (_e) {}
-
+export default (sessionManager: SessionManager) => {
   function authenticateWs(req: IncomingMessage): { user?: UserContext; error?: string } {
     let url: URL;
     try {
@@ -47,23 +41,30 @@ export default (sessionManager: SessionManager, TOKEN_FILE: string) => {
       }
     }
 
-    // 2. Try legacy token
-    const token = url.searchParams.get('token');
-    if (ACCESS_TOKEN && token === ACCESS_TOKEN) {
-      const ALLOWED_ROOT = process.env.ALLOWED_ROOT || process.env.HOME || '/root';
-      return {
-        user: {
-          userId: '__legacy__',
-          username: '__legacy__',
-          role: 'admin',
-          homeDir: ALLOWED_ROOT,
+    // 2. Try JWT from query param (browser WebSocket API cannot set headers)
+    const queryToken = url.searchParams.get('token');
+    if (queryToken) {
+      try {
+        const decoded = jwt.verify(queryToken, getJwtSecret()) as { userId: string; username: string; role: string };
+        const db = getDb();
+        const result = db.exec(
+          `SELECT id, username, role, home_dir FROM users WHERE id = '${decoded.userId.replace(/'/g, "''")}' AND is_active = 1`
+        );
+        if (result.length > 0 && result[0].values.length > 0) {
+          const row = result[0].values[0];
+          return {
+            user: {
+              userId: row[0] as string,
+              username: row[1] as string,
+              role: row[2] as 'admin' | 'user',
+              homeDir: row[3] as string,
+            }
+          };
         }
-      };
-    }
-
-    // 3. No token required if no ACCESS_TOKEN set
-    if (!ACCESS_TOKEN) {
-      return {};
+        return { error: '用户不存在或已停用' };
+      } catch (e) {
+        return { error: 'Token 已过期或无效' };
+      }
     }
 
     return { error: '未授权' };

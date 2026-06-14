@@ -62,7 +62,6 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server, path: '/ws' });
 
 const PORT: number = parseInt(process.env.PORT || '3002', 10);
-const TOKEN_FILE: string = path.join(__dirname, '..', '..', '.token');
 const ALLOWED_ROOT: string = process.env.ALLOWED_ROOT || process.env.HOME || '/root';
 const DIST_PATH: string = path.join(__dirname, '..', '..', 'frontend', 'dist');
 
@@ -311,12 +310,11 @@ app.get('/api/agents', (req: Request, res: Response) => {
 });
 
 app.get('/api/auth/check', (req: Request, res: Response) => {
-  let ACCESS_TOKEN = '';
-  try {
-    ACCESS_TOKEN = fs.readFileSync(TOKEN_FILE, 'utf-8').trim();
-  } catch (_e) { /* token file not found */ }
-  const token = req.headers['x-access-token'] || req.query.token;
-  res.json({ valid: !ACCESS_TOKEN || token === ACCESS_TOKEN });
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return res.json({ valid: true });
+  }
+  res.json({ valid: false });
 });
 
 
@@ -346,7 +344,7 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   const workflowEngine = new WorkflowEngine(sessionManager);
   const workflowScheduler = new WorkflowScheduler(sessionManager, workflowEngine);
   workflowScheduler.loadPending();
-  const wsConnectionHandler = wsHandler(sessionManager, TOKEN_FILE);
+  const wsConnectionHandler = wsHandler(sessionManager);
 
   // 初始化 GoalMonitor
   const GoalMonitor = (await import('./goal-monitor')).default;

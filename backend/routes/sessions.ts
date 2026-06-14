@@ -89,7 +89,9 @@ export default (sessionManager: any, projectManager?: any) => { // TODO: type th
         } catch (e) {
           console.error('停止agent失败:', e);
         }
+        session.agent = undefined;
       }
+      session.isActive = false;
       session.isWorking = false;
       session.isStarting = false;
       sessionManager.saveSession(session);

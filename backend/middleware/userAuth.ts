@@ -1,7 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import fs from 'fs';
-import path from 'path';
 import { getDb, getJwtSecret } from '../db';
 import { UserContext } from '../types';
 
@@ -21,13 +19,6 @@ const WHITELIST_PREFIXES = [
   '/api/preview',
   '/api/design-systems',
 ];
-
-const TOKEN_FILE = path.join(__dirname, '..', '..', '.token');
-
-let LEGACY_TOKEN = '';
-try {
-  LEGACY_TOKEN = fs.readFileSync(TOKEN_FILE, 'utf-8').trim();
-} catch (_e) {}
 
 function isWhitelisted(path: string): boolean {
   if (WHITELIST_PATHS.includes(path)) return true;
@@ -73,20 +64,6 @@ export default function userAuth(req: Request, res: Response, next: NextFunction
     }
   }
 
-  const legacyToken = req.headers['x-access-token'] || req.query.token;
-  if (LEGACY_TOKEN && legacyToken === LEGACY_TOKEN) {
-    const ALLOWED_ROOT = process.env.ALLOWED_ROOT || process.env.HOME || '/root';
-    // Legacy token 用户降级为普通用户，限制在 ALLOWED_ROOT 目录内
-    req.user = {
-      userId: '__legacy__',
-      username: '__legacy__',
-      role: 'user',
-      homeDir: ALLOWED_ROOT,
-    };
-    return next();
-  }
-
-  // 没有认证信息，拒绝访问
   return res.status(401).json({ error: '未授权' });
 }
 

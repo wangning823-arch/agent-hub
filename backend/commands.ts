@@ -91,6 +91,8 @@ const CODEX_MODES: ModeOption[] = [
 // 模式选项 - Mimo
 const MIMO_MODES: ModeOption[] = [
   { id: 'default', name: '默认', description: '标准权限模式' },
+  { id: 'auto', name: '自动', description: '自动批准安全操作' },
+  { id: 'bypassPermissions', name: '跳过权限', description: '跳过所有权限检查（危险）' },
   { id: 'plan', name: 'Plan', description: '计划模式 - 只规划不执行' },
   { id: 'build', name: 'Build', description: '构建模式 - 执行代码修改' },
   { id: 'compose', name: 'Compose', description: '编排模式 - 复杂工作流' }

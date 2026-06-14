@@ -118,6 +118,8 @@ class MimoAgent extends Agent {
   contextWindow: number;
   private serverManager: ReturnType<typeof getMimoServerManager>;
   private useServer: boolean;
+  private _currentSettle: ((action: 'resolve' | 'reject', value?: any) => void) | null = null;
+  private _currentPostResponseTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(workdir: string, options: MimoOptions = {}) {
     super('mimo', workdir);
@@ -299,9 +301,14 @@ class MimoAgent extends Agent {
         settled = true;
         clearTimeout(safetyTimer);
         if (postResponseTimer) clearTimeout(postResponseTimer);
+        this._currentSettle = null;
+        this._currentPostResponseTimer = null;
         if (action === 'resolve') resolve(value);
         else reject(value);
       };
+
+      // 挂载 settle 到实例，供 interrupt() 调用以立即 resolve Promise
+      this._currentSettle = settle;
 
       // 超时提醒：10min 未响应则提示用户，可选择继续等待或点击停止按钮
       const safetyTimer = setTimeout(() => {
@@ -325,6 +332,7 @@ class MimoAgent extends Agent {
             }
           }, 3000);
         }, 2000);
+        this._currentPostResponseTimer = postResponseTimer;
       };
 
       // 实时处理 stdout 输出
@@ -360,14 +368,15 @@ class MimoAgent extends Agent {
           this.activeProc = null;
         }
 
-        if (code !== 0 && !hasOutput) {
+        if (code !== 0 && code !== null && !hasOutput) {
           const err = new Error(`Mimo 退出码: ${code}`);
           console.error('[Mimo] exit error:', err.message);
           this.emit('message', { type: 'error', content: `Mimo 执行失败: ${err.message}` });
           settle('reject', err);
         } else {
-          // 通知会话 agent 已停止
-          this.emit('stopped', { code: 0 });
+          // 注意：不在此处 emit stopped。mimo agent 的 send() 是每次 spawn 临时进程，
+          // 进程退出只代表本次任务完成，不代表 agent 停止。
+          // stopped 只在 stop() 被调用时才 emit，否则前端收到 agent_stopped 会关闭 session。
           settle('resolve');
         }
       });
@@ -511,12 +520,24 @@ class MimoAgent extends Agent {
       clearTimeout((this as any)._safetyTimer);
       (this as any)._safetyTimer = null;
     }
+    // 清理 postResponseTimer
+    if (this._currentPostResponseTimer) {
+      clearTimeout(this._currentPostResponseTimer);
+      this._currentPostResponseTimer = null;
+    }
     if (this.activeProc) {
       try {
-        this.activeProc.kill('SIGKILL');
+        // 使用 SIGTERM 让 mimo run 进程有机会通知 server 清理会话
+        // 自然完成时 server 端能正常清理，SIGTERM 也能做到同样的效果
+        this.activeProc.kill('SIGTERM');
       } catch (e) { /* ignore */ }
       this.activeProc = null;
       this.emit('message', { type: 'status', content: '⏹️ 任务已中断' });
+    }
+    // 立即 resolve 正在等待的 Promise，防止旧 sendMessage 的 finally 块在新任务执行期间重置 isWorking
+    if (this._currentSettle) {
+      this._currentSettle('resolve');
+      this._currentSettle = null;
     }
   }
 
