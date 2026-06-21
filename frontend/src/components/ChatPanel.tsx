@@ -5,7 +5,7 @@ import QuoteReply from './QuoteReply'
 import SubtaskPanel from './SubtaskPanel'
 import WorkflowPanel from './WorkflowPanel'
 import WorkflowEditor from './WorkflowEditor'
-import GoalStatusBar from './GoalStatusBar'
+// import GoalStatusBar from './GoalStatusBar' // 隐藏：目标监控功能暂不完善，后期再考虑
 import { useToast } from './Toast'
 import { useNotification } from '../hooks/useNotification'
 import { API_BASE, getWebSocketUrl } from '../config'
@@ -1670,8 +1670,9 @@ export default function ChatPanel({
         </div>
       )}
 
-      {/* Goal Status Bar */}
+      {/* Goal Status Bar - 隐藏：目标监控功能暂不完善，后期再考虑
       <GoalStatusBar sessionId={sessionId} />
+      */}
 
       {/* Main Chat Tab */}
       {activeTab === 'main' && (

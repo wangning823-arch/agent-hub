@@ -574,15 +574,15 @@ const MIMO_COMMANDS: CommandDef[] = [
   { id: 'test', name: '写测试', description: '编写测试用例', category: '开发', usage: 'Write tests' },
   { id: 'fix', name: '修复Bug', description: '修复问题', category: '开发', usage: 'Fix the bug' },
   { id: 'explain', name: '解释代码', description: '解释代码逻辑', category: '分析', usage: 'Explain this code' },
-  { id: 'continue', name: '继续上次', description: '继续上次的对话', category: '会话', usage: 'Continue from our last conversation' },
-  { id: 'goal', name: '/goal', description: '设置当前工作目标', category: '会话', usage: '/goal ' }
+  { id: 'continue', name: '继续上次', description: '继续上次的对话', category: '会话', usage: 'Continue from our last conversation' }
+  // { id: 'goal', name: '/goal', description: '设置当前工作目标', category: '会话', usage: '/goal ' } // 隐藏：目标监控功能暂不完善
 ];
 
 // --- 动态命令发现 ---
 
 // 候选命令列表（新版本可能新增的命令）
 const CANDIDATE_COMMANDS: { id: string; name: string; description: string; category: string; usage: string }[] = [
-  { id: 'goal', name: '/goal', description: '设置当前工作目标', category: '会话', usage: '/goal <condition>' },
+  // { id: 'goal', name: '/goal', description: '设置当前工作目标', category: '会话', usage: '/goal <condition>' }, // 隐藏：目标监控功能暂不完善
   { id: 'ultrareview', name: '/ultrareview', description: '多Agent代码审查', category: '审查', usage: '/ultrareview' },
   { id: 'commit-push-pr', name: '/commit-push-pr', description: '提交并创建PR', category: '开发', usage: '/commit-push-pr' },
   { id: 'babysit-prs', name: '/babysit-prs', description: '监控PR状态', category: '团队', usage: '/babysit-prs' },
