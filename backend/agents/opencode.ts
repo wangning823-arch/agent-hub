@@ -257,6 +257,9 @@ class OpenCodeAgent extends Agent {
       // 使用 --pure 避免 plugins 导致进程挂起
       args.push('--pure');
 
+      // 显式指定工作目录，确保 CLI 在正确的项目路径下运行
+      args.push('--dir', this.workdir);
+
       // 恢复会话 - 只在有opencode自己的session ID时使用
       if (this.opencodeSessionId) {
         args.push('--session', this.opencodeSessionId);

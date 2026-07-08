@@ -160,6 +160,9 @@ class MimoAgent extends Agent {
       // 使用 --pure 避免插件挂起（与 opencode 一致）
       args.push('--pure');
 
+      // 显式指定工作目录，确保 CLI 在正确的项目路径下运行
+      args.push('--dir', this.workdir);
+
       // 恢复会话 - 只在有 mimo 自己的 session ID 时使用
       if (this.mimoSessionId) {
         args.push('--session', this.mimoSessionId);
