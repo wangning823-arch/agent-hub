@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   IconFolder,
   IconGit,
@@ -82,10 +82,14 @@ export default function RightSidebar({ sessionId, workdir, onViewFile, userRole 
   const [deleteConfirm, setDeleteConfirm] = useState<{ visible: boolean; filePath: string; fileName: string }>({ visible: false, filePath: '', fileName: '' })
   const [beautifyModal, setBeautifyModal] = useState<{ visible: boolean; code: string; language: string; fileName: string; filePath: string }>({ visible: false, code: '', language: '', fileName: '', filePath: '' })
 
+  const loadFilesRequestId = useRef(0)
   const loadFiles = async (dirPath: string) => {
+    const requestId = ++loadFilesRequestId.current
     setLoading(true)
     try {
       const data = await fetch(`${API_BASE}/files?path=${encodeURIComponent(dirPath)}`).then(r => r.json())
+      // 丢弃过期响应：如果已经有更新的请求在进行中
+      if (requestId !== loadFilesRequestId.current) return
       const hiddenNames = userRole === 'admin' ? [] : ['.claude', '.git', 'CLAUDE.md']
       setFiles((data.files || []).filter((f: FileItem) => !hiddenNames.includes(f.name)))
     } catch (error) { console.error('加载文件失败:', error) }
@@ -111,6 +115,8 @@ export default function RightSidebar({ sessionId, workdir, onViewFile, userRole 
       setGitOutput('')
       setGitError('')
       setCommitMessage('')
+      // 重置请求 ID，使之前的 pending 请求失效
+      loadFilesRequestId.current++
       // 延迟加载，确保 activeProjectId 已经更新（全局 fetch 拦截器需要它）
       const timer = setTimeout(() => {
         loadFiles(workdir)
