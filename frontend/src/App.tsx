@@ -524,13 +524,10 @@ export default function App() {
 
   const handleProjectChange = (project: { id?: string; workdir?: string; name?: string } | null): void => {
     if (project) {
-      // 先设置 projectId，再设置 workdir，确保 fetch 拦截器使用正确的 projectId
       setActiveProjectId(project.id || null)
       setActiveProjectName(project.name || null)
-      setTimeout(() => {
-        setActiveProjectWorkdir(project.workdir || null)
-        setActiveSession(null)
-      }, 0)
+      setActiveProjectWorkdir(project.workdir || null)
+      setActiveSession(null)
     } else {
       setActiveProjectId(null)
       setActiveProjectWorkdir(null)
@@ -873,7 +870,7 @@ export default function App() {
       <div className={isMobile ? 'mobile-panel' : 'relative'}>
         <RightSidebar
           sessionId={activeSession!}
-          workdir={currentSession?.workdir}
+          workdir={activeProjectWorkdir || currentSession?.workdir}
           onViewFile={handleViewFile}
           userRole={user?.role}
         />
