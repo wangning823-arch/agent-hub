@@ -119,7 +119,6 @@ class MimoAgent extends Agent {
   private serverManager: ReturnType<typeof getMimoServerManager>;
   private useServer: boolean;
   private _currentSettle: ((action: 'resolve' | 'reject', value?: any) => void) | null = null;
-  private _currentPostResponseTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(workdir: string, options: MimoOptions = {}) {
     super('mimo', workdir);
@@ -148,6 +147,11 @@ class MimoAgent extends Agent {
     try {
       await this.serverManager.ensureRunning();
       console.log(`[Mimo] server 已就绪: ${this.serverManager.getServerUrl()}`);
+      // server 重启后旧 session 失效，清除 session ID 让下次重新创建
+      if (this.serverManager.wasRestarted() && this.mimoSessionId) {
+        console.log(`[Mimo] server 已重启，清除旧 session ID: ${this.mimoSessionId}`);
+        this.mimoSessionId = null;
+      }
     } catch (err) {
       console.warn(`[Mimo] server 启动失败，回退到直接模式: ${(err as Error).message}`);
       this.useServer = false;
@@ -225,6 +229,12 @@ class MimoAgent extends Agent {
     // 通知前端正在处理
     this.emit('message', { type: 'status', content: '🤔 思考中...' });
 
+    // 检查 server 是否重启过，重启后旧 session 失效
+    if (this.useServer && this.serverManager.wasRestarted() && this.mimoSessionId) {
+      console.log(`[Mimo] server 已重启，清除旧 session ID: ${this.mimoSessionId}`);
+      this.mimoSessionId = null;
+    }
+
     // 如果有待注入的历史上下文， prepend 到消息中
     let finalMessage = trimmed;
     if (this.pendingHistory) {
@@ -300,9 +310,7 @@ class MimoAgent extends Agent {
         if (settled) return;
         settled = true;
         clearTimeout(safetyTimer);
-        if (postResponseTimer) clearTimeout(postResponseTimer);
         this._currentSettle = null;
-        this._currentPostResponseTimer = null;
         if (action === 'resolve') resolve(value);
         else reject(value);
       };
@@ -314,26 +322,6 @@ class MimoAgent extends Agent {
       const safetyTimer = setTimeout(() => {
         this.emit('message', { type: 'status', content: '⏳ 响应已超时超过10分钟，如需等待请点击停止按钮终止任务...' });
       }, 600000);
-
-      // 主回复完成后的清理定时器：等待 mimo 内部 title 生成等后台任务
-      // 2 秒后如果进程还没退出就强制终止，不等 title 生成
-      let postResponseTimer: ReturnType<typeof setTimeout> | null = null;
-
-      const startPostResponseTimer = () => {
-        if (postResponseTimer) return;
-        postResponseTimer = setTimeout(() => {
-          if (settled) return;
-          console.log('[Mimo] 主回复已完成，等待超时(2s)，终止 title 等后台任务');
-          try { proc.kill('SIGTERM'); } catch {}
-          // 给 SIGTERM 3 秒宽限，之后 SIGKILL
-          setTimeout(() => {
-            if (!settled && proc.exitCode === null) {
-              try { proc.kill('SIGKILL'); } catch {}
-            }
-          }, 3000);
-        }, 2000);
-        this._currentPostResponseTimer = postResponseTimer;
-      };
 
       // 实时处理 stdout 输出
       proc.stdout!.on('data', (data: Buffer) => {
@@ -372,6 +360,8 @@ class MimoAgent extends Agent {
           const err = new Error(`Mimo 退出码: ${code}`);
           console.error('[Mimo] exit error:', err.message);
           this.emit('message', { type: 'error', content: `Mimo 执行失败: ${err.message}` });
+          // 非正常退出时清除 session ID，下次重新创建会话
+          this.mimoSessionId = null;
           settle('reject', err);
         } else {
           // 注意：不在此处 emit stopped。mimo agent 的 send() 是每次 spawn 临时进程，
@@ -390,15 +380,6 @@ class MimoAgent extends Agent {
 
       // 挂载到实例上以便 interrupt 能清理定时器
       (this as any)._safetyTimer = safetyTimer;
-
-      // 监听 step_finish 事件来判断主回复是否完成
-      const onMessage = (msg: AgentMessage) => {
-        if (msg.type === 'status' && msg.content === '__mimo_main_response_done') {
-          startPostResponseTimer();
-          this.removeListener('message', onMessage);
-        }
-      };
-      this.on('message', onMessage);
     });
   }
 
@@ -427,10 +408,6 @@ class MimoAgent extends Agent {
       } else if (msg.type === 'step_start') {
         // 步骤开始
       } else if (msg.type === 'step_finish') {
-        // 主回复完成（reason=stop），通知 send() 可以开始清理定时器
-        if (msg.part?.reason === 'stop') {
-          this.emit('message', { type: 'status', content: '__mimo_main_response_done' });
-        }
         // 步骤完成，检查 token 统计
         if (msg.part?.tokens) {
           const t = msg.part.tokens;
@@ -519,11 +496,6 @@ class MimoAgent extends Agent {
     if ((this as any)._safetyTimer) {
       clearTimeout((this as any)._safetyTimer);
       (this as any)._safetyTimer = null;
-    }
-    // 清理 postResponseTimer
-    if (this._currentPostResponseTimer) {
-      clearTimeout(this._currentPostResponseTimer);
-      this._currentPostResponseTimer = null;
     }
     if (this.activeProc) {
       try {

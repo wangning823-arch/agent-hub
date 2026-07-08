@@ -43,6 +43,7 @@ class MimoServerManager {
   private healthTimer: ReturnType<typeof setInterval> | null = null;
   private refCount: number = 0;
   private ready: boolean = false;
+  private _wasRestarted: boolean = false;
 
   constructor(port: number = DEFAULT_PORT) {
     this.port = port;
@@ -95,6 +96,17 @@ class MimoServerManager {
   }
 
   /**
+   * 检查 server 是否重启过（重启后旧 session 失效）
+   */
+  wasRestarted(): boolean {
+    if (this._wasRestarted) {
+      this._wasRestarted = false;
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * 启动 mimo serve 进程
    */
   private async start(): Promise<void> {
@@ -129,6 +141,7 @@ class MimoServerManager {
         this.stopHealthCheck();
         // 如果还有引用且非正常退出，自动重启
         if (this.refCount > 0 && code !== 0) {
+          this._wasRestarted = true;
           console.log('[MimoServer] 异常退出，5秒后自动重启...');
           setTimeout(() => {
             if (this.refCount > 0) {
@@ -227,6 +240,7 @@ class MimoServerManager {
       if (!(await this.isPortInUse())) {
         console.log('[MimoServer] 健康检查: 端口未监听，进程可能已死');
         this.ready = false;
+        this._wasRestarted = true;
         try { this.serverProcess.kill('SIGKILL'); } catch {}
         this.serverProcess = null;
         if (this.refCount > 0) {
