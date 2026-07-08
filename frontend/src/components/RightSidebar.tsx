@@ -109,6 +109,7 @@ export default function RightSidebar({ sessionId, workdir, onViewFile, userRole 
 
   useEffect(() => {
     if (workdir) {
+      console.log('[RightSidebar] workdir changed:', workdir, 'loading files...')
       setCurrentPath(workdir)
       setFiles([])
       setGitStatus(null)

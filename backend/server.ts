@@ -506,3 +506,8 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
     process.exit(0);
   });
 })();
+
+// 临时调试端点
+app.get("/api/debug/project-state", (req, res) => {
+  res.json({ message: "check browser console" });
+});

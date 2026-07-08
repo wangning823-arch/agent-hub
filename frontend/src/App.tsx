@@ -523,12 +523,15 @@ export default function App() {
   }
 
   const handleProjectChange = (project: { id?: string; workdir?: string; name?: string } | null): void => {
+    console.log('[handleProjectChange] project:', JSON.stringify(project))
     if (project) {
+      console.log('[handleProjectChange] setting workdir to:', project.workdir)
       setActiveProjectId(project.id || null)
       setActiveProjectName(project.name || null)
       setActiveProjectWorkdir(project.workdir || null)
       setActiveSession(null)
     } else {
+      console.log('[handleProjectChange] clearing all')
       setActiveProjectId(null)
       setActiveProjectWorkdir(null)
       setActiveProjectName(null)
