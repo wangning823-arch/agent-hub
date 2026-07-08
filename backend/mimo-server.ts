@@ -4,36 +4,15 @@
  * 所有 mimo agent 共享同一个 server 实例
  */
 import { spawn, ChildProcess, execSync } from 'child_process';
-import * as fs from 'fs';
 import * as net from 'net';
+import * as http from 'http';
+import { findMimoPath } from './utils/mimo-path';
 
 const DEFAULT_PORT = 14096;
 const HEALTH_CHECK_INTERVAL = 30_000;
 const STARTUP_TIMEOUT = 10_000;
-
-function findMimoPath(): string {
-  const envPath = process.env.MIMOCODE_BIN_PATH;
-  if (envPath && fs.existsSync(envPath)) return envPath;
-
-  const candidates: string[] = [
-    '/root/.nvm/versions/node/v22.22.3/lib/node_modules/@mimo-ai/cli/bin/.mimocode',
-  ];
-  for (const p of candidates) {
-    if (fs.existsSync(p)) return p;
-  }
-
-  try {
-    const mimoWrapper = execSync('which mimo 2>/dev/null', { encoding: 'utf-8' }).trim();
-    if (mimoWrapper) {
-      const realWrapper = fs.realpathSync(mimoWrapper);
-      const binDir = require('path').dirname(realWrapper);
-      const cached = require('path').join(binDir, '.mimocode');
-      if (fs.existsSync(cached)) return cached;
-    }
-  } catch (e) { /* ignore */ }
-
-  return 'mimo';
-}
+// 4小时后自动重启 server，防止 SQLite WAL 堆积导致卡死
+const SERVER_MAX_UPTIME_MS = 4 * 60 * 60 * 1000;
 
 class MimoServerManager {
   private serverProcess: ChildProcess | null = null;
@@ -44,6 +23,7 @@ class MimoServerManager {
   private refCount: number = 0;
   private ready: boolean = false;
   private _wasRestarted: boolean = false;
+  private _startedAt: number = 0;
 
   constructor(port: number = DEFAULT_PORT) {
     this.port = port;
@@ -69,11 +49,18 @@ class MimoServerManager {
 
     // 检查端口是否已被占用（可能是之前的 server 进程）
     if (await this.isPortInUse()) {
-      console.log(`[MimoServer] 端口 ${this.port} 已被占用，假设 server 已运行`);
-      this.ready = true;
-      this.refCount++;
-      this.startHealthCheck();
-      return;
+      // 端口被占用不代表 server 正常工作（可能是僵尸进程），
+      // 需要实际尝试连接验证
+      if (await this.isServerAlive()) {
+        console.log(`[MimoServer] 端口 ${this.port} 已被占用且 server 响应正常`);
+        this.ready = true;
+        this.refCount++;
+        this.startHealthCheck();
+        return;
+      }
+      // 端口被占用但 server 无响应，尝试清理僵尸进程
+      console.log(`[MimoServer] 端口 ${this.port} 被占用但 server 无响应，尝试清理僵尸进程`);
+      await this.killZombieProcess();
     }
 
     if (this.starting) {
@@ -97,13 +84,17 @@ class MimoServerManager {
 
   /**
    * 检查 server 是否重启过（重启后旧 session 失效）
+   * 幂等：多次调用返回相同结果，由调用方显式 clearRestarted() 重置
    */
   wasRestarted(): boolean {
-    if (this._wasRestarted) {
-      this._wasRestarted = false;
-      return true;
-    }
-    return false;
+    return this._wasRestarted;
+  }
+
+  /**
+   * 显式清除重启标志。调用方在处理完重启后调用。
+   */
+  clearRestarted(): void {
+    this._wasRestarted = false;
   }
 
   /**
@@ -163,6 +154,7 @@ class MimoServerManager {
       await this.waitForPortReady();
       this.ready = true;
       this.starting = false;
+      this._startedAt = Date.now();
       this.startHealthCheck();
       console.log(`[MimoServer] server 已就绪 (${this.getServerUrl()})`);
     } catch (err) {
@@ -220,7 +212,43 @@ class MimoServerManager {
   }
 
   /**
-   * 定期健康检查
+   * 通过 HTTP 请求验证 server 是否真正可用（不仅仅是端口被占用）
+   */
+  private isServerAlive(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const req = http.get(`http://127.0.0.1:${this.port}/`, { timeout: 3000 }, (res) => {
+        res.resume();
+        resolve(true);
+      });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => { req.destroy(); resolve(false); });
+    });
+  }
+
+  /**
+   * 清理占用端口的僵尸进程
+   */
+  private async killZombieProcess(): Promise<void> {
+    try {
+      // 找到占用端口的进程并杀掉
+      const result = execSync(`lsof -ti :${this.port} 2>/dev/null || ss -tlnp sport = :${this.port} 2>/dev/null | grep -oP 'pid=\\K[0-9]+'`, {
+        encoding: 'utf-8',
+        timeout: 5000,
+      }).trim();
+      if (result) {
+        const pids = result.split('\n').filter(Boolean);
+        for (const pid of pids) {
+          console.log(`[MimoServer] 杀掉僵尸进程 PID=${pid}`);
+          try { process.kill(Number(pid), 'SIGKILL'); } catch {}
+        }
+        // 等待端口释放
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    } catch {}
+  }
+
+  /**
+   * 定期健康检查 + 定期重启防止 WAL 堆积
    */
   private startHealthCheck(): void {
     this.stopHealthCheck();
@@ -236,13 +264,33 @@ class MimoServerManager {
         return;
       }
 
-      // 检查端口是否仍在监听
-      if (!(await this.isPortInUse())) {
-        console.log('[MimoServer] 健康检查: 端口未监听，进程可能已死');
+      // 定期重启：运行超过4小时后主动重启，防止 SQLite WAL 堆积导致卡死
+      const uptime = Date.now() - this._startedAt;
+      if (this._startedAt > 0 && uptime > SERVER_MAX_UPTIME_MS) {
+        const hours = Math.round(uptime / 3600000);
+        console.log(`[MimoServer] server 已运行 ${hours} 小时，定期重启以防止 WAL 堆积`);
+        this.ready = false;
+        this._wasRestarted = true;
+        try { this.serverProcess.kill('SIGTERM'); } catch {}
+        this.serverProcess = null;
+        // 给旧进程3秒优雅退出
+        await new Promise(r => setTimeout(r, 3000));
+        await this.killZombieProcess();
+        if (this.refCount > 0) {
+          this.starting = false;
+          this.start().catch(() => {});
+        }
+        return;
+      }
+
+      // 检查端口是否仍在监听，且 server 是否真正可用
+      if (!(await this.isPortInUse()) || !(await this.isServerAlive())) {
+        console.log('[MimoServer] 健康检查: server 不可用（端口未监听或无响应），尝试重启');
         this.ready = false;
         this._wasRestarted = true;
         try { this.serverProcess.kill('SIGKILL'); } catch {}
         this.serverProcess = null;
+        await this.killZombieProcess();
         if (this.refCount > 0) {
           this.starting = false;
           this.start().catch(() => {});

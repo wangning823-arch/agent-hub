@@ -4,51 +4,9 @@
  */
 import Agent from './base';
 import { execSync, spawn, ChildProcess } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
 import { getMimoServerManager } from '../mimo-server';
+import { findMimoPath } from '../utils/mimo-path';
 import type { AgentMessage, AgentOptions } from '../types';
-
-function findMimoPath(): string {
-  const envPath = process.env.MIMOCODE_BIN_PATH;
-  if (envPath && fs.existsSync(envPath)) return envPath;
-
-  const candidates: string[] = [
-    '/root/.nvm/versions/node/v22.22.3/lib/node_modules/@mimo-ai/cli/bin/.mimocode',
-  ];
-  for (const p of candidates) {
-    if (fs.existsSync(p)) return p;
-  }
-
-  try {
-    const mimoWrapper = execSync('which mimo 2>/dev/null', { encoding: 'utf-8' }).trim();
-    if (mimoWrapper) {
-      const realWrapper = fs.realpathSync(mimoWrapper);
-      const binDir = path.dirname(realWrapper);
-      const cached = path.join(binDir, '.mimocode');
-      if (fs.existsSync(cached)) return cached;
-
-      const platformMap: Record<string, string> = { darwin: 'darwin', linux: 'linux', win32: 'windows' };
-      const archMap: Record<string, string> = { x64: 'x64', arm64: 'arm64' };
-      const platform = platformMap[process.platform] || process.platform;
-      const arch = archMap[process.arch] || process.arch;
-      const cliRoot = path.resolve(binDir, '..');
-      const nodeModules = path.join(cliRoot, 'node_modules');
-      const names = [
-        `@mimo-ai/mimocode-${platform}-${arch}`,
-        `@mimo-ai/mimocode-${platform}-${arch}-baseline`,
-        `@mimo-ai/mimocode-${platform}-${arch}-musl`,
-        `@mimo-ai/mimocode-${platform}-${arch}-baseline-musl`,
-      ];
-      for (const name of names) {
-        const candidate = path.join(nodeModules, name, 'bin', 'mimo');
-        if (fs.existsSync(candidate)) return candidate;
-      }
-    }
-  } catch (e) { /* ignore */ }
-
-  return 'mimo';
-}
 
 const MIMO_PATH: string = findMimoPath();
 console.log('[Mimo] 使用路径:', MIMO_PATH);
@@ -119,6 +77,8 @@ class MimoAgent extends Agent {
   private serverManager: ReturnType<typeof getMimoServerManager>;
   private useServer: boolean;
   private _currentSettle: ((action: 'resolve' | 'reject', value?: any) => void) | null = null;
+  private _pendingHistoryBackup: string | null = null;
+  private _skipNextServer: boolean = false;
 
   constructor(workdir: string, options: MimoOptions = {}) {
     super('mimo', workdir);
@@ -151,6 +111,7 @@ class MimoAgent extends Agent {
       if (this.serverManager.wasRestarted() && this.mimoSessionId) {
         console.log(`[Mimo] server 已重启，清除旧 session ID: ${this.mimoSessionId}`);
         this.mimoSessionId = null;
+        this.serverManager.clearRestarted();
       }
     } catch (err) {
       console.warn(`[Mimo] server 启动失败，回退到直接模式: ${(err as Error).message}`);
@@ -229,23 +190,32 @@ class MimoAgent extends Agent {
     // 通知前端正在处理
     this.emit('message', { type: 'status', content: '🤔 思考中...' });
 
-    // 检查 server 是否重启过，重启后旧 session 失效
+    // server 重启后旧 session 失效，清除 session ID
     if (this.useServer && this.serverManager.wasRestarted() && this.mimoSessionId) {
       console.log(`[Mimo] server 已重启，清除旧 session ID: ${this.mimoSessionId}`);
       this.mimoSessionId = null;
+      this.serverManager.clearRestarted();
     }
 
     // 如果有待注入的历史上下文， prepend 到消息中
     let finalMessage = trimmed;
     if (this.pendingHistory) {
       finalMessage = `[之前的对话上下文]\n${this.pendingHistory}\n\n[当前消息]\n${trimmed}`;
+      // 消费 pendingHistory 后，备份一份供 interrupt 恢复
+      this._pendingHistoryBackup = this.pendingHistory;
       this.pendingHistory = null;
+    } else {
+      this._pendingHistoryBackup = null;
     }
+
+    // 决定是否使用 server 模式
+    const useServerForThisCall = this.useServer && !this._skipNextServer;
+    this._skipNextServer = false;
 
     return new Promise((resolve, reject) => {
       const args: string[] = ['run'];
 
-      if (this.useServer) {
+      if (useServerForThisCall) {
         // Server 模式：通过 --attach 连接常驻 server
         args.push('--attach', this.serverManager.getServerUrl());
         args.push('--dir', this.workdir);
@@ -263,7 +233,7 @@ class MimoAgent extends Agent {
 
       // 指定模型，如果没有指定则使用默认模型 mimo/mimo-auto
       const model = this.options.model || 'mimo/mimo-auto';
-      console.log('[Mimo] 使用模型:', model, '(options.model:', this.options.model, ', useServer:', this.useServer, ')');
+      console.log('[Mimo] 使用模型:', model, '(options.model:', this.options.model, ', useServer:', useServerForThisCall, ')');
       args.push('--model', model);
 
       // 推理强度
@@ -360,7 +330,7 @@ class MimoAgent extends Agent {
           const err = new Error(`Mimo 退出码: ${code}`);
           console.error('[Mimo] exit error:', err.message);
           this.emit('message', { type: 'error', content: `Mimo 执行失败: ${err.message}` });
-          // 非正常退出时清除 session ID，下次重新创建会话
+          // 无输出的非正常退出说明进程启动就失败了，清除 session ID
           this.mimoSessionId = null;
           settle('reject', err);
         } else {
@@ -489,6 +459,7 @@ class MimoAgent extends Agent {
 
   /**
    * 中断当前正在运行的任务，保持Agent可用
+   * 恢复 pendingHistory 以便下次 send 时仍能注入上下文
    */
   async interrupt(): Promise<void> {
     console.log('[Mimo] interrupt, activeProc:', this.activeProc ? `pid=${this.activeProc.pid}` : 'null');
@@ -506,11 +477,30 @@ class MimoAgent extends Agent {
       this.activeProc = null;
       this.emit('message', { type: 'status', content: '⏹️ 任务已中断' });
     }
+    // 恢复 pendingHistory：中断时历史注入已被消费但未完成，
+    // 恢复后下次 send 会重新注入上下文
+    if (this._pendingHistoryBackup) {
+      this.pendingHistory = this._pendingHistoryBackup;
+      this._pendingHistoryBackup = null;
+      console.log('[Mimo] interrupt: 恢复 pendingHistory');
+    }
     // 立即 resolve 正在等待的 Promise，防止旧 sendMessage 的 finally 块在新任务执行期间重置 isWorking
     if (this._currentSettle) {
       this._currentSettle('resolve');
       this._currentSettle = null;
     }
+  }
+
+  /**
+   * 标记下次 send 跳过 server 模式，使用直接模式创建全新会话。
+   * 由 session manager 在 /compact 后调用，确保清空 mimo server 端的上下文。
+   */
+  prepareCompact(): void {
+    this.mimoSessionId = null;
+    this._skipNextServer = true;
+    this.pendingHistory = null;
+    this._pendingHistoryBackup = null;
+    console.log('[Mimo] prepareCompact: 已清除 session ID，下次将使用直接模式');
   }
 
   /**
