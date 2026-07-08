@@ -43,6 +43,8 @@ export default (ALLOWED_ROOT: string, projectManager?: any) => {
 
   router.get('/', requireProjectScope, (req: Request, res: Response) => {
     const dirPath = req.query.path as string;
+    const projectId = req.headers['x-project-id'] as string;
+    console.log(`[Files] GET /api/files path=${dirPath} projectId=${projectId}`);
     if (!dirPath) {
       return res.status(400).json({ error: 'path参数是必需的' });
     }

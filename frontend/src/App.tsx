@@ -873,7 +873,7 @@ export default function App() {
       <div className={isMobile ? 'mobile-panel' : 'relative'}>
         <RightSidebar
           sessionId={activeSession!}
-          workdir={activeProjectWorkdir || currentSession?.workdir}
+          workdir={currentSession?.workdir}
           onViewFile={handleViewFile}
           userRole={user?.role}
         />
