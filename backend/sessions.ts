@@ -1492,18 +1492,12 @@ Violation of these rules will result in immediate termination of the session.
     const agent = session.agent as any;
     if (!agent) return;
 
-    // mimo: 调用 prepareCompact 清除 session ID 并标记下次跳过 server 模式
-    // 这确保下一条消息使用直接模式，不会带上旧的 server 端上下文
-    if (typeof agent.prepareCompact === 'function') {
-      agent.prepareCompact();
-    } else {
-      // opencode 或其他 agent: 直接清除 session ID
-      if (agent.mimoSessionId) {
-        agent.mimoSessionId = null;
-      }
-      if (agent.opencodeSessionId) {
-        agent.opencodeSessionId = null;
-      }
+    // 清除会话 ID，下次 send() 会创建新会话
+    if (agent.mimoSessionId) {
+      agent.mimoSessionId = null;
+    }
+    if (agent.opencodeSessionId) {
+      agent.opencodeSessionId = null;
     }
 
     // 恢复记忆：生成摘要并注入到 pendingHistory

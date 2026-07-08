@@ -1,10 +1,10 @@
 /**
  * Mimo Agent适配器
- * 使用 mimo serve + --attach 模式，支持多会话并发和完整上下文恢复
+ * 使用 mimo run 单进程模式，每次 send() 启动独立子进程
+ * 参考 OpenCode 的实现方式，避免 server 模式的稳定性问题
  */
 import Agent from './base';
 import { execSync, spawn, ChildProcess } from 'child_process';
-import { getMimoServerManager } from '../mimo-server';
 import { findMimoPath } from '../utils/mimo-path';
 import type { AgentMessage, AgentOptions } from '../types';
 
@@ -49,7 +49,6 @@ interface MimoJsonMessage {
     messageID?: string;
     snapshot?: string;
   };
-  // 兼容其他格式
   content?: string;
   text?: string;
   message?: string;
@@ -74,28 +73,19 @@ class MimoAgent extends Agent {
   activeProc: ChildProcess | null;
   pendingHistory: string | null;
   contextWindow: number;
-  private serverManager: ReturnType<typeof getMimoServerManager>;
-  private useServer: boolean;
-  private _currentSettle: ((action: 'resolve' | 'reject', value?: any) => void) | null = null;
-  private _pendingHistoryBackup: string | null = null;
-  private _skipNextServer: boolean = false;
 
   constructor(workdir: string, options: MimoOptions = {}) {
     super('mimo', workdir);
-    // server 模式下从 conversationId 恢复 mimo 原生会话
     this.mimoSessionId = options.conversationId || null;
     this.hubSessionId = options.sessionId || options.conversationId || null;
     this.options = options;
     this.activeProc = null;
     this.pendingHistory = null;
     this.contextWindow = 200000;
-    this.serverManager = getMimoServerManager();
-    this.useServer = true;
   }
 
   async start(): Promise<void> {
     this.isRunning = true;
-    // 检查 mimo CLI 是否可用
     try {
       execSync(`"${MIMO_PATH}" --version`, { stdio: 'ignore' });
     } catch (e) {
@@ -103,34 +93,11 @@ class MimoAgent extends Agent {
       throw new Error('Mimo CLI 未发现或不可用，请确保 MIMO_CLI_PATH 指向正确的二进制，或在 PATH 中可访问。');
     }
 
-    // 尝试启动 mimo server，失败则回退到直接模式
-    try {
-      await this.serverManager.ensureRunning();
-      console.log(`[Mimo] server 已就绪: ${this.serverManager.getServerUrl()}`);
-      // server 重启后旧 session 失效，清除 session ID 让下次重新创建
-      if (this.serverManager.wasRestarted() && this.mimoSessionId) {
-        console.log(`[Mimo] server 已重启，清除旧 session ID: ${this.mimoSessionId}`);
-        this.mimoSessionId = null;
-        this.serverManager.clearRestarted();
-      }
-    } catch (err) {
-      console.warn(`[Mimo] server 启动失败，回退到直接模式: ${(err as Error).message}`);
-      this.useServer = false;
-    }
-
-    // 获取模型的上下文窗口大小
     this.contextWindow = this._fetchContextWindow();
-
     this.emit('started');
-
-    // 发送欢迎消息
-    const mode = this.useServer ? '✅ Mimo 已就绪 (server模式)' : '✅ Mimo 已就绪 (直接模式)';
-    this.emit('message', { type: 'status', content: mode });
+    this.emit('message', { type: 'status', content: '✅ Mimo 已就绪' });
   }
 
-  /**
-   * 从 mimo debug config 获取当前模型的上下文窗口大小
-   */
   _fetchContextWindow(): number {
     try {
       const output = execSync(`"${MIMO_PATH}" debug config`, {
@@ -141,44 +108,36 @@ class MimoAgent extends Agent {
       const config = JSON.parse(output);
       const modelId = this.options.model || 'mimo/mimo-auto';
       const modelName = modelId.includes('/') ? modelId.split('/').pop()! : modelId;
-      console.log('[Mimo] _fetchContextWindow: modelId=', modelId, 'modelName=', modelName, 'options.model=', this.options.model);
       const provider = config.provider || {};
       for (const pdata of Object.values(provider) as any[]) {
         const models = pdata?.models || {};
         if (models[modelName]?.limit?.context) {
-          console.log('[Mimo] _fetchContextWindow: found context=', models[modelName].limit.context);
           return models[modelName].limit.context;
         }
       }
     } catch (e) {
-      console.log('[Mimo] 获取上下文窗口大小失败，使用默认值 200k', e);
+      console.log('[Mimo] 获取上下文窗口大小失败，使用默认值 200k');
     }
     return 200000;
   }
 
-  /**
-   * 发送消息给 Mimo
-   */
   async send(message: string): Promise<void> {
     if (!this.isRunning) {
       throw new Error('Agent未运行');
     }
 
-    // 简单校验输入
     let trimmed = typeof message !== 'string' ? String(message) : message;
     trimmed = trimmed.trim();
     if (!trimmed) {
       return Promise.resolve();
     }
 
-    // 拦截 /compact 命令 - mimo run 模式不支持内部命令，通过事件通知 session manager 处理
     if (trimmed === '/compact') {
       console.log('[Mimo] 检测到 /compact 命令，通知 session manager 处理');
       this.emit('compact', { agentType: 'mimo', workdir: this.workdir });
       return Promise.resolve();
     }
 
-    // 若已有正在运行的子进程，优雅地中止
     if (this.activeProc) {
       try {
         this.activeProc.kill('SIGTERM');
@@ -187,53 +146,27 @@ class MimoAgent extends Agent {
     }
 
     console.log('[Mimo] 发送消息:', trimmed.substring(0, Math.min(100, trimmed.length)));
-    // 通知前端正在处理
     this.emit('message', { type: 'status', content: '🤔 思考中...' });
 
-    // server 重启后旧 session 失效，清除 session ID
-    if (this.useServer && this.serverManager.wasRestarted() && this.mimoSessionId) {
-      console.log(`[Mimo] server 已重启，清除旧 session ID: ${this.mimoSessionId}`);
-      this.mimoSessionId = null;
-      this.serverManager.clearRestarted();
-    }
-
-    // 如果有待注入的历史上下文， prepend 到消息中
     let finalMessage = trimmed;
     if (this.pendingHistory) {
       finalMessage = `[之前的对话上下文]\n${this.pendingHistory}\n\n[当前消息]\n${trimmed}`;
-      // 消费 pendingHistory 后，备份一份供 interrupt 恢复
-      this._pendingHistoryBackup = this.pendingHistory;
       this.pendingHistory = null;
-    } else {
-      this._pendingHistoryBackup = null;
     }
-
-    // 决定是否使用 server 模式
-    const useServerForThisCall = this.useServer && !this._skipNextServer;
-    this._skipNextServer = false;
 
     return new Promise((resolve, reject) => {
       const args: string[] = ['run'];
 
-      if (useServerForThisCall) {
-        // Server 模式：通过 --attach 连接常驻 server
-        args.push('--attach', this.serverManager.getServerUrl());
-        args.push('--dir', this.workdir);
-        // server 模式下 --session 安全可用（单进程访问 DB，无锁竞争）
-        if (this.mimoSessionId) {
-          args.push('--session', this.mimoSessionId);
-        }
-      } else {
-        // 回退模式：直接 spawn，使用 --pure 避免插件挂起
-        args.push('--pure');
-        if (this.mimoSessionId) {
-          args.push('--session', this.mimoSessionId);
-        }
+      // 使用 --pure 避免插件挂起（与 opencode 一致）
+      args.push('--pure');
+
+      // 恢复会话 - 只在有 mimo 自己的 session ID 时使用
+      if (this.mimoSessionId) {
+        args.push('--session', this.mimoSessionId);
       }
 
-      // 指定模型，如果没有指定则使用默认模型 mimo/mimo-auto
+      // 指定模型
       const model = this.options.model || 'mimo/mimo-auto';
-      console.log('[Mimo] 使用模型:', model, '(options.model:', this.options.model, ', useServer:', useServerForThisCall, ')');
       args.push('--model', model);
 
       // 推理强度
@@ -259,17 +192,13 @@ class MimoAgent extends Agent {
 
       console.log('[Mimo] spawn:', MIMO_PATH, args.join(' '));
 
-      // 直接用 spawn 传递参数数组，避免 shell 转义问题
       const proc: ChildProcess = spawn(MIMO_PATH, args, {
         cwd: this.workdir,
         env: { ...process.env },
         stdio: ['pipe', 'pipe', 'pipe']
       });
 
-      // 关闭 stdin，防止 mimo 等待输入
       proc.stdin!.end();
-
-      // 记录当前活跃进程
       this.activeProc = proc;
 
       let buffer = '';
@@ -280,26 +209,19 @@ class MimoAgent extends Agent {
         if (settled) return;
         settled = true;
         clearTimeout(safetyTimer);
-        this._currentSettle = null;
         if (action === 'resolve') resolve(value);
         else reject(value);
       };
 
-      // 挂载 settle 到实例，供 interrupt() 调用以立即 resolve Promise
-      this._currentSettle = settle;
-
-      // 超时提醒：10min 未响应则提示用户，可选择继续等待或点击停止按钮
       const safetyTimer = setTimeout(() => {
         this.emit('message', { type: 'status', content: '⏳ 响应已超时超过10分钟，如需等待请点击停止按钮终止任务...' });
       }, 600000);
 
-      // 实时处理 stdout 输出
       proc.stdout!.on('data', (data: Buffer) => {
         hasOutput = true;
         buffer += data.toString();
-        // 按行处理
         const lines = buffer.split('\n');
-        buffer = lines.pop()!; // 保留最后一个不完整的行
+        buffer = lines.pop()!;
         for (const line of lines) {
           if (line.trim()) {
             this.handleOutput(line.trim());
@@ -315,13 +237,10 @@ class MimoAgent extends Agent {
       });
 
       proc.on('close', (code) => {
-        // 处理 buffer 中剩余的内容
         if (buffer.trim()) {
           this.handleOutput(buffer.trim());
         }
 
-        // 只有当关闭的进程仍然是当前活跃进程时才清除引用
-        // 避免新进程启动后，旧进程的 close 事件误清新进程的引用
         if (this.activeProc === proc) {
           this.activeProc = null;
         }
@@ -330,13 +249,9 @@ class MimoAgent extends Agent {
           const err = new Error(`Mimo 退出码: ${code}`);
           console.error('[Mimo] exit error:', err.message);
           this.emit('message', { type: 'error', content: `Mimo 执行失败: ${err.message}` });
-          // 无输出的非正常退出说明进程启动就失败了，清除 session ID
           this.mimoSessionId = null;
           settle('reject', err);
         } else {
-          // 注意：不在此处 emit stopped。mimo agent 的 send() 是每次 spawn 临时进程，
-          // 进程退出只代表本次任务完成，不代表 agent 停止。
-          // stopped 只在 stop() 被调用时才 emit，否则前端收到 agent_stopped 会关闭 session。
           settle('resolve');
         }
       });
@@ -348,37 +263,26 @@ class MimoAgent extends Agent {
         settle('reject', err);
       });
 
-      // 挂载到实例上以便 interrupt 能清理定时器
       (this as any)._safetyTimer = safetyTimer;
     });
   }
 
-  /**
-   * 处理 Mimo 输出
-   */
   handleOutput(line: string): void {
     try {
       const msg: MimoJsonMessage = JSON.parse(line);
       this.handleJsonMessage(msg);
     } catch (e) {
-      // 非JSON作为单行状态提示
       this.emit('message', { type: 'status', content: line, replace: true });
     }
   }
 
-  /**
-   * 处理JSON消息
-   */
   handleJsonMessage(msg: MimoJsonMessage): void {
     try {
-      // Mimo 格式: { type: "text", part: { type: "text", text: "..." } }
       if (msg.type === 'text' && msg.part?.text) {
-        console.log('[Mimo] emit text:', msg.part.text.substring(0, 100));
         this.emit('message', { type: 'text', content: msg.part.text });
       } else if (msg.type === 'step_start') {
         // 步骤开始
       } else if (msg.type === 'step_finish') {
-        // 步骤完成，检查 token 统计
         if (msg.part?.tokens) {
           const t = msg.part.tokens;
           this.emit('message', {
@@ -395,7 +299,6 @@ class MimoAgent extends Agent {
             }
           });
         }
-        // 保存 mimo自己的sessionID
         if (msg.sessionID) {
           this.mimoSessionId = msg.sessionID;
           this.emit('message', {
@@ -423,13 +326,11 @@ class MimoAgent extends Agent {
           content: msg.message || msg.error || JSON.stringify(msg)
         });
       } else if (msg.type === 'message' || msg.type === 'assistant') {
-        // 兼容其他可能的格式
         const content = msg.content || msg.text || msg.message || msg.part?.text;
         if (content) {
           this.emit('message', { type: 'text', content: String(content) });
         }
       } else {
-        // 未知消息类型，尝试提取文本
         const text = msg.part?.text || msg.content || msg.text || msg.message;
         if (text && typeof text === 'string' && text.trim()) {
           this.emit('message', { type: 'text', content: text });
@@ -441,9 +342,6 @@ class MimoAgent extends Agent {
     }
   }
 
-  /**
-   * 停止 Agent
-   */
   async stop(): Promise<void> {
     if (this.activeProc) {
       try {
@@ -452,60 +350,24 @@ class MimoAgent extends Agent {
       this.activeProc = null;
     }
     this.isRunning = false;
-    // 释放 server 引用
-    this.serverManager.release();
     this.emit('stopped', { code: 0 });
   }
 
-  /**
-   * 中断当前正在运行的任务，保持Agent可用
-   * 恢复 pendingHistory 以便下次 send 时仍能注入上下文
-   */
   async interrupt(): Promise<void> {
     console.log('[Mimo] interrupt, activeProc:', this.activeProc ? `pid=${this.activeProc.pid}` : 'null');
-    // 清理定时器
     if ((this as any)._safetyTimer) {
       clearTimeout((this as any)._safetyTimer);
       (this as any)._safetyTimer = null;
     }
     if (this.activeProc) {
       try {
-        // 使用 SIGTERM 让 mimo run 进程有机会通知 server 清理会话
-        // 自然完成时 server 端能正常清理，SIGTERM 也能做到同样的效果
         this.activeProc.kill('SIGTERM');
       } catch (e) { /* ignore */ }
       this.activeProc = null;
       this.emit('message', { type: 'status', content: '⏹️ 任务已中断' });
     }
-    // 恢复 pendingHistory：中断时历史注入已被消费但未完成，
-    // 恢复后下次 send 会重新注入上下文
-    if (this._pendingHistoryBackup) {
-      this.pendingHistory = this._pendingHistoryBackup;
-      this._pendingHistoryBackup = null;
-      console.log('[Mimo] interrupt: 恢复 pendingHistory');
-    }
-    // 立即 resolve 正在等待的 Promise，防止旧 sendMessage 的 finally 块在新任务执行期间重置 isWorking
-    if (this._currentSettle) {
-      this._currentSettle('resolve');
-      this._currentSettle = null;
-    }
   }
 
-  /**
-   * 标记下次 send 跳过 server 模式，使用直接模式创建全新会话。
-   * 由 session manager 在 /compact 后调用，确保清空 mimo server 端的上下文。
-   */
-  prepareCompact(): void {
-    this.mimoSessionId = null;
-    this._skipNextServer = true;
-    this.pendingHistory = null;
-    this._pendingHistoryBackup = null;
-    console.log('[Mimo] prepareCompact: 已清除 session ID，下次将使用直接模式');
-  }
-
-  /**
-   * 静态健康检查
-   */
   static healthCheck(): HealthCheckResult {
     try {
       execSync(`"${MIMO_PATH}" --version`, { stdio: 'ignore' });

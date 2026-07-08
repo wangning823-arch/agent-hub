@@ -299,14 +299,12 @@ export default (sessionManager: any, projectManager?: any) => { // TODO: type th
       // OpenCode/Mimo run 模式不支持 /compact，通过重启会话并恢复记忆来清空上下文
       if (session.agentType === 'opencode' || session.agentType === 'mimo') {
         const agent = session.agent as any;
-        // mimo: 调用 prepareCompact 清除 session ID 并标记下次跳过 server 模式
-        if (typeof agent.prepareCompact === 'function') {
-          agent.prepareCompact();
-        } else {
-          // opencode: 直接清除 session ID
-          if (agent.opencodeSessionId) {
-            agent.opencodeSessionId = null;
-          }
+        // 清除会话 ID，下次 send() 会创建新会话
+        if (agent.mimoSessionId) {
+          agent.mimoSessionId = null;
+        }
+        if (agent.opencodeSessionId) {
+          agent.opencodeSessionId = null;
         }
         // 恢复记忆：生成摘要并注入到 pendingHistory
         if (session.messages.length >= 5) {

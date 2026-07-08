@@ -493,11 +493,6 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
     if (sessionManager) {
       sessionManager.saveData();
     }
-    // 关闭 mimo server
-    try {
-      const { getMimoServerManager } = require('./mimo-server');
-      await getMimoServerManager().shutdown();
-    } catch (e) { /* ignore */ }
     process.exit(0);
   });
 
@@ -508,11 +503,6 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
     if (sessionManager) {
       sessionManager.saveData();
     }
-    // 关闭 mimo server
-    try {
-      const { getMimoServerManager } = require('./mimo-server');
-      await getMimoServerManager().shutdown();
-    } catch (e) { /* ignore */ }
     process.exit(0);
   });
 })();
