@@ -490,16 +490,16 @@ ${resultText}
         } else if (msg.type === 'result' || msg.type === 'completed') {
           finished = true;
           agent.removeListener('message', handler);
+          // 将 agent 的自然语言回答归一化为「是否达到退出条件」的布尔判定
           const trimmed = response.trim();
           const lower = trimmed.toLowerCase();
-          console.log(`[循环] Agent 退出条件判断原始回答: "${trimmed}"`);
           resolve(lower.includes('是') || lower.includes('yes'));
         }
       };
 
       agent.on('message', handler);
 
-      // 设置超时
+      // 兜底超时：若 30 秒内未收到 agent 的完成事件，则强制终止并据此判定
       setTimeout(() => {
         if (!finished) {
           finished = true;
@@ -507,7 +507,6 @@ ${resultText}
           agent.stop().catch(() => {});
           const trimmed = response.trim();
           const lower = trimmed.toLowerCase();
-          console.log(`[循环] Agent 退出条件判断原始回答: "${trimmed}"`);
           resolve(lower.includes('是') || lower.includes('yes'));
         }
       }, 30000);
