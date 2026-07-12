@@ -177,8 +177,10 @@ class MimoAgent extends Agent {
         args.push('--variant', this.options.variant);
       }
 
-      // 权限模式
-      if (this.options.mode === 'auto' || this.options.mode === 'bypassPermissions') {
+      // 权限模式：auto/bypassPermissions/build/compose 都需要跳过权限
+      // build/compose 模式下进程无法交互式应答权限提示，必须自动批准
+      if (this.options.mode === 'auto' || this.options.mode === 'bypassPermissions' ||
+          this.options.agent || ['build', 'compose'].includes(this.options.mode as string)) {
         args.push('--dangerously-skip-permissions');
       }
 
@@ -255,6 +257,8 @@ class MimoAgent extends Agent {
           this.mimoSessionId = null;
           settle('reject', err);
         } else {
+          // 通知会话 agent 已停止（与 claude-code/opencode 一致）
+          this.emit('stopped', { code: 0 });
           settle('resolve');
         }
       });

@@ -39,3 +39,5 @@ backend/fix-*.js
 backend/check-*.js
 backend/create-*.js
 backend/reset-*.js
+
+.mimocode
