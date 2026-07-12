@@ -32,6 +32,10 @@ import modelsRouter from './routes/models';
 import workflowsRouter from './routes/workflows';
 import WorkflowEngine from './workflow-engine';
 import WorkflowScheduler from './workflow-scheduler';
+import loopsRouter from './routes/loops';
+import LoopEngine from './loop-engine';
+import LoopScheduler from './loop-scheduler';
+import LoopStore from './loop-store';
 import wsHandler from './websocket/handler';
 import { initDb, getDb, saveToFile, saveTokenStatsToFile } from './db';
 import promptTemplatesRouter from './routes/prompt-templates';
@@ -344,6 +348,11 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   const workflowEngine = new WorkflowEngine(sessionManager);
   const workflowScheduler = new WorkflowScheduler(sessionManager, workflowEngine);
   workflowScheduler.loadPending();
+  const loopStore = new LoopStore();
+  const loopEngine = new LoopEngine(sessionManager);
+  const loopScheduler = new LoopScheduler(sessionManager, loopEngine);
+  loopScheduler.loadPending();
+  sessionManager.setLoopComponents(loopStore, loopEngine, loopScheduler);
   const wsConnectionHandler = wsHandler(sessionManager);
 
   // 初始化 GoalMonitor
@@ -437,6 +446,7 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   app.use('/api/models', modelsSystemRouter);
   app.use('/api/my-models', myModelsRouter);
   app.use('/api', workflowsRouter(sessionManager, workflowEngine, workflowScheduler));
+  app.use('/api', loopsRouter(sessionManager));
   app.use('/api/prompt-templates', promptTemplatesRouter());
   app.use('/api/design-specs', designSpecsRouter());
   app.use('/api/ai', beautifyRouter());

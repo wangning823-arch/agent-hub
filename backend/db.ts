@@ -233,6 +233,35 @@ async function initDb(): Promise<SqlJsDatabase> {
     )
   `);
 
+  // 循环定时调度表
+  _db.run(`
+    CREATE TABLE IF NOT EXISTS loop_schedules (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      loop_def_id TEXT NOT NULL,
+      scheduled_at INTEGER NOT NULL,
+      recurrence TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at INTEGER NOT NULL
+    )
+  `);
+
+  // 增量迁移：给 sessions 表添加 loop_defs 和 loops 列
+  try {
+    const cols = _db.exec("PRAGMA table_info(sessions)");
+    if (cols.length > 0) {
+      const colNames = cols[0].values.map((row: any[]) => row[1]);
+      if (!colNames.includes('loop_defs')) {
+        _db.run('ALTER TABLE sessions ADD COLUMN loop_defs TEXT DEFAULT "[]"');
+        console.log('[数据库迁移] sessions 表添加 loop_defs 列');
+      }
+      if (!colNames.includes('loops')) {
+        _db.run('ALTER TABLE sessions ADD COLUMN loops TEXT DEFAULT "[]"');
+        console.log('[数据库迁移] sessions 表添加 loops 列');
+      }
+    }
+  } catch (e) { }
+
   // ========== Prompt 模板表 ==========
   _db.run(`
     CREATE TABLE IF NOT EXISTS prompt_templates (

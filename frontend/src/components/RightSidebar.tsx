@@ -10,6 +10,7 @@ import {
 } from './Icons'
 import { Sparkles } from 'lucide-react'
 import CodeBeautifyModal from './CodeBeautifyModal'
+import LoopListPanel from './LoopListPanel'
 import { useToast } from './Toast'
 
 const API_BASE = '/api'
@@ -522,6 +523,17 @@ export default function RightSidebar({ sessionId, workdir, onViewFile, userRole 
                 </pre>
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* Loop management */}
+      <div className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+        <SectionHeader icon={<span>🔄</span>} label="循环管理" section="loops" />
+
+        {expandedSection === 'loops' && (
+          <div className="max-h-[50vh] overflow-y-auto">
+            <LoopListPanel sessionId={sessionId} />
           </div>
         )}
       </div>

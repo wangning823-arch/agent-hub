@@ -684,6 +684,16 @@ export default function ChatPanel({
               return
             }
 
+            // 循环消息处理
+            if (msg.loop_id) {
+              // 循环状态更新由 LoopListPanel 通过轮询处理
+              // 这里只处理消息流
+              if (msg.type === 'loop_iteration_message') {
+                // 可以在这里添加实时消息显示
+              }
+              return
+            }
+
             // 目标监控消息处理
             if (msg.type === 'goal_status') {
               // GoalStatusBar 组件会通过轮询获取状态，这里不需要额外处理

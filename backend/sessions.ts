@@ -15,6 +15,8 @@ import type {
   Credential,
   WorkflowDefinition,
   WorkflowInstance,
+  LoopDefinition,
+  LoopRun,
 } from './types';
 import { WebSocket } from 'ws';
 
@@ -80,6 +82,8 @@ interface SessionInstance {
   subtasks: Subtask[];
   workflowDefs: WorkflowDefinition[];
   workflows: WorkflowInstance[];
+  loopDefs: LoopDefinition[];
+  loops: LoopRun[];
   userId?: string;
   contextUsage?: { inputTokens: number; contextWindow: number; percentage: number } | null;
   toJSON(): SessionJSON;
@@ -152,6 +156,9 @@ class SessionManager {
   tokenTracker: TokenTrackerLike | null;
   initialized: boolean;
   goalMonitor: any; // GoalMonitor 实例，延迟注入
+  loopStore: any; // LoopStore 实例，延迟加载
+  loopEngine: any; // LoopEngine 实例，延迟加载
+  loopScheduler: any; // LoopScheduler 实例，延迟加载
 
   constructor(tokenTracker: TokenTrackerLike | null = null) {
     ensureImports();
@@ -160,6 +167,9 @@ class SessionManager {
     this.tokenTracker = tokenTracker;
     this.initialized = false;
     this.goalMonitor = null;
+    this.loopStore = null;
+    this.loopEngine = null;
+    this.loopScheduler = null;
   }
 
   /**
@@ -167,6 +177,15 @@ class SessionManager {
    */
   setGoalMonitor(goalMonitor: any): void {
     this.goalMonitor = goalMonitor;
+  }
+
+  /**
+   * 设置 Loop 组件实例
+   */
+  setLoopComponents(loopStore: any, loopEngine: any, loopScheduler: any): void {
+    this.loopStore = loopStore;
+    this.loopEngine = loopEngine;
+    this.loopScheduler = loopScheduler;
   }
 
   // ==================== Git Credential Helpers ====================
@@ -418,6 +437,8 @@ Violation of these rules will result in immediate termination of the session.
         subtasks: JSON.parse((sessionData.subtasks as string) || '[]') as Subtask[],
         workflowDefs: JSON.parse((sessionData.workflow_defs as string) || '[]') as WorkflowDefinition[],
         workflows: JSON.parse((sessionData.workflows as string) || '[]') as WorkflowInstance[],
+        loopDefs: JSON.parse((sessionData.loop_defs as string) || '[]') as LoopDefinition[],
+        loops: JSON.parse((sessionData.loops as string) || '[]') as LoopRun[],
         userId: (sessionData.user_id as string) || undefined,
         contextUsage: sessionData.context_usage ? JSON.parse(sessionData.context_usage as string) : null,
         toJSON(): SessionJSON {
@@ -457,8 +478,8 @@ Violation of these rules will result in immediate termination of the session.
     try {
       db.run(
         `
-        INSERT OR REPLACE INTO sessions (id, workdir, agent_type, agent_name, conversation_id, title, options, is_pinned, is_archived, tags, created_at, updated_at, subtasks, workflow_defs, workflows, user_id, context_usage)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO sessions (id, workdir, agent_type, agent_name, conversation_id, title, options, is_pinned, is_archived, tags, created_at, updated_at, subtasks, workflow_defs, workflows, loop_defs, loops, user_id, context_usage)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
         [
           session.id,
@@ -480,6 +501,8 @@ Violation of these rules will result in immediate termination of the session.
           JSON.stringify(session.subtasks || []),
           JSON.stringify(session.workflowDefs || []),
           JSON.stringify(session.workflows || []),
+          JSON.stringify(session.loopDefs || []),
+          JSON.stringify(session.loops || []),
           session.userId || null,
           session.contextUsage ? JSON.stringify(session.contextUsage) : null,
         ],
@@ -594,6 +617,8 @@ Violation of these rules will result in immediate termination of the session.
       subtasks: [],
       workflowDefs: [],
       workflows: [],
+      loopDefs: [],
+      loops: [],
       userId,
       toJSON(): SessionJSON {
         return {
@@ -908,6 +933,9 @@ Violation of these rules will result in immediate termination of the session.
         'workflow_status',
         'workflow_step_status',
         'workflow_step_message',
+        'loop_status',
+        'loop_iteration_status',
+        'loop_iteration_message',
       ];
       if (!metaTypes.includes(msg.type) && !msg.subtask_id && !(msg as any).workflow_id) {
         session.messages.push({ role: 'assistant', content: msg, time: Date.now() });
@@ -1198,6 +1226,50 @@ Violation of these rules will result in immediate termination of the session.
     session.workflows = (session.workflows || []).filter(w => w.id !== workflowId);
     this.saveSession(session);
     return (session.workflows || []).length < before;
+  }
+
+  // ==================== Loop Definition CRUD ====================
+
+  getLoopDefs(sessionId: string): LoopDefinition[] {
+    if (!this.loopStore) return [];
+    return this.loopStore.getLoopDefs(sessionId);
+  }
+
+  saveLoopDef(sessionId: string, def: LoopDefinition): LoopDefinition {
+    if (!this.loopStore) throw new Error('LoopStore 未初始化');
+    return this.loopStore.saveLoopDef(sessionId, def);
+  }
+
+  updateLoopDef(sessionId: string, defId: string, updates: Partial<LoopDefinition>): LoopDefinition | null {
+    if (!this.loopStore) throw new Error('LoopStore 未初始化');
+    return this.loopStore.updateLoopDef(sessionId, defId, updates);
+  }
+
+  deleteLoopDef(sessionId: string, defId: string): boolean {
+    if (!this.loopStore) return false;
+    return this.loopStore.deleteLoopDef(sessionId, defId);
+  }
+
+  // ==================== Loop Run CRUD ====================
+
+  getLoops(sessionId: string): LoopRun[] {
+    if (!this.loopStore) return [];
+    return this.loopStore.getLoops(sessionId);
+  }
+
+  getLoop(sessionId: string, loopId: string): LoopRun | null {
+    if (!this.loopStore) return null;
+    return this.loopStore.getLoop(sessionId, loopId);
+  }
+
+  saveLoop(sessionId: string, run: LoopRun): LoopRun {
+    if (!this.loopStore) throw new Error('LoopStore 未初始化');
+    return this.loopStore.saveLoop(sessionId, run);
+  }
+
+  deleteLoop(sessionId: string, loopId: string): boolean {
+    if (!this.loopStore) return false;
+    return this.loopStore.deleteLoop(sessionId, loopId);
   }
 
   /**

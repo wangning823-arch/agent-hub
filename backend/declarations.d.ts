@@ -32,3 +32,28 @@ declare module 'sql.js' {
   export default initSqlJs;
   export { SqlJsStatic, Database, Statement, QueryExecResult };
 }
+
+declare module 'multer' {
+  import { Request } from 'express';
+  
+  interface MulterFile {
+    fieldname: string;
+    originalname: string;
+    encoding: string;
+    mimetype: string;
+    size: number;
+    destination: string;
+    filename: string;
+    path: string;
+    buffer: Buffer;
+  }
+
+  interface Multer {
+    single(fieldname: string): (req: Request, res: any, next: (err?: any) => void) => void;
+    array(fieldname: string, maxCount?: number): (req: Request, res: any, next: (err?: any) => void) => void;
+  }
+
+  function multer(options?: any): Multer;
+  export default multer;
+  export { MulterFile, Multer };
+}

@@ -304,6 +304,64 @@ export interface WorkflowTemplate {
   usageCount: number;
 }
 
+// ==================== Loop Types ====================
+
+export interface LoopStepDef {
+  id: string;
+  name: string;
+  prompt: string;
+  agentType?: AgentType;
+  model?: string;
+  timeout: number;
+}
+
+export interface LoopDefinition {
+  id: string;                    // "loopdef_{timestamp}_{random6}"
+  name: string;
+  description: string;
+  steps: LoopStepDef[];          // 每次迭代执行的步骤
+  maxIterations: number;         // 最大迭代次数（0 = 无限）
+  exitCondition?: string;        // 自然语言退出条件
+  exitConditionType?: 'success' | 'failure' | 'custom';
+  delayBetweenIterations: number; // 迭代间延迟（毫秒）
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type LoopRunStatus = 'idle' | 'running' | 'paused' | 'completed' | 'error' | 'cancelled';
+export type LoopIterationStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped';
+
+export interface LoopIteration {
+  index: number;
+  status: LoopIterationStatus;
+  startedAt: number | null;
+  completedAt: number | null;
+  results: LoopStepResult[];
+  error?: string;
+}
+
+export interface LoopStepResult {
+  stepId: string;
+  status: 'pending' | 'running' | 'done' | 'error';
+  result: string | null;
+  messages: StepMessage[];
+  error: string | null;
+}
+
+export interface LoopRun {
+  id: string;                    // "looprun_{timestamp}_{random6}"
+  defId: string;
+  name: string;
+  description: string;
+  status: LoopRunStatus;
+  currentIteration: number;
+  maxIterations: number;
+  iterations: LoopIteration[];
+  startedAt: number | null;
+  completedAt: number | null;
+  createdAt: number;
+}
+
 // ==================== Goal Monitor Types ====================
 
 export type GoalStatus = 'active' | 'completed' | 'cancelled' | 'error';
