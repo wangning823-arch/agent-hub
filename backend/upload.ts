@@ -7,6 +7,15 @@ import * as fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { Request, Response } from 'express';
 
+// multer v2 运行时导出了 diskStorage，但 @types/multer 类型定义未覆盖
+const diskStorage = (multer as any).diskStorage as (
+  opts: {
+    destination: string | ((req: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => void);
+    filename?: (req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => void;
+  }
+) => any;
+type FileFilterCallback = (error: Error | null | undefined, acceptFile?: boolean) => void;
+
 // 上传目录
 const UPLOAD_DIR: string = path.join(__dirname, '..', '..', 'uploads');
 
@@ -16,7 +25,7 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 }
 
 // 配置存储
-const storage = multer.diskStorage({
+const storage = diskStorage({
   destination: (req: Request, _file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
     const today = new Date().toISOString().split('T')[0];
     const userId = (req as any).user?.userId || 'anonymous';
@@ -51,7 +60,7 @@ const storage = multer.diskStorage({
 });
 
 // 文件过滤
-const fileFilter = (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback): void => {
+const fileFilter = (_req: Request, file: Express.Multer.File, cb: FileFilterCallback): void => {
   // 允许的文件类型
   const allowedMimes = [
     // 图片
