@@ -490,7 +490,9 @@ ${resultText}
         } else if (msg.type === 'result' || msg.type === 'completed') {
           finished = true;
           agent.removeListener('message', handler);
-          const lower = response.trim().toLowerCase();
+          const trimmed = response.trim();
+          const lower = trimmed.toLowerCase();
+          console.log(`[循环] Agent 退出条件判断原始回答: "${trimmed}"`);
           resolve(lower.includes('是') || lower.includes('yes'));
         }
       };
@@ -503,7 +505,9 @@ ${resultText}
           finished = true;
           agent.removeListener('message', handler);
           agent.stop().catch(() => {});
-          const lower = response.trim().toLowerCase();
+          const trimmed = response.trim();
+          const lower = trimmed.toLowerCase();
+          console.log(`[循环] Agent 退出条件判断原始回答: "${trimmed}"`);
           resolve(lower.includes('是') || lower.includes('yes'));
         }
       }, 30000);
@@ -543,6 +547,9 @@ ${resultText}
     if (hasError) {
       run.status = 'error';
     } else if (reachedMax) {
+      run.status = 'completed';
+    } else {
+      // 通过退出条件正常停止
       run.status = 'completed';
     }
 
