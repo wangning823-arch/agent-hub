@@ -196,10 +196,23 @@ export default function ChatPanel({
   const [splitAnalyzing, setSplitAnalyzing] = useState(false)
   const [showTemplatePanel, setShowTemplatePanel] = useState(false)
   const [showDesignSystem, setShowDesignSystem] = useState(false)
-  const [activeTab, setActiveTab] = useState<'main' | 'subtasks' | 'workflow'>('main')
+  const [activeTab, setActiveTab] = useState<'main' | 'subtasks' | 'workflow' | 'loops'>('main')
   const [viewingSubtaskId, setViewingSubtaskId] = useState<string | null>(null)
   const subtaskScrollRef = useRef<HTMLDivElement>(null)
   const workflowDropdownRef = useRef<HTMLDivElement>(null)
+  const loopScrollRef = useRef<HTMLDivElement>(null)
+
+  // 循环状态
+  interface LoopMessage {
+    type: 'status' | 'iteration' | 'message'
+    content: string
+    time: number
+    iteration?: number
+    loopId?: string
+  }
+  const [loopDefs, setLoopDefs] = useState<any[]>([])
+  const [activeLoops, setActiveLoops] = useState<any[]>([])
+  const [loopMessages, setLoopMessages] = useState<LoopMessage[]>([])
 
   // 工作流状态
   interface WorkflowStepRun {
@@ -293,6 +306,68 @@ export default function ChatPanel({
     }
   }
 
+  // 加载循环定义和历史消息
+  const loadLoopData = async () => {
+    try {
+      const token = localStorage.getItem('access_token') || ''
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {}
+
+      // 加载循环定义
+      const defData = await fetch(`${API_BASE}/sessions/${sessionId}/loop-defs`, { headers }).then(r => r.json())
+      setLoopDefs(defData.defs || [])
+
+      // 加载循环运行历史
+      const runData = await fetch(`${API_BASE}/sessions/${sessionId}/loops`, { headers }).then(r => r.json())
+      const runs = runData.loops || []
+      setActiveLoops(runs)
+
+      // 从历史运行中恢复消息
+      const allMessages: LoopMessage[] = []
+      for (const run of runs) {
+        if (run.iterations) {
+          for (const iter of run.iterations) {
+            if (iter.results) {
+              for (const result of iter.results) {
+                if (result.messages) {
+                  for (const msg of result.messages) {
+                    allMessages.push({
+                      type: msg.type === 'text' || msg.type === 'assistant' ? 'message' : 'status',
+                      content: `[迭代${iter.index + 1}] ${msg.content || ''}`,
+                      time: msg.time || Date.now(),
+                      iteration: iter.index,
+                      loopId: run.id
+                    })
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      if (allMessages.length > 0) {
+        setLoopMessages(allMessages)
+      }
+    } catch (error) {
+      console.error('加载循环数据失败:', error)
+    }
+  }
+
+  useEffect(() => {
+    loadLoopData()
+  }, [sessionId])
+
+  // 自动刷新运行中的循环状态
+  useEffect(() => {
+    const hasRunningLoops = activeLoops.some(l => l.status === 'running')
+    if (!hasRunningLoops) return
+
+    const interval = setInterval(() => {
+      loadLoopData()
+    }, 3000) // 每3秒刷新一次
+
+    return () => clearInterval(interval)
+  }, [activeLoops])
+
   const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
     if (messages.length === 0) return
     // 使用 virtualizer 滚动到最后一条消息
@@ -345,6 +420,14 @@ export default function ChatPanel({
       setTimeout(() => el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }), 100)
     }
   }, [subtasks, activeTab, viewingSubtaskId])
+
+  // 循环 tab 自动滚动到底部
+  useEffect(() => {
+    if (activeTab === 'loops' && loopScrollRef.current) {
+      const el = loopScrollRef.current
+      setTimeout(() => el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }), 100)
+    }
+  }, [loopMessages, activeTab])
 
   // 通知 App.jsx 子任务数量变化
   useEffect(() => {
@@ -686,10 +769,53 @@ export default function ChatPanel({
 
             // 循环消息处理
             if (msg.loop_id) {
-              // 循环状态更新由 LoopListPanel 通过轮询处理
-              // 这里只处理消息流
-              if (msg.type === 'loop_iteration_message') {
-                // 可以在这里添加实时消息显示
+              if (msg.type === 'loop_status') {
+                // 更新活跃循环列表
+                if (msg.run) {
+                  setActiveLoops(prev => {
+                    const idx = prev.findIndex(l => l.id === msg.run.id)
+                    if (idx >= 0) {
+                      const updated = [...prev]
+                      updated[idx] = msg.run
+                      return updated
+                    }
+                    return [...prev, msg.run]
+                  })
+                }
+                const statusText = msg.status === 'running' ? '🔄 循环执行中' :
+                  msg.status === 'completed' ? '✅ 循环已完成' :
+                  msg.status === 'paused' ? '⏸️ 循环已暂停' :
+                  msg.status === 'error' ? '❌ 循环出错' :
+                  msg.status === 'cancelled' ? '⏹️ 循环已取消' : `循环状态: ${msg.status}`
+
+                setLoopMessages(prev => [...prev, {
+                  type: 'status',
+                  content: `${statusText} (迭代 ${msg.run?.currentIteration || 0}/${msg.run?.maxIterations || 0})`,
+                  time: Date.now(),
+                  loopId: msg.loop_id
+                }])
+              } else if (msg.type === 'loop_iteration_status') {
+                const iterStatus = msg.status === 'running' ? '▶️' :
+                  msg.status === 'done' ? '✅' :
+                  msg.status === 'error' ? '❌' : '⏸️'
+
+                setLoopMessages(prev => [...prev, {
+                  type: 'iteration',
+                  content: `${iterStatus} 迭代 ${(msg.iteration_index || 0) + 1} ${msg.status}${msg.error ? ': ' + msg.error : ''}`,
+                  time: Date.now(),
+                  iteration: msg.iteration_index,
+                  loopId: msg.loop_id
+                }])
+              } else if (msg.type === 'loop_iteration_message') {
+                if (msg.content) {
+                  setLoopMessages(prev => [...prev, {
+                    type: 'message',
+                    content: `[迭代${(msg.iteration_index || 0) + 1}] ${msg.content}`,
+                    time: Date.now(),
+                    iteration: msg.iteration_index,
+                    loopId: msg.loop_id
+                  }])
+                }
               }
               return
             }
@@ -1637,8 +1763,8 @@ export default function ChatPanel({
         onClose={handleCloseSubtaskPanel}
       />
 
-      {/* Tab Bar - when subtasks or workflows exist */}
-      {(subtasks.length > 0 || workflowDefs.length > 0 || workflows.length > 0) && (
+      {/* Tab Bar - when subtasks, workflows or loops exist */}
+      {(subtasks.length > 0 || workflowDefs.length > 0 || workflows.length > 0 || loopDefs.length > 0 || activeLoops.length > 0) && (
         <div className="flex border-b" style={{ borderColor: 'var(--border-subtle)' }}>
           <button
             onClick={() => setActiveTab('main')}
@@ -1673,6 +1799,21 @@ export default function ChatPanel({
                 <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs"
                       style={{ background: 'var(--accent-primary)', color: 'white', fontSize: '0.65rem' }}>
                   {workflows.filter(w => w.status === 'running').length}
+                </span>
+              )}
+            </button>
+          )}
+          {(loopDefs.length > 0 || activeLoops.length > 0) && (
+            <button
+              onClick={() => setActiveTab('loops')}
+              className={`tab-btn ${activeTab === 'loops' ? 'active' : ''}`}
+              style={{ flex: 'none', padding: '8px 16px' }}
+            >
+              循环
+              {activeLoops.filter(l => l.status === 'running').length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs"
+                      style={{ background: 'var(--warning)', color: 'white', fontSize: '0.65rem' }}>
+                  {activeLoops.filter(l => l.status === 'running').length}
                 </span>
               )}
             </button>
@@ -1941,6 +2082,91 @@ export default function ChatPanel({
             )}
           </div>
         )}
+      </div>
+      )}
+
+      {/* Loops Tab */}
+      {activeTab === 'loops' && (
+      <div className="flex-1 overflow-y-auto p-3" ref={loopScrollRef} style={{ overscrollBehaviorY: 'contain' }}>
+        <div className="space-y-3">
+          {/* 刷新按钮 */}
+          <div className="flex justify-end">
+            <button onClick={loadLoopData} className="text-xs px-2 py-1 rounded"
+                    style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}>
+              刷新
+            </button>
+          </div>
+
+          {/* 执行中的循环 */}
+          {activeLoops.filter(l => l.status === 'running' || l.status === 'paused').length > 0 && (
+            <div>
+              <div className="text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>执行中</div>
+              {activeLoops.filter(l => l.status === 'running' || l.status === 'paused').map(l => (
+                <div key={l.id} className="rounded-lg p-3 mb-2"
+                     style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{l.name}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full"
+                          style={{ background: l.status === 'running' ? 'var(--warning)' : 'var(--bg-hover)', color: l.status === 'running' ? 'white' : 'var(--text-primary)' }}>
+                      {l.status === 'running' ? '执行中' : '暂停'}
+                    </span>
+                  </div>
+                  <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                    迭代 {l.currentIteration || 0}/{l.maxIterations || 0}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 循环消息日志 */}
+          {loopMessages.length > 0 && (
+            <div>
+              <div className="text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>执行日志</div>
+              <div className="rounded-lg p-3 space-y-2" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}>
+                {loopMessages.map((msg, idx) => (
+                  <div key={idx} className="text-xs" style={{
+                    color: msg.type === 'status' ? 'var(--accent-primary)' :
+                           msg.type === 'iteration' ? 'var(--text-secondary)' : 'var(--text-primary)'
+                  }}>
+                    <span style={{ color: 'var(--text-muted)', marginRight: 8 }}>
+                      {new Date(msg.time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                    {msg.content}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 已完成的循环 */}
+          {activeLoops.filter(l => l.status !== 'running' && l.status !== 'paused').length > 0 && (
+            <div>
+              <div className="text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>已完成</div>
+              {activeLoops.filter(l => l.status !== 'running' && l.status !== 'paused').map(l => (
+                <div key={l.id} className="rounded-lg p-3 mb-2"
+                     style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{l.name}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full"
+                          style={{ background: l.status === 'completed' ? 'var(--success)' : l.status === 'error' ? 'var(--error)' : 'var(--bg-hover)', color: 'white' }}>
+                      {l.status === 'completed' ? '完成' : l.status === 'error' ? '出错' : l.status === 'cancelled' ? '取消' : l.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 空状态 */}
+          {activeLoops.length === 0 && loopMessages.length === 0 && (
+            <div className="text-center mt-20" style={{ color: 'var(--text-muted)' }}>
+              <p className="text-4xl mb-3">🔁</p>
+              <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>暂无循环</p>
+              <p className="text-sm mt-2">在右侧栏循环管理中创建并运行循环</p>
+            </div>
+          )}
+        </div>
       </div>
       )}
 

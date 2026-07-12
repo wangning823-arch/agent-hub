@@ -57,9 +57,16 @@ const LoopListPanel: React.FC<LoopListPanelProps> = ({ sessionId }) => {
   const [editingDef, setEditingDef] = useState<LoopDefinition | null>(null)
   const [loading, setLoading] = useState(false)
 
+  const authHeaders = () => {
+    const token = localStorage.getItem('access_token') || ''
+    return token ? { 'Authorization': `Bearer ${token}` } : {}
+  }
+
   const fetchDefinitions = async () => {
     try {
-      const response = await fetch(`/api/sessions/${sessionId}/loop-defs`)
+      const response = await fetch(`/api/sessions/${sessionId}/loop-defs`, {
+        headers: authHeaders()
+      })
       const data = await response.json()
       setDefinitions(data.defs || [])
     } catch (error) {
@@ -69,7 +76,9 @@ const LoopListPanel: React.FC<LoopListPanelProps> = ({ sessionId }) => {
 
   const fetchRuns = async () => {
     try {
-      const response = await fetch(`/api/sessions/${sessionId}/loops`)
+      const response = await fetch(`/api/sessions/${sessionId}/loops`, {
+        headers: authHeaders()
+      })
       const data = await response.json()
       setRuns(data.loops || [])
     } catch (error) {
@@ -102,7 +111,7 @@ const LoopListPanel: React.FC<LoopListPanelProps> = ({ sessionId }) => {
 
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(def)
       })
 
@@ -126,7 +135,8 @@ const LoopListPanel: React.FC<LoopListPanelProps> = ({ sessionId }) => {
 
     try {
       const response = await fetch(`/api/sessions/${sessionId}/loop-defs/${defId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: authHeaders()
       })
 
       if (response.ok) {
@@ -142,7 +152,7 @@ const LoopListPanel: React.FC<LoopListPanelProps> = ({ sessionId }) => {
     try {
       const response = await fetch(`/api/sessions/${sessionId}/loops`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ defId })
       })
 
@@ -162,7 +172,8 @@ const LoopListPanel: React.FC<LoopListPanelProps> = ({ sessionId }) => {
   const handlePause = async (loopId: string) => {
     try {
       await fetch(`/api/sessions/${sessionId}/loops/${loopId}/pause`, {
-        method: 'POST'
+        method: 'POST',
+        headers: authHeaders()
       })
       fetchRuns()
     } catch (error) {
@@ -173,7 +184,8 @@ const LoopListPanel: React.FC<LoopListPanelProps> = ({ sessionId }) => {
   const handleCancel = async (loopId: string) => {
     try {
       await fetch(`/api/sessions/${sessionId}/loops/${loopId}/cancel`, {
-        method: 'POST'
+        method: 'POST',
+        headers: authHeaders()
       })
       fetchRuns()
     } catch (error) {
@@ -184,7 +196,8 @@ const LoopListPanel: React.FC<LoopListPanelProps> = ({ sessionId }) => {
   const handleRetry = async (loopId: string) => {
     try {
       await fetch(`/api/sessions/${sessionId}/loops/${loopId}/retry`, {
-        method: 'POST'
+        method: 'POST',
+        headers: authHeaders()
       })
       fetchRuns()
     } catch (error) {

@@ -192,8 +192,19 @@ class MimoAgent extends Agent {
       // JSON格式输出
       args.push('--format', 'json');
 
-      // 添加用户消息
-      args.push(finalMessage);
+      // 如果消息太长，使用 --command 从 stdin 读取，避免命令行参数过长导致 E2BIG 错误
+      const MESSAGE_THRESHOLD = 30000; // 30KB 阈值
+      let useStdin = false;
+
+      if (finalMessage.length > MESSAGE_THRESHOLD) {
+        // 消息过长，使用 --command 模式从 stdin 读取
+        args.push('--command');
+        useStdin = true;
+        console.log('[Mimo] 消息过长，使用 stdin 传递，长度:', finalMessage.length);
+      } else {
+        // 消息较短，直接作为参数传递
+        args.push(finalMessage);
+      }
 
       console.log('[Mimo] spawn:', MIMO_PATH, args.join(' '));
 
@@ -203,6 +214,10 @@ class MimoAgent extends Agent {
         stdio: ['pipe', 'pipe', 'pipe']
       });
 
+      // 如果使用 stdin 模式，写入消息
+      if (useStdin) {
+        proc.stdin!.write(finalMessage);
+      }
       proc.stdin!.end();
       this.activeProc = proc;
 

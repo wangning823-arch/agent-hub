@@ -6,7 +6,8 @@ import {
   IconChevron,
   IconClear,
   IconFile,
-  IconUp
+  IconUp,
+  IconLoop
 } from './Icons'
 import { Sparkles } from 'lucide-react'
 import CodeBeautifyModal from './CodeBeautifyModal'
@@ -322,11 +323,11 @@ export default function RightSidebar({ sessionId, workdir, onViewFile, userRole 
   return (
     <div className="panel flex flex-col h-full overflow-y-auto" style={{ width: 300 }}>
       {/* File manager */}
-      <div className="border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+      <div className="border-b flex flex-col" style={{ borderColor: 'var(--border-subtle)' }}>
         <SectionHeader icon={<IconFolder />} label="文件管理" section="files" />
 
         {expandedSection === 'files' && (
-          <div className="max-h-[50vh] flex flex-col">
+          <div className="flex-1 flex flex-col" style={{ maxHeight: '50vh' }}>
             {/* Path bar */}
             <div className="px-3 py-2 border-b flex items-center gap-2" style={{ borderColor: 'var(--border-subtle)' }}>
               {!isAtRoot && (
@@ -376,7 +377,7 @@ export default function RightSidebar({ sessionId, workdir, onViewFile, userRole 
       </div>
 
       {/* Git controls */}
-      <div className="flex-1 flex flex-col">
+      <div className="border-t flex flex-col" style={{ borderColor: 'var(--border-subtle)' }}>
         <SectionHeader icon={<IconGit />} label="Git 控制" section="git" />
 
         {expandedSection === 'git' && (
@@ -528,11 +529,11 @@ export default function RightSidebar({ sessionId, workdir, onViewFile, userRole 
       </div>
 
       {/* Loop management */}
-      <div className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-        <SectionHeader icon={<span>🔄</span>} label="循环管理" section="loops" />
+      <div className="border-t flex flex-col" style={{ borderColor: 'var(--border-subtle)' }}>
+        <SectionHeader icon={<IconLoop />} label="循环管理" section="loops" />
 
         {expandedSection === 'loops' && (
-          <div className="max-h-[50vh] overflow-y-auto">
+          <div className="flex-1 overflow-y-auto">
             <LoopListPanel sessionId={sessionId} />
           </div>
         )}

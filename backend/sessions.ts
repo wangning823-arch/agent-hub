@@ -375,7 +375,7 @@ Violation of these rules will result in immediate termination of the session.
     const rows = db.exec(`
       SELECT id, workdir, agent_type, agent_name, conversation_id, title, options,
              is_pinned, is_archived, tags, created_at, updated_at, subtasks,
-             workflow_defs, workflows, user_id
+             workflow_defs, workflows, loop_defs, loops, user_id
       FROM sessions ORDER BY updated_at DESC
     `);
 
@@ -476,13 +476,17 @@ Violation of these rules will result in immediate termination of the session.
     const db = _getDb!();
 
     try {
+      // 先尝试更新已有记录（不碰 loop_defs 和 loops 列，由 loopStore 独立管理）
       db.run(
         `
-        INSERT OR REPLACE INTO sessions (id, workdir, agent_type, agent_name, conversation_id, title, options, is_pinned, is_archived, tags, created_at, updated_at, subtasks, workflow_defs, workflows, loop_defs, loops, user_id, context_usage)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        UPDATE sessions SET
+          workdir = ?, agent_type = ?, agent_name = ?, conversation_id = ?,
+          title = ?, options = ?, is_pinned = ?, is_archived = ?, tags = ?,
+          updated_at = ?, subtasks = ?, workflow_defs = ?, workflows = ?,
+          user_id = ?, context_usage = ?
+        WHERE id = ?
       `,
         [
-          session.id,
           session.workdir,
           session.agentType || 'claude-code',
           session.agentName || session.agent?.name || 'unknown',
@@ -492,21 +496,53 @@ Violation of these rules will result in immediate termination of the session.
           session.isPinned ? 1 : 0,
           session.isArchived ? 1 : 0,
           JSON.stringify(session.tags || []),
-          session.createdAt instanceof Date
-            ? session.createdAt.toISOString()
-            : String(session.createdAt),
           session.updatedAt instanceof Date
             ? session.updatedAt.toISOString()
             : new Date().toISOString(),
           JSON.stringify(session.subtasks || []),
           JSON.stringify(session.workflowDefs || []),
           JSON.stringify(session.workflows || []),
-          JSON.stringify(session.loopDefs || []),
-          JSON.stringify(session.loops || []),
           session.userId || null,
           session.contextUsage ? JSON.stringify(session.contextUsage) : null,
+          session.id,
         ],
       );
+
+      // 如果记录不存在，插入新行（包含 loop_defs 和 loops 初始值）
+      const existing = db.exec(`SELECT id FROM sessions WHERE id = '${session.id}'`);
+      if (existing.length === 0 || existing[0].values.length === 0) {
+        db.run(
+          `
+          INSERT INTO sessions (id, workdir, agent_type, agent_name, conversation_id, title, options, is_pinned, is_archived, tags, created_at, updated_at, subtasks, workflow_defs, workflows, loop_defs, loops, user_id, context_usage)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+          [
+            session.id,
+            session.workdir,
+            session.agentType || 'claude-code',
+            session.agentName || session.agent?.name || 'unknown',
+            session.conversationId || null,
+            session.title || null,
+            JSON.stringify(session.options || {}),
+            session.isPinned ? 1 : 0,
+            session.isArchived ? 1 : 0,
+            JSON.stringify(session.tags || []),
+            session.createdAt instanceof Date
+              ? session.createdAt.toISOString()
+              : String(session.createdAt),
+            session.updatedAt instanceof Date
+              ? session.updatedAt.toISOString()
+              : new Date().toISOString(),
+            JSON.stringify(session.subtasks || []),
+            JSON.stringify(session.workflowDefs || []),
+            JSON.stringify(session.workflows || []),
+            JSON.stringify(session.loopDefs || []),
+            JSON.stringify(session.loops || []),
+            session.userId || null,
+            session.contextUsage ? JSON.stringify(session.contextUsage) : null,
+          ],
+        );
+      }
 
       const messagesToSave = session.messages.slice(-200);
 

@@ -155,6 +155,15 @@ export const IconResend: React.FC<IconProps> = ({ size = 14, color = 'currentCol
   </svg>
 )
 
+export const IconLoop: React.FC<IconProps> = ({ size = 16, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 2L21 6L17 10" />
+    <path d="M3 11V9C3 6.79 4.79 5 7 5H21" />
+    <path d="M7 22L3 18L7 14" />
+    <path d="M21 13V15C21 17.21 19.21 19 17 19H3" />
+  </svg>
+)
+
 export const IconFolder: React.FC<IconProps> = ({ size = 16, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M3 7V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V9C21 7.9 20.1 7 19 7H13L11 5H5C3.9 5 3 5.9 3 7Z" />

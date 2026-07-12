@@ -97,9 +97,13 @@ export default class LoopStore {
     if (rows.length === 0 || rows[0].values.length === 0) return [];
 
     const loopsJson = rows[0].values[0][0] as string;
+    if (!loopsJson || loopsJson === '[]') return [];
+    
     try {
-      return JSON.parse(loopsJson || '[]');
-    } catch {
+      const parsed = JSON.parse(loopsJson);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      console.error('[LoopStore] 解析 loops 数据失败:', e);
       return [];
     }
   }
@@ -129,10 +133,20 @@ export default class LoopStore {
     // 只保留最近 50 个运行记录
     const trimmedLoops = loops.slice(-50);
 
+    console.log(`[LoopStore] 保存循环: sessionId=${sessionId}, runId=${run.id}, status=${run.status}, loopsCount=${trimmedLoops.length}`);
+    
     db.run('UPDATE sessions SET loops = ? WHERE id = ?', [
       JSON.stringify(trimmedLoops),
       sessionId
     ]);
+    
+    // 验证保存是否成功
+    const verifyResult = db.exec('SELECT loops FROM sessions WHERE id = ?', [sessionId]);
+    if (verifyResult.length > 0 && verifyResult[0].values.length > 0) {
+      const savedLoops = verifyResult[0].values[0][0] as string;
+      console.log(`[LoopStore] 验证保存: loops长度=${savedLoops ? savedLoops.length : 0}`);
+    }
+    
     saveToFile();
     return run;
   }

@@ -12,6 +12,7 @@ import type {
 import type { AgentBase } from './types';
 import { createAgent } from './agents/factory';
 import LoopStore from './loop-store';
+import { getDb } from './db';
 
 const MAX_STEP_RESULT_CHARS = 8000;
 
@@ -147,6 +148,11 @@ export default class LoopEngine {
   ): Promise<void> {
     const maxIter = def.maxIterations > 0 ? def.maxIterations : Infinity;
 
+    // 获取会话信息
+    const session = this.sessionManager.getSession(sessionId);
+    const agentType = def.steps[0]?.agentType || session?.agentType || 'mimo';
+    const workdir = session?.workdir || process.env.HOME || '/root';
+
     while (run.currentIteration < maxIter) {
       if (rl.cancelled || rl.paused) return;
 
@@ -158,7 +164,7 @@ export default class LoopEngine {
       await this.executeIteration(sessionId, run, def, iteration, rl);
 
       // 检查退出条件
-      if (this.checkExitCondition(def, iteration)) {
+      if (await this.checkExitCondition(def, iteration, agentType, workdir)) {
         break;
       }
 
@@ -197,7 +203,7 @@ export default class LoopEngine {
       for (const step of def.steps) {
         if (rl.cancelled || rl.paused) return;
 
-        const result = await this.executeStep(sessionId, run, iteration, step, rl);
+        const result = await this.executeStep(sessionId, run, iteration, step, rl, def);
         iteration.results.push(result);
 
         // 如果步骤出错，停止迭代
@@ -221,25 +227,93 @@ export default class LoopEngine {
   }
 
   /**
-   * 构建前序迭代的上下文
+   * 构建前序迭代的上下文（带压缩）
    */
-  private buildPreviousContext(run: LoopRun, currentIndex: number): string {
+  private buildPreviousContext(
+    run: LoopRun,
+    currentIndex: number,
+    def: LoopDefinition
+  ): string {
     if (currentIndex === 0) return '';
 
-    const contextParts: string[] = [];
-    for (let i = 0; i < currentIndex; i++) {
-      const prevIteration = run.iterations[i];
-      if (prevIteration && prevIteration.results.length > 0) {
-        const stepResults = prevIteration.results
+    // 从定义中获取配置，使用默认值
+    const config = def.contextConfig || {};
+    const maxFullIterations = config.maxFullIterations ?? 10;
+    const maxResultChars = config.maxResultChars ?? 50000;
+    const maxTotalChars = config.maxTotalChars ?? 200000;
+    const enableCompression = config.enableCompression ?? true;
+
+    // 如果禁用压缩，使用简单模式（只保留最近3轮完整结果）
+    if (!enableCompression) {
+      const recentIterations = run.iterations.slice(-3);
+      if (recentIterations.length === 0) return '';
+
+      const contextParts = recentIterations.map((iter, idx) => {
+        const iterationNum = iter.index + 1;
+        const stepResults = iter.results
           .map(r => `[步骤 ${r.stepId}]: ${r.result || '(无结果)'}`)
           .join('\n');
-        contextParts.push(`## 迭代 ${i + 1} 的结果\n${stepResults}`);
+        return `## 迭代 ${iterationNum} 的结果\n${stepResults}`;
+      });
+
+      return `以下是最近的迭代结果：\n\n${contextParts.join('\n---\n\n')}\n\n`;
+    }
+
+    const contextParts: string[] = [];
+    let totalChars = 0;
+
+    for (let i = 0; i < currentIndex; i++) {
+      const prevIteration = run.iterations[i];
+      if (!prevIteration || prevIteration.results.length === 0) continue;
+
+      // 计算这是第几个迭代（从1开始）
+      const iterationNum = i + 1;
+      const isRecent = i >= currentIndex - maxFullIterations;
+
+      if (isRecent) {
+        // 保留完整结果（但截断单个结果）
+        const stepResults = prevIteration.results
+          .map(r => {
+            let resultText = r.result || '(无结果)';
+            if (resultText.length > maxResultChars) {
+              resultText = resultText.substring(0, maxResultChars) + `... [已截断，原始长度 ${resultText.length} 字符]`;
+            }
+            return `[步骤 ${r.stepId}]: ${resultText}`;
+          })
+          .join('\n');
+
+        const part = `## 迭代 ${iterationNum} 的结果\n${stepResults}`;
+        if (totalChars + part.length > maxTotalChars) {
+          // 超过总长度限制，跳过更早的
+          break;
+        }
+        contextParts.push(part);
+        totalChars += part.length;
+      } else {
+        // 较早的迭代只保留摘要
+        const summary = prevIteration.results
+          .map(r => {
+            const result = r.result || '';
+            // 只保留前100个字符作为摘要
+            return result.length > 100 ? result.substring(0, 100) + '...' : result;
+          })
+          .join(', ');
+
+        const part = `## 迭代 ${iterationNum} (摘要): ${summary || '(无结果)'}`;
+        if (totalChars + part.length > maxTotalChars) {
+          break;
+        }
+        contextParts.push(part);
+        totalChars += part.length;
       }
     }
 
     if (contextParts.length === 0) return '';
 
-    return `以下是前序迭代的执行结果，请参考：\n\n${contextParts.join('\n---\n\n')}\n\n`;
+    // 反转顺序，让最近的迭代在前面
+    contextParts.reverse();
+
+    return `以下是前序迭代的执行结果（共 ${currentIndex} 轮，请参考最新结果）：\n\n${contextParts.join('\n---\n\n')}\n\n`;
   }
 
   /**
@@ -250,7 +324,8 @@ export default class LoopEngine {
     run: LoopRun,
     iteration: LoopIteration,
     step: LoopStepDef,
-    rl: RunningLoop
+    rl: RunningLoop,
+    def: LoopDefinition
   ): Promise<LoopStepResult> {
     const result = LoopStore.createStepResult(step.id);
     result.status = 'running';
@@ -268,7 +343,7 @@ export default class LoopEngine {
     rl.agents.set(`${iteration.index}_${step.id}`, agent);
 
     // 构建包含前序迭代结果的提示词
-    const previousContext = this.buildPreviousContext(run, iteration.index);
+    const previousContext = this.buildPreviousContext(run, iteration.index, def);
     const fullPrompt = previousContext
       ? `${previousContext}\n请根据上述历史结果完成以下任务：\n${step.prompt}`
       : step.prompt;
@@ -351,7 +426,7 @@ export default class LoopEngine {
   /**
    * 检查退出条件
    */
-  private checkExitCondition(def: LoopDefinition, iteration: LoopIteration): boolean {
+  private async checkExitCondition(def: LoopDefinition, iteration: LoopIteration, agentType: AgentType, workdir: string): Promise<boolean> {
     if (!def.exitCondition) return false;
 
     // 基于退出条件类型检查
@@ -363,9 +438,85 @@ export default class LoopEngine {
       return iteration.status === 'error';
     }
 
-    // 自定义条件：目前简单检查步骤结果
-    // 未来可以通过 LLM 判断自然语言条件
+    // 自定义条件：使用 Agent 判断
+    if (def.exitCondition && iteration.results.length > 0) {
+      try {
+        const resultText = iteration.results
+          .map(r => `[${r.stepId}]: ${r.result || '(无结果)'}`)
+          .join('\n')
+          .substring(0, 4000); // 限制长度
+
+        const shouldExit = await this.evaluateExitConditionWithLlm(def.exitCondition, resultText, agentType, workdir);
+        console.log(`[循环] Agent 退出条件判断: ${shouldExit ? '满足，停止循环' : '不满足，继续迭代'}`);
+        return shouldExit;
+      } catch (err) {
+        console.error('[循环] Agent 退出条件判断失败，继续迭代:', (err as Error).message);
+        return false;
+      }
+    }
+
     return false;
+  }
+
+  /**
+   * 使用 Agent 评估退出条件
+   */
+  private async evaluateExitConditionWithLlm(exitCondition: string, resultText: string, agentType: AgentType, workdir: string): Promise<boolean> {
+    const prompt = `你是一个任务完成度判断助手。请根据以下退出条件和任务执行结果，判断任务是否应该停止。
+
+退出条件：${exitCondition}
+
+执行结果：
+${resultText}
+
+请只回答 "是" 或 "否"，不需要解释。如果任务已经满足退出条件，回答"是"；如果不满足，回答"否"。`;
+
+    // 创建一个临时 agent 来判断
+    const agent = createAgent(workdir, agentType, {});
+
+    return new Promise<boolean>((resolve) => {
+      let response = '';
+      let finished = false;
+
+      const handler = (msg: { type: string; content: string | Record<string, unknown> }) => {
+        if (finished) return;
+        if (msg.type === 'text') {
+          response += String(msg.content);
+        } else if (msg.type === 'assistant') {
+          const content = (msg as any).message?.content;
+          if (Array.isArray(content)) {
+            response += content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('');
+          }
+        } else if (msg.type === 'result' || msg.type === 'completed') {
+          finished = true;
+          agent.removeListener('message', handler);
+          const lower = response.trim().toLowerCase();
+          resolve(lower.includes('是') || lower.includes('yes'));
+        }
+      };
+
+      agent.on('message', handler);
+
+      // 设置超时
+      setTimeout(() => {
+        if (!finished) {
+          finished = true;
+          agent.removeListener('message', handler);
+          agent.stop().catch(() => {});
+          const lower = response.trim().toLowerCase();
+          resolve(lower.includes('是') || lower.includes('yes'));
+        }
+      }, 30000);
+
+      agent.start().then(() => {
+        agent.send(prompt);
+      }).catch((err) => {
+        finished = true;
+        agent.removeListener('message', handler);
+        console.error('[循环] 启动退出条件判断 agent 失败:', err);
+        resolve(false);
+      });
+    });
   }
 
   /**
@@ -430,7 +581,10 @@ export default class LoopEngine {
   private saveAndBroadcast(sessionId: string, run: LoopRun): void {
     // 保存到数据库
     if (this.sessionManager.saveLoop) {
+      console.log(`[循环] 保存循环状态: ${run.id}, 状态: ${run.status}`);
       this.sessionManager.saveLoop(sessionId, run);
+    } else {
+      console.log('[循环] 警告: sessionManager.saveLoop 未定义');
     }
     // 广播状态
     this.broadcastLoopStatus(sessionId, run);

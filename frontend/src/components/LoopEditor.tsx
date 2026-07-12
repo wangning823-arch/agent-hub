@@ -41,6 +41,8 @@ const agentTypes = [
   { id: 'codex', name: 'Codex' }
 ]
 
+const API_BASE = '/api'
+
 const LoopEditor: React.FC<LoopEditorProps> = ({
   definition,
   onSave,
@@ -59,6 +61,25 @@ const LoopEditor: React.FC<LoopEditorProps> = ({
   const [delayBetweenIterations, setDelayBetweenIterations] = useState(
     definition?.delayBetweenIterations || 0
   )
+  const [modelsByAgent, setModelsByAgent] = useState<Record<string, Array<{id: string, name: string}>>>({})
+
+  // 获取指定 agent 的模型列表
+  const fetchModels = async (agentType: string) => {
+    if (modelsByAgent[agentType]) return
+    try {
+      const params = new URLSearchParams({ agentType })
+      const data = await fetch(`${API_BASE}/options?${params}`).then(r => r.json())
+      setModelsByAgent(prev => ({ ...prev, [agentType]: data.models || [] }))
+    } catch (error) {
+      console.error('加载模型列表失败:', error)
+    }
+  }
+
+  // 当步骤的 agentType 变化时加载对应模型列表
+  useEffect(() => {
+    const agentTypes = [...new Set(steps.map(s => s.agentType || 'mimo'))]
+    agentTypes.forEach(fetchModels)
+  }, [steps])
 
   const handleAddStep = () => {
     setSteps([
@@ -304,6 +325,25 @@ const LoopEditor: React.FC<LoopEditorProps> = ({
                 >
                   {agentTypes.map((agent) => (
                     <option key={agent.id} value={agent.id}>{agent.name}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={step.model || ''}
+                  onChange={(e) => handleStepChange(index, 'model', e.target.value || undefined)}
+                  style={{
+                    flex: 1,
+                    padding: '6px 8px',
+                    background: 'var(--bg-primary)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 4,
+                    color: 'var(--text-primary)',
+                    fontSize: 12
+                  }}
+                >
+                  <option value="">默认模型</option>
+                  {(modelsByAgent[step.agentType || 'mimo'] || []).map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
                   ))}
                 </select>
 

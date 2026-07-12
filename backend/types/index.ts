@@ -324,6 +324,13 @@ export interface LoopDefinition {
   exitCondition?: string;        // 自然语言退出条件
   exitConditionType?: 'success' | 'failure' | 'custom';
   delayBetweenIterations: number; // 迭代间延迟（毫秒）
+  // 上下文配置
+  contextConfig?: {
+    maxFullIterations?: number;   // 保留完整结果的迭代数（默认5）
+    maxResultChars?: number;      // 单个结果最大字符数（默认2000）
+    maxTotalChars?: number;       // 上下文总最大字符数（默认10000）
+    enableCompression?: boolean;  // 是否启用上下文压缩（默认true）
+  };
   createdAt: number;
   updatedAt: number;
 }

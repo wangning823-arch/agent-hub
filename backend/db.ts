@@ -17,6 +17,7 @@ const tokenStatsDbPath: string = path.join(dataDir, 'token-stats.db');
 let db: SqlJsDatabase | null = null;
 let tokenStatsDb: SqlJsDatabase | null = null;
 let saving = false; // 防止并发写入导致 .tmp 文件竞争
+let needsSave = false; // 标记是否有待保存的数据
 
 async function recoverFromBackup(SQL: any): Promise<boolean> {
   const backupDir = path.join(dataDir, 'backups');
@@ -541,8 +542,12 @@ async function initDb(): Promise<SqlJsDatabase> {
 
 function saveToFile(): void {
   if (db) {
-    if (saving) return; // 跳过并发调用，避免 .tmp 文件竞争
+    if (saving) {
+      needsSave = true; // 标记需要重新保存
+      return;
+    }
     saving = true;
+    needsSave = false;
     try {
       const data = db.export();
       const buffer = Buffer.from(data);
@@ -567,6 +572,10 @@ function saveToFile(): void {
       try { fs.unlinkSync(dbPath + '.tmp'); } catch {}
     } finally {
       saving = false;
+      // 如果有待保存的数据，再次保存
+      if (needsSave) {
+        saveToFile();
+      }
     }
   }
 }
