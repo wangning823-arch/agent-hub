@@ -12,9 +12,10 @@ import type {
 import type { AgentBase } from './types';
 import { createAgent } from './agents/factory';
 import LoopStore from './loop-store';
-import { getDb } from './db';
 
 const MAX_STEP_RESULT_CHARS = 8000;
+// 安全上限：防止无限循环
+const MAX_ITERATIONS_HARD_LIMIT = 1000;
 
 interface RunningLoop {
   agents: Map<string, AgentBase>;
@@ -79,7 +80,7 @@ export default class LoopEngine {
     const rl = this.running.get(run.id);
     if (rl) {
       rl.paused = true;
-      rl.cancelled = true;
+      // 只停止当前正在运行的 agent 和定时器，不设置 cancelled
       for (const agent of rl.agents.values()) {
         agent.stop().catch(() => {});
       }
@@ -92,6 +93,31 @@ export default class LoopEngine {
     this.updateCurrentIteration(run, 'error', '用户暂停');
     run.completedAt = Date.now();
     this.saveAndBroadcast(sessionId, run);
+  }
+
+  /**
+   * 继续执行暂停的循环
+   */
+  async resume(sessionId: string, run: LoopRun, definition: LoopDefinition): Promise<void> {
+    // 如果循环已经在运行，直接返回
+    if (this.running.has(run.id)) return;
+
+    // 恢复运行状态
+    run.status = 'running';
+    run.completedAt = null;
+
+    // 如果当前迭代处于错误或暂停状态，重置为 pending
+    const currentIteration = run.iterations[run.currentIteration];
+    if (currentIteration && (currentIteration.status === 'error' || currentIteration.status === 'skipped')) {
+      currentIteration.status = 'pending';
+      currentIteration.error = undefined;
+      currentIteration.completedAt = null;
+    }
+
+    this.saveAndBroadcast(sessionId, run);
+
+    // 重新启动循环执行
+    await this.start(sessionId, run, definition);
   }
 
   /**
@@ -146,7 +172,10 @@ export default class LoopEngine {
     def: LoopDefinition,
     rl: RunningLoop
   ): Promise<void> {
-    const maxIter = def.maxIterations > 0 ? def.maxIterations : Infinity;
+    // 使用硬性上限防止无限循环
+    const maxIter = def.maxIterations > 0
+      ? Math.min(def.maxIterations, MAX_ITERATIONS_HARD_LIMIT)
+      : MAX_ITERATIONS_HARD_LIMIT;
 
     // 获取会话信息
     const session = this.sessionManager.getSession(sessionId);
@@ -160,7 +189,7 @@ export default class LoopEngine {
       const iteration = LoopStore.createIteration(run.currentIteration);
       run.iterations.push(iteration);
 
-      // 执行迭代
+      // 执行迭代（出错时继续下一步，不中断）
       await this.executeIteration(sessionId, run, def, iteration, rl);
 
       // 检查退出条件
@@ -168,15 +197,15 @@ export default class LoopEngine {
         break;
       }
 
-      // 检查是否出错
+      // 迭代出错时记录日志但继续下一步（不中断循环）
       if (iteration.status === 'error') {
-        break;
+        console.log(`[循环] 迭代 ${run.currentIteration + 1} 出错: ${iteration.error}，继续下一步`);
       }
 
       run.currentIteration++;
 
-      // 保存进度
-      this.saveAndBroadcast(sessionId, run);
+      // 只广播状态，不保存迭代过程中的详细数据到数据库
+      this.broadcastLoopStatus(sessionId, run);
 
       // 迭代间延迟
       if (def.delayBetweenIterations > 0 && run.currentIteration < maxIter) {
@@ -197,7 +226,8 @@ export default class LoopEngine {
   ): Promise<void> {
     iteration.status = 'running';
     iteration.startedAt = Date.now();
-    this.saveAndBroadcast(sessionId, run);
+    // 只广播状态，不保存到数据库
+    this.broadcastLoopStatus(sessionId, run);
 
     try {
       for (const step of def.steps) {
@@ -206,23 +236,25 @@ export default class LoopEngine {
         const result = await this.executeStep(sessionId, run, iteration, step, rl, def);
         iteration.results.push(result);
 
-        // 如果步骤出错，停止迭代
+        // 步骤出错时记录日志但继续执行下一步（不中断迭代）
         if (result.status === 'error') {
-          iteration.status = 'error';
-          iteration.error = result.error || undefined;
-          break;
+          console.log(`[循环] 步骤 ${step.id} 出错: ${result.error}，继续执行下一步`);
         }
       }
 
-      if (iteration.status === 'running') {
-        iteration.status = 'done';
+      // 如果有任何步骤出错，迭代标记为 error，否则为 done
+      const hasError = iteration.results.some(r => r.status === 'error');
+      iteration.status = hasError ? 'error' : 'done';
+      if (hasError) {
+        iteration.error = iteration.results.find(r => r.status === 'error')?.error || '部分步骤执行失败';
       }
     } catch (err) {
       iteration.status = 'error';
       iteration.error = (err as Error).message;
     } finally {
       iteration.completedAt = Date.now();
-      this.saveAndBroadcast(sessionId, run);
+      // 只广播状态，不保存到数据库
+      this.broadcastLoopStatus(sessionId, run);
     }
   }
 
@@ -371,6 +403,7 @@ export default class LoopEngine {
           result.messages = result.messages.slice(-100);
         }
         result.result = result.messages.map(m => m.content).filter(Boolean).join('\n');
+        // 只广播消息到前端显示，不保存到数据库
         this.broadcastIterationMessage(sessionId, run.id, iteration.index, step.id, entry);
       }
     };
@@ -540,12 +573,10 @@ ${resultText}
   private checkCompletion(run: LoopRun): void {
     if (run.status !== 'running') return;
 
-    const hasError = run.iterations.some(i => i.status === 'error');
     const reachedMax = run.currentIteration >= run.maxIterations - 1;
 
-    if (hasError) {
-      run.status = 'error';
-    } else if (reachedMax) {
+    // 循环正常完成（出错时继续下一步，不再因为错误而中断整个循环）
+    if (reachedMax) {
       run.status = 'completed';
     } else {
       // 通过退出条件正常停止
@@ -560,11 +591,13 @@ ${resultText}
    */
   private delay(ms: number, rl: RunningLoop): Promise<void> {
     return new Promise(resolve => {
+      // 使用唯一 key 防止多个延迟任务冲突
+      const timerKey = `_delay_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const timer = setTimeout(() => {
-        rl.timers.delete('_delay');
+        rl.timers.delete(timerKey);
         resolve();
       }, ms);
-      rl.timers.set('_delay', timer);
+      rl.timers.set(timerKey, timer);
     });
   }
 
@@ -582,18 +615,37 @@ ${resultText}
   }
 
   /**
-   * 保存并广播循环状态
+   * 保存并广播循环状态（用于重要状态变更：开始、完成、错误、取消）
    */
   private saveAndBroadcast(sessionId: string, run: LoopRun): void {
-    // 保存到数据库
+    // 保存到数据库（只保存循环的整体状态，不保存迭代过程中的详细数据）
     if (this.sessionManager.saveLoop) {
-      console.log(`[循环] 保存循环状态: ${run.id}, 状态: ${run.status}`);
-      this.sessionManager.saveLoop(sessionId, run);
-    } else {
-      console.log('[循环] 警告: sessionManager.saveLoop 未定义');
+      // 清理迭代数据，只保留状态信息，减少数据库存储
+      const runToSave = this.sanitizeRunForStorage(run);
+      this.sessionManager.saveLoop(sessionId, runToSave);
     }
     // 广播状态
     this.broadcastLoopStatus(sessionId, run);
+  }
+
+  /**
+   * 清理循环运行数据，移除迭代过程中的详细输出，只保留状态信息
+   */
+  private sanitizeRunForStorage(run: LoopRun): LoopRun {
+    // 深拷贝避免修改原始数据
+    const sanitized = JSON.parse(JSON.stringify(run)) as LoopRun;
+
+    // 清理每个迭代的详细数据，只保留状态和错误信息
+    sanitized.iterations = sanitized.iterations.map(iter => ({
+      ...iter,
+      results: iter.results.map(result => ({
+        ...result,
+        messages: [], // 清空消息记录，减少存储
+        result: result.error ? result.error : (result.status === 'done' ? '成功' : null),
+      })),
+    }));
+
+    return sanitized;
   }
 
   /**

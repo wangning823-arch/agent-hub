@@ -321,32 +321,8 @@ export default function ChatPanel({
       const runs = runData.loops || []
       setActiveLoops(runs)
 
-      // 从历史运行中恢复消息
-      const allMessages: LoopMessage[] = []
-      for (const run of runs) {
-        if (run.iterations) {
-          for (const iter of run.iterations) {
-            if (iter.results) {
-              for (const result of iter.results) {
-                if (result.messages) {
-                  for (const msg of result.messages) {
-                    allMessages.push({
-                      type: msg.type === 'text' || msg.type === 'assistant' ? 'message' : 'status',
-                      content: `[迭代${iter.index + 1}] ${msg.content || ''}`,
-                      time: msg.time || Date.now(),
-                      iteration: iter.index,
-                      loopId: run.id
-                    })
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-      if (allMessages.length > 0) {
-        setLoopMessages(allMessages)
-      }
+      // 不再从历史运行中恢复消息（后端不再保存详细的迭代输出）
+      // 循环消息只通过 WebSocket 实时接收
     } catch (error) {
       console.error('加载循环数据失败:', error)
     }
@@ -788,33 +764,51 @@ export default function ChatPanel({
                   msg.status === 'error' ? '❌ 循环出错' :
                   msg.status === 'cancelled' ? '⏹️ 循环已取消' : `循环状态: ${msg.status}`
 
-                setLoopMessages(prev => [...prev, {
-                  type: 'status',
-                  content: `${statusText} (迭代 ${msg.run?.currentIteration || 0}/${msg.run?.maxIterations || 0})`,
-                  time: Date.now(),
-                  loopId: msg.loop_id
-                }])
+                // 只显示当前循环的状态消息，过滤掉旧循环的消息
+                setLoopMessages(prev => {
+                  // 只保留当前循环的消息
+                  const currentLoopMessages = prev.filter(m => m.loopId === msg.loop_id)
+                  const newMessages = [...currentLoopMessages, {
+                    type: 'status',
+                    content: `${statusText} (迭代 ${msg.run?.currentIteration || 0}/${msg.run?.maxIterations || 0})`,
+                    time: Date.now(),
+                    loopId: msg.loop_id
+                  }]
+                  // 只保留最近100条消息
+                  return newMessages.slice(-100)
+                })
               } else if (msg.type === 'loop_iteration_status') {
                 const iterStatus = msg.status === 'running' ? '▶️' :
                   msg.status === 'done' ? '✅' :
                   msg.status === 'error' ? '❌' : '⏸️'
 
-                setLoopMessages(prev => [...prev, {
-                  type: 'iteration',
-                  content: `${iterStatus} 迭代 ${(msg.iteration_index || 0) + 1} ${msg.status}${msg.error ? ': ' + msg.error : ''}`,
-                  time: Date.now(),
-                  iteration: msg.iteration_index,
-                  loopId: msg.loop_id
-                }])
-              } else if (msg.type === 'loop_iteration_message') {
-                if (msg.content) {
-                  setLoopMessages(prev => [...prev, {
-                    type: 'message',
-                    content: `[迭代${(msg.iteration_index || 0) + 1}] ${msg.content}`,
+                // 只显示当前循环的迭代状态，过滤掉旧循环的消息
+                setLoopMessages(prev => {
+                  const currentLoopMessages = prev.filter(m => m.loopId === msg.loop_id)
+                  const newMessages = [...currentLoopMessages, {
+                    type: 'iteration',
+                    content: `${iterStatus} 迭代 ${(msg.iteration_index || 0) + 1} ${msg.status}${msg.error ? ': ' + msg.error : ''}`,
                     time: Date.now(),
                     iteration: msg.iteration_index,
                     loopId: msg.loop_id
-                  }])
+                  }]
+                  return newMessages.slice(-100)
+                })
+              } else if (msg.type === 'loop_iteration_message') {
+                if (msg.content) {
+                  // 只显示当前循环的消息，过滤掉旧循环的消息
+                  setLoopMessages(prev => {
+                    const currentLoopMessages = prev.filter(m => m.loopId === msg.loop_id)
+                    const newMessages = [...currentLoopMessages, {
+                      type: 'message',
+                      content: `[迭代${(msg.iteration_index || 0) + 1}] ${msg.content}`,
+                      time: Date.now(),
+                      iteration: msg.iteration_index,
+                      loopId: msg.loop_id
+                    }]
+                    // 只保留最近100条消息
+                    return newMessages.slice(-100)
+                  })
                 }
               }
               return
@@ -2106,10 +2100,31 @@ export default function ChatPanel({
                      style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}>
                   <div className="flex items-center justify-between">
                     <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{l.name}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full"
-                          style={{ background: l.status === 'running' ? 'var(--warning)' : 'var(--bg-hover)', color: l.status === 'running' ? 'white' : 'var(--text-primary)' }}>
-                      {l.status === 'running' ? '执行中' : '暂停'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-2 py-0.5 rounded-full"
+                            style={{ background: l.status === 'running' ? 'var(--warning)' : 'var(--bg-hover)', color: l.status === 'running' ? 'white' : 'var(--text-primary)' }}>
+                        {l.status === 'running' ? '执行中' : '暂停'}
+                      </span>
+                      {l.status === 'paused' && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              await fetch(`${API_BASE}/sessions/${sessionId}/loops/${l.id}/resume`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' }
+                              })
+                              toast.success('循环已继续')
+                            } catch (err: any) {
+                              toast.error('继续失败: ' + err.message)
+                            }
+                          }}
+                          className="text-xs px-2 py-0.5 rounded"
+                          style={{ background: 'var(--success)', color: 'white' }}
+                        >
+                          继续
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                     迭代 {l.currentIteration || 0}/{l.maxIterations || 0}

@@ -174,6 +174,37 @@ export default function loopsRouter(sessionManager: SessionManager): Router {
   });
 
   /**
+   * 继续执行暂停的循环
+   */
+  router.post('/sessions/:sessionId/loops/:loopId/resume', async (req: Request, res: Response) => {
+    try {
+      const { sessionId, loopId } = req.params;
+      const run = sessionManager.getLoop(sessionId, loopId);
+      if (!run) {
+        return res.status(404).json({ error: '循环运行不存在' });
+      }
+      if (run.status !== 'paused') {
+        return res.status(400).json({ error: '只有暂停状态的循环可以继续' });
+      }
+
+      // 获取循环定义
+      const defs = sessionManager.getLoopDefs(sessionId);
+      const def = defs.find(d => d.id === run.defId);
+      if (!def) {
+        return res.status(404).json({ error: '循环定义不存在' });
+      }
+
+      if (sessionManager.loopEngine) {
+        await sessionManager.loopEngine.resume(sessionId, run, def);
+      }
+      sessionManager.saveLoop(sessionId, run);
+      res.json(run);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
    * 取消循环
    */
   router.post('/sessions/:sessionId/loops/:loopId/cancel', (req: Request, res: Response) => {
