@@ -247,6 +247,27 @@ async function initDb(): Promise<SqlJsDatabase> {
     )
   `);
 
+  // 循环运行表 - 独立存储循环运行数据，避免 sessions 表 JSON 字段过大
+  _db.run(`
+    CREATE TABLE IF NOT EXISTS loop_runs (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      def_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'idle',
+      current_iteration INTEGER DEFAULT 0,
+      max_iterations INTEGER DEFAULT 10,
+      iterations TEXT DEFAULT '[]',
+      started_at INTEGER,
+      completed_at INTEGER,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    )
+  `);
+  _db.run(`CREATE INDEX IF NOT EXISTS idx_loop_runs_session_id ON loop_runs(session_id)`);
+  _db.run(`CREATE INDEX IF NOT EXISTS idx_loop_runs_status ON loop_runs(status)`);
+
   // 增量迁移：给 sessions 表添加 loop_defs 和 loops 列
   try {
     const cols = _db.exec("PRAGMA table_info(sessions)");

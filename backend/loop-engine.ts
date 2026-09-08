@@ -618,34 +618,12 @@ ${resultText}
    * 保存并广播循环状态（用于重要状态变更：开始、完成、错误、取消）
    */
   private saveAndBroadcast(sessionId: string, run: LoopRun): void {
-    // 保存到数据库（只保存循环的整体状态，不保存迭代过程中的详细数据）
+    // 保存到数据库（loop-store 会自动清理迭代数据）
     if (this.sessionManager.saveLoop) {
-      // 清理迭代数据，只保留状态信息，减少数据库存储
-      const runToSave = this.sanitizeRunForStorage(run);
-      this.sessionManager.saveLoop(sessionId, runToSave);
+      this.sessionManager.saveLoop(sessionId, run);
     }
     // 广播状态
     this.broadcastLoopStatus(sessionId, run);
-  }
-
-  /**
-   * 清理循环运行数据，移除迭代过程中的详细输出，只保留状态信息
-   */
-  private sanitizeRunForStorage(run: LoopRun): LoopRun {
-    // 深拷贝避免修改原始数据
-    const sanitized = JSON.parse(JSON.stringify(run)) as LoopRun;
-
-    // 清理每个迭代的详细数据，只保留状态和错误信息
-    sanitized.iterations = sanitized.iterations.map(iter => ({
-      ...iter,
-      results: iter.results.map(result => ({
-        ...result,
-        messages: [], // 清空消息记录，减少存储
-        result: result.error ? result.error : (result.status === 'done' ? '成功' : null),
-      })),
-    }));
-
-    return sanitized;
   }
 
   /**

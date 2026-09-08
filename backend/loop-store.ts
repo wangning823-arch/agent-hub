@@ -12,6 +12,9 @@ function generateId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// 最大保存的循环运行数量
+const MAX_RUNS_PER_SESSION = 20;
+
 export default class LoopStore {
   /**
    * 获取会话的所有循环定义
@@ -89,21 +92,41 @@ export default class LoopStore {
   }
 
   /**
-   * 获取会话的所有循环运行
+   * 获取会话的所有循环运行（从独立表）
    */
   getLoops(sessionId: string): LoopRun[] {
     const db = getDb();
-    const rows = db.exec('SELECT loops FROM sessions WHERE id = ?', [sessionId]);
-    if (rows.length === 0 || rows[0].values.length === 0) return [];
+    const rows = db.exec(
+      'SELECT id, def_id, name, description, status, current_iteration, max_iterations, iterations, started_at, completed_at, created_at FROM loop_runs WHERE session_id = ? ORDER BY created_at DESC',
+      [sessionId]
+    );
+    if (rows.length === 0) return [];
 
-    const loopsJson = rows[0].values[0][0] as string;
-    if (!loopsJson || loopsJson === '[]') return [];
-    
+    return rows[0].values.map((row: any[]): LoopRun => {
+      const iterations = this.parseIterations(row[7] as string);
+      return {
+        id: row[0] as string,
+        defId: row[1] as string,
+        name: row[2] as string,
+        description: row[3] as string,
+        status: row[4] as LoopRun['status'],
+        currentIteration: row[5] as number,
+        maxIterations: row[6] as number,
+        iterations,
+        startedAt: row[8] as number | null,
+        completedAt: row[9] as number | null,
+        createdAt: row[10] as number,
+      };
+    });
+  }
+
+  /**
+   * 安全解析 iterations JSON
+   */
+  private parseIterations(json: string): LoopIteration[] {
     try {
-      const parsed = JSON.parse(loopsJson);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) {
-      console.error('[LoopStore] 解析 loops 数据失败:', e);
+      return JSON.parse(json || '[]');
+    } catch {
       return [];
     }
   }
@@ -117,38 +140,78 @@ export default class LoopStore {
   }
 
   /**
-   * 保存循环运行
+   * 保存循环运行（使用独立表，只保留最近 N 条）
    */
   saveLoop(sessionId: string, run: LoopRun): LoopRun {
     const db = getDb();
-    const loops = this.getLoops(sessionId);
-    const existingIndex = loops.findIndex(l => l.id === run.id);
 
-    if (existingIndex >= 0) {
-      loops[existingIndex] = run;
+    // 清理迭代数据，只保留状态信息，减少存储
+    const runToSave = this.sanitizeRunForStorage(run);
+
+    // 检查是否已存在
+    const existing = db.exec('SELECT id FROM loop_runs WHERE id = ?', [runToSave.id]);
+    const exists = existing.length > 0 && existing[0].values.length > 0;
+
+    if (exists) {
+      // 更新现有记录
+      db.run(
+        `UPDATE loop_runs SET status = ?, current_iteration = ?, iterations = ?, started_at = ?, completed_at = ? WHERE id = ?`,
+        [
+          runToSave.status,
+          runToSave.currentIteration,
+          JSON.stringify(runToSave.iterations),
+          runToSave.startedAt,
+          runToSave.completedAt,
+          runToSave.id
+        ]
+      );
     } else {
-      loops.push(run);
+      // 插入新记录
+      db.run(
+        `INSERT INTO loop_runs (id, session_id, def_id, name, description, status, current_iteration, max_iterations, iterations, started_at, completed_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          runToSave.id,
+          sessionId,
+          runToSave.defId,
+          runToSave.name,
+          runToSave.description,
+          runToSave.status,
+          runToSave.currentIteration,
+          runToSave.maxIterations,
+          JSON.stringify(runToSave.iterations),
+          runToSave.startedAt,
+          runToSave.completedAt,
+          runToSave.createdAt
+        ]
+      );
     }
 
-    // 只保留最近 50 个运行记录
-    const trimmedLoops = loops.slice(-50);
+    // 清理旧数据，只保留最近 N 条
+    this.cleanupOldRuns(sessionId);
 
-    console.log(`[LoopStore] 保存循环: sessionId=${sessionId}, runId=${run.id}, status=${run.status}, loopsCount=${trimmedLoops.length}`);
-    
-    db.run('UPDATE sessions SET loops = ? WHERE id = ?', [
-      JSON.stringify(trimmedLoops),
-      sessionId
-    ]);
-    
-    // 验证保存是否成功
-    const verifyResult = db.exec('SELECT loops FROM sessions WHERE id = ?', [sessionId]);
-    if (verifyResult.length > 0 && verifyResult[0].values.length > 0) {
-      const savedLoops = verifyResult[0].values[0][0] as string;
-      console.log(`[LoopStore] 验证保存: loops长度=${savedLoops ? savedLoops.length : 0}`);
-    }
-    
     saveToFile();
     return run;
+  }
+
+  /**
+   * 清理旧的循环运行，只保留最近 N 条
+   */
+  private cleanupOldRuns(sessionId: string): void {
+    const db = getDb();
+
+    // 获取当前会话的运行数量
+    const countResult = db.exec('SELECT COUNT(*) FROM loop_runs WHERE session_id = ?', [sessionId]);
+    const count = countResult.length > 0 ? (countResult[0].values[0][0] as number) : 0;
+
+    if (count > MAX_RUNS_PER_SESSION) {
+      // 删除超出限制的旧记录（按 created_at 排序，删除最旧的）
+      const deleteCount = count - MAX_RUNS_PER_SESSION;
+      db.run(
+        `DELETE FROM loop_runs WHERE id IN (SELECT id FROM loop_runs WHERE session_id = ? ORDER BY created_at ASC LIMIT ?)`,
+        [sessionId, deleteCount]
+      );
+      console.log(`[LoopStore] 清理了 ${deleteCount} 条旧的循环运行记录`);
+    }
   }
 
   /**
@@ -156,17 +219,29 @@ export default class LoopStore {
    */
   deleteLoop(sessionId: string, loopId: string): boolean {
     const db = getDb();
-    const loops = this.getLoops(sessionId);
-    const newLoops = loops.filter(l => l.id !== loopId);
-
-    if (newLoops.length === loops.length) return false;
-
-    db.run('UPDATE sessions SET loops = ? WHERE id = ?', [
-      JSON.stringify(newLoops),
-      sessionId
-    ]);
+    const result = db.run('DELETE FROM loop_runs WHERE id = ? AND session_id = ?', [loopId, sessionId]);
     saveToFile();
-    return true;
+    return result.changes > 0;
+  }
+
+  /**
+   * 清理循环运行数据，移除迭代过程中的详细输出，只保留状态信息
+   */
+  private sanitizeRunForStorage(run: LoopRun): LoopRun {
+    // 深拷贝避免修改原始数据
+    const sanitized = JSON.parse(JSON.stringify(run)) as LoopRun;
+
+    // 清理每个迭代的详细数据，只保留状态和错误信息
+    sanitized.iterations = sanitized.iterations.map(iter => ({
+      ...iter,
+      results: iter.results.map(result => ({
+        ...result,
+        messages: [], // 清空消息记录，减少存储
+        result: result.error ? result.error : (result.status === 'done' ? '成功' : null),
+      })),
+    }));
+
+    return sanitized;
   }
 
   /**
