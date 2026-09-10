@@ -16,6 +16,29 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.20260722.0003',
+    date: '2026-07-22',
+    sections: [
+      {
+        title: '新功能',
+        color: 'var(--accent-primary, #6366f1)',
+        items: [
+          'Loop 引擎优化：重构循环引擎架构，优化循环控制逻辑',
+          '循环存储增强：增强循环数据存储功能，支持更复杂的循环状态管理',
+          'ChatPanel 改进：优化聊天面板交互体验',
+        ],
+      },
+      {
+        title: '改进',
+        color: 'var(--success, #22c55e)',
+        items: [
+          '数据库层增强：新增数据库辅助函数，提升数据操作稳定性',
+          'Mimo Agent 更新：完善 Mimo 代理功能',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.3.20260612.0001',
     date: '2026-06-12',
     sections: [
