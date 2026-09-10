@@ -134,6 +134,7 @@ class MimoAgent extends Agent {
 
     if (trimmed === '/compact') {
       console.log('[Mimo] 检测到 /compact 命令，通知 session manager 处理');
+      this.emit('message', { type: 'status', content: '🔄 正在压缩上下文...' });
       this.emit('compact', { agentType: 'mimo', workdir: this.workdir });
       return Promise.resolve();
     }
