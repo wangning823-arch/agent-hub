@@ -16,8 +16,8 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
-    version: '0.3.20260722.0003',
-    date: '2026-07-22',
+    version: '0.3.20260910.0001',
+    date: '2026-09-10',
     sections: [
       {
         title: '新功能',
