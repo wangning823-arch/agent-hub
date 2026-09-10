@@ -2,6 +2,19 @@
 
 All notable changes to Agent Hub will be documented in this file.
 
+## [0.3.20260722.0003] - 2026-07-22
+
+### New Features
+
+- **Loop 引擎优化**: 重构循环引擎架构，优化循环控制逻辑
+- **循环存储增强**: 增强循环数据存储功能，支持更复杂的循环状态管理
+- **ChatPanel 改进**: 优化聊天面板交互体验
+
+### Improved
+
+- **数据库层增强**: 新增数据库辅助函数，提升数据操作稳定性
+- **Mimo Agent 更新**: 完善 Mimo 代理功能
+
 ## [0.3.20260612.0001] - 2026-06-12
 
 ### New Features
