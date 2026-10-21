@@ -7,11 +7,13 @@ import {
   IconClear,
   IconFile,
   IconUp,
-  IconLoop
+  IconLoop,
+  IconCommand
 } from './Icons'
 import { Sparkles } from 'lucide-react'
 import CodeBeautifyModal from './CodeBeautifyModal'
 import LoopListPanel from './LoopListPanel'
+import ShellPanel from './ShellPanel'
 import { useToast } from './Toast'
 
 const API_BASE = '/api'
@@ -524,6 +526,17 @@ export default function RightSidebar({ sessionId, workdir, onViewFile, userRole 
                 </pre>
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* Terminal */}
+      <div className="border-t flex flex-col" style={{ borderColor: 'var(--border-subtle)' }}>
+        <SectionHeader icon={<IconCommand />} label="终端 Shell" section="shell" />
+
+        {expandedSection === 'shell' && (
+          <div className="flex-1 overflow-y-auto">
+            <ShellPanel workdir={workdir} />
           </div>
         )}
       </div>

@@ -18,6 +18,7 @@ import tagsRouter from './routes/tags';
 import projectsRouter from './routes/projects';
 import filesRouter from './routes/files';
 import gitRouter from './routes/git';
+import shellRouter from './routes/shell';
 import searchRouter from './routes/search';
 import permissionsRouter from './routes/permissions';
 import tokensRouter from './routes/tokens';
@@ -431,6 +432,7 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   app.use('/api/projects', projectsRouter(projectManager, sessionManager));
   app.use('/api/files', filesRouter(ALLOWED_ROOT, projectManager));
   app.use('/api/git', gitRouter(ALLOWED_ROOT, permissionManager, projectManager));
+  app.use('/api/shell', shellRouter(ALLOWED_ROOT, permissionManager, projectManager));
   app.use('/api/search', searchRouter(sessionManager));
   app.use('/api/permissions', permissionsRouter(permissionManager));
   app.use('/api/tokens', tokensRouter(sessionManager.tokenTracker, sessionManager));
