@@ -5,6 +5,7 @@ import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import * as path from 'path';
 import * as fs from 'fs';
 import crypto from 'crypto';
+import { hashPassword } from './crypto-utils';
 
 const dataDir: string = path.join(__dirname, '..', 'data');
 if (!fs.existsSync(dataDir)) {
@@ -49,6 +50,43 @@ async function recoverFromBackup(SQL: any): Promise<boolean> {
     }
   }
   return false;
+}
+
+const DEFAULT_ADMIN_USERNAME = 'admin';
+const DEFAULT_ADMIN_PASSWORD = 'admin2026';
+
+// 全新部署（无任何用户）时创建内置管理员，便于 clone 后直接登录
+function seedDefaultAdmin(_db: SqlJsDatabase): void {
+  try {
+    const result = _db.exec('SELECT COUNT(*) FROM users');
+    const count = result.length > 0 ? (result[0].values[0][0] as number) : 0;
+    if (count > 0) return;
+
+    const homeDir = path.join(process.env.HOME || '/root', 'users', DEFAULT_ADMIN_USERNAME);
+    if (!fs.existsSync(homeDir)) {
+      fs.mkdirSync(homeDir, { recursive: true });
+    }
+
+    const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+    _db.run(
+      `INSERT INTO users (id, username, password_hash, role, home_dir, display_name, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+      [
+        userId,
+        DEFAULT_ADMIN_USERNAME,
+        hashPassword(DEFAULT_ADMIN_PASSWORD),
+        'admin',
+        homeDir,
+        DEFAULT_ADMIN_USERNAME,
+        now,
+        now,
+      ]
+    );
+    console.log(`[数据库初始化] 未发现用户，已创建默认管理员 ${DEFAULT_ADMIN_USERNAME}`);
+  } catch (e) {
+    console.error('[数据库初始化] 创建默认管理员失败:', (e as Error).message);
+  }
 }
 
 async function initDb(): Promise<SqlJsDatabase> {
@@ -388,6 +426,9 @@ async function initDb(): Promise<SqlJsDatabase> {
       }
     }
   } catch (e) { }
+
+  // 默认管理员：数据库中没有任何用户时（如全新 clone），内置 admin/admin2026，保证可直接登录
+  seedDefaultAdmin(_db);
 
   // 模型权限表：管理系统 Provider 分配给用户
   _db.run(`
