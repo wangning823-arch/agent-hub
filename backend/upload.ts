@@ -76,16 +76,29 @@ const fileFilter = (_req: Request, file: Express.Multer.File, cb: FileFilterCall
     'application/vnd.ms-excel',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     // 压缩包
-    'application/zip', 'application/x-rar-compressed',
+    'application/zip', 'application/x-zip-compressed',
+    'application/x-rar-compressed', 'application/vnd.rar',
+    'application/x-7z-compressed', 'application/x-tar',
+    'application/x-gtar', 'application/x-compressed-tar',
+    'application/gzip', 'application/x-gzip', 'application/x-bzip2',
     // 其他
     'application/octet-stream'
   ];
 
   if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
-  } else {
-    cb(new Error(`不支持的文件类型: ${file.mimetype}`));
+    return;
   }
+
+  // 部分系统/浏览器对压缩包上报空或未知 MIME，按扩展名兜底放行
+  const archiveExts = ['.zip', '.rar', '.7z', '.tar', '.gz', '.tgz', '.bz2'];
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  if (archiveExts.includes(ext)) {
+    cb(null, true);
+    return;
+  }
+
+  cb(new Error(`不支持的文件类型: ${file.mimetype}`));
 };
 
 // 创建multer实例
@@ -93,7 +106,7 @@ const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB限制
+    fileSize: 50 * 1024 * 1024, // 50MB限制（压缩包通常较大）
     files: 5 // 最多5个文件
   }
 });

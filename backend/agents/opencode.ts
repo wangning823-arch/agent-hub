@@ -5,6 +5,7 @@
 import Agent from './base';
 import { exec, execSync, spawn, ChildProcess, ExecOptions } from 'child_process';
 import * as fs from 'fs';
+import * as path from 'path';
 import type { AgentOptions } from '../types';
 
 interface OpenCodeOptions extends AgentOptions {
@@ -44,6 +45,7 @@ interface OpenCodeJsonMessage {
   part?: {
     type?: string;
     text?: string;
+    reason?: string;
     tokens?: {
       input?: number;
       output?: number;
@@ -66,7 +68,7 @@ interface OpenCodeJsonMessage {
   name?: string;
   tool?: string;
   output?: string;
-  error?: string;
+  error?: string | { message?: string; name?: string };
   sessionID?: string;
 }
 
@@ -127,7 +129,6 @@ function execAsync(cmd: string, options?: ExecOptions): Promise<ExecAsyncResult>
 function getOpenCodeContextWindow(modelId?: string): number {
   try {
     // 先尝试从配置文件读取
-    const path = require('path');
     const configPath = path.join(process.env.HOME || '/root', '.config', 'opencode', 'opencode.json');
     const config: OpenCodeConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     const cfgModelId = modelId || config.model;
@@ -170,6 +171,12 @@ class OpenCodeAgent extends Agent {
   activeProc: ChildProcess | null;
   pendingHistory: string | null;
   _lastStatusLine: string | null;
+  // 本次 run 是否已收到最终 step_finish（reason=stop）
+  _sawFinalStep: boolean;
+  // 本次 run 是否已从 stdout 收到 error 事件
+  _stdoutErrorSeen: boolean;
+  // 本次 run 已上报过的日志错误（去重）
+  _reportedLogErrors: Set<string>;
   contextWindow: number;
 
   constructor(workdir: string, options: OpenCodeOptions = {}) {
@@ -185,6 +192,9 @@ class OpenCodeAgent extends Agent {
     this.pendingHistory = null;
     // 最近的一条命令行输出（用于替换成单行状态提示）
     this._lastStatusLine = null;
+    this._sawFinalStep = false;
+    this._stdoutErrorSeen = false;
+    this._reportedLogErrors = new Set();
     this.contextWindow = 200000; // 默认值，start() 时从配置获取实际值
   }
 
@@ -306,11 +316,102 @@ class OpenCodeAgent extends Agent {
       this.activeProc = proc;
 
       let buffer = '';
+      let stderrTail = '';
       let hasOutput = false;
+      let timedOut = false;
+
+      // 重置本次运行的完成/错误追踪
+      this._sawFinalStep = false;
+      this._stdoutErrorSeen = false;
+      this._reportedLogErrors = new Set();
+
+      // ===== 无输出看门狗 =====
+      // opencode 挂住（如免费额度耗尽后进程不退出）会导致会话 isWorking 永远为 true，
+      // 前端输入框一直禁用——先提示，超时后强制终止并明确报错
+      let warnTimer: ReturnType<typeof setTimeout> | null = null;
+      let killTimer: ReturnType<typeof setTimeout> | null = null;
+      const clearWatchdog = (): void => {
+        if (warnTimer) clearTimeout(warnTimer);
+        if (killTimer) clearTimeout(killTimer);
+        warnTimer = null;
+        killTimer = null;
+      };
+      const resetWatchdog = (): void => {
+        clearWatchdog();
+        warnTimer = setTimeout(() => {
+          this.emit('message', {
+            type: 'status',
+            content: '⏳ OpenCode 已 5 分钟无输出（可能是免费模型用量受限或网络问题），继续等待中...'
+          });
+        }, 5 * 60 * 1000);
+        killTimer = setTimeout(() => {
+          timedOut = true;
+          this.emit('message', {
+            type: 'error',
+            content: 'OpenCode 超时：15 分钟无输出，已自动终止本次任务。若使用的是免费模型，很可能已达到使用次数上限，请稍后重试或更换模型。'
+          });
+          try { proc.kill('SIGKILL'); } catch { /* ignore */ }
+        }, 15 * 60 * 1000);
+      };
+      resetWatchdog();
+
+      // ===== 免费额度/流错误检测 =====
+      // opencode 把 stream error（如 Free usage limit reached）只写进日志文件，
+      // 不输出到 stdout/stderr，这里主动监视日志，第一时间把错误显示到状态栏
+      const opencodeLogPath = path.join(process.env.HOME || '/root', '.local/share/opencode/log/opencode.log');
+      const runStartedAt = new Date().toISOString();
+      let logOffset = 0;
+      try { logOffset = fs.statSync(opencodeLogPath).size; } catch { /* 日志不存在则跳过 */ }
+
+      const readNewLogErrors = (): string[] => {
+        const found: string[] = [];
+        try {
+          const stat = fs.statSync(opencodeLogPath);
+          if (stat.size <= logOffset) return found;
+          const len = Math.min(stat.size - logOffset, 1024 * 1024);
+          const buf = Buffer.alloc(len);
+          const fd = fs.openSync(opencodeLogPath, 'r');
+          try { fs.readSync(fd, buf, 0, len, logOffset); } finally { fs.closeSync(fd); }
+          logOffset += len;
+          for (const line of buf.toString('utf8').split('\n')) {
+            if (!line.includes('level=ERROR')) continue;
+            const ts = line.match(/timestamp=(\S+)/)?.[1];
+            if (!ts || ts < runStartedAt) continue;
+            const text = line.match(/error\.error="([^"]*)"/)?.[1]
+              || line.match(/message="([^"]*)"/)?.[1]
+              || line.slice(0, 300);
+            if (!text || this._reportedLogErrors.has(text)) continue;
+            this._reportedLogErrors.add(text);
+            found.push(text);
+          }
+        } catch { /* 读取失败忽略 */ }
+        return found;
+      };
+
+      const reportError = (text: string): void => {
+        const isUsageLimit = /usage limit|rate limit|quota|限额|用量/i.test(text);
+        this.emit('message', {
+          type: 'error',
+          content: isUsageLimit
+            ? `OpenCode 免费模型用量受限：${text}`
+            : `OpenCode 错误：${text}`
+        });
+      };
+
+      const logWatcher = setInterval(() => {
+        if (this._stdoutErrorSeen) { clearInterval(logWatcher); return; }
+        for (const text of readNewLogErrors()) reportError(text);
+      }, 10000);
+
+      const cleanupRun = (): void => {
+        clearWatchdog();
+        clearInterval(logWatcher);
+      };
 
       // 实时处理 stdout 输出
       proc.stdout!.on('data', (data: Buffer) => {
         hasOutput = true;
+        resetWatchdog();
         buffer += data.toString();
         // 按行处理
         const lines = buffer.split('\n');
@@ -323,37 +424,72 @@ class OpenCodeAgent extends Agent {
       });
 
       proc.stderr!.on('data', (data: Buffer) => {
-        const text = data.toString().trim();
-        if (text) {
-          console.log('[OpenCode stderr]:', text.substring(0, 200));
+        const text = data.toString();
+        stderrTail = (stderrTail + text).slice(-2000);
+        const trimmed = text.trim();
+        if (trimmed) {
+          console.log('[OpenCode stderr]:', trimmed.substring(0, 200));
         }
       });
 
       proc.on('close', (code) => {
+        cleanupRun();
+
         // 处理 buffer 中剩余的内容
         if (buffer.trim()) {
           this.handleOutput(buffer.trim());
         }
 
-        // 清理活跃进程引用
-        this.activeProc = null;
+        // 只清理仍属于本次运行的进程引用（避免被中断/顶替后的旧进程误清新进程）
+        const isCurrent = this.activeProc === proc;
+        if (isCurrent) {
+          this.activeProc = null;
+        }
 
-        if (code !== 0 && !hasOutput) {
-          const err = new Error(`OpenCode 退出码: ${code}`);
+        if (timedOut) {
+          // 超时错误已在看门狗中上报
+          this.emit('stopped', { code: 0 });
+          resolve();
+          return;
+        }
+
+        if (code !== 0 && code !== null && !hasOutput) {
+          const detail = stderrTail.trim() || readNewLogErrors().join('; ');
+          const err = new Error(`OpenCode 退出码: ${code}${detail ? ` — ${detail.slice(-300)}` : ''}`);
           console.error('[OpenCode] exit error:', err.message);
           this.emit('message', { type: 'error', content: `OpenCode 执行失败: ${err.message}` });
           reject(err);
-        } else {
-          // 通知会话 agent 已停止
-          this.emit('stopped', { code: 0 });
-          resolve();
+          return;
         }
+
+        // 运行提前结束（没有收到最终 step_finish）且不是被中断/被下一条消息顶掉：
+        // 先查日志报出真实错误（如免费额度耗尽），否则给出通用诊断
+        if (isCurrent && !this._sawFinalStep && !this._stdoutErrorSeen) {
+          const logErrors = readNewLogErrors();
+          if (logErrors.length > 0) {
+            reportError(logErrors[0]);
+          } else {
+            const reason = code === null ? '进程被终止' : `退出码 ${code}`;
+            const detail = stderrTail.trim();
+            this.emit('message', {
+              type: 'error',
+              content: `OpenCode 运行提前结束（${reason}），未收到最终回复。${detail ? `stderr: ${detail.slice(-300)}` : '可能是免费模型用量受限或进程异常，请重试。'}`
+            });
+          }
+        }
+
+        // 通知会话 agent 已停止
+        this.emit('stopped', { code: 0 });
+        resolve();
       });
 
       proc.on('error', (err: Error) => {
+        cleanupRun();
         console.error('[OpenCode] spawn error:', err.message);
         this.emit('message', { type: 'error', content: `OpenCode 执行失败: ${err.message}` });
-        this.activeProc = null;
+        if (this.activeProc === proc) {
+          this.activeProc = null;
+        }
         reject(err);
       });
     });
@@ -404,6 +540,10 @@ class OpenCodeAgent extends Agent {
         // 步骤开始
       } else if (msg.type === 'step_finish') {
         // 步骤完成，检查 token 统计
+        if (msg.part?.reason === 'stop') {
+          // 正常结束标记（用于识别运行提前终止）
+          this._sawFinalStep = true;
+        }
         if (msg.part?.tokens) {
           const t = msg.part.tokens;
           this.emit('message', {
@@ -443,9 +583,23 @@ class OpenCodeAgent extends Agent {
           });
         }
       } else if (msg.type === 'error') {
+        this._stdoutErrorSeen = true;
+        // error 可能是字符串也可能是对象，必须转成字符串，否则前端 setStatusMessage(对象) 会导致 React 崩溃
+        let text: string;
+        if (msg.message) {
+          text = String(msg.message);
+        } else if (typeof msg.error === 'string') {
+          text = msg.error;
+        } else if (msg.error && typeof msg.error === 'object') {
+          const e = msg.error as { message?: string; name?: string };
+          text = String(e.message || e.name || JSON.stringify(e));
+        } else {
+          text = JSON.stringify(msg);
+        }
+        const isUsageLimit = /usage limit|rate limit|quota|限额|用量/i.test(text);
         this.emit('message', {
           type: 'error',
-          content: msg.message || msg.error || JSON.stringify(msg)
+          content: isUsageLimit ? `OpenCode 免费模型用量受限：${text}` : text
         });
       } else if (msg.type === 'message' || msg.type === 'assistant') {
         // 兼容其他可能的格式

@@ -896,8 +896,12 @@ export default function ChatPanel({
                 setStatusMessage(msg.content)
               }
             } else if (msg.type === 'error') {
-              // 错误消息显示在状态栏
-              setStatusMessage(msg.content)
+              // 错误：状态栏直接显示（如免费模型用量受限），同时写入聊天记录留痕
+              const errText = typeof msg.content === 'string'
+                ? msg.content
+                : (msg.content ? JSON.stringify(msg.content) : '未知错误')
+              setStatusMessage(errText)
+              setMessages(prev => [...prev, { type: 'error', content: errText, time: Date.now() }])
             } else if (msg.type === 'token_usage' || msg.type === 'context_usage') {
               // token 用量信息不显示在聊天中，但继续处理后续逻辑更新状态
             } else {
@@ -1266,6 +1270,9 @@ export default function ChatPanel({
       if (data.success && data.files?.length > 0) {
         return data.files[0]
       }
+      if (data.error) {
+        toast.error('文件上传失败: ' + data.error)
+      }
     } catch (error: any) {
       console.error('上传失败:', error)
       toast.error('文件上传失败: ' + error.message)
@@ -1299,6 +1306,8 @@ export default function ChatPanel({
           size: file.size
         }))
         setAttachments(prev => [...prev, ...newAttachments])
+      } else if (data.error) {
+        toast.error('文件上传失败: ' + data.error)
       }
     } catch (error: any) {
       console.error('上传失败:', error)
@@ -1348,6 +1357,8 @@ export default function ChatPanel({
           size: file.size
         }))
         setAttachments(prev => [...prev, ...newAttachments])
+      } else if (data.error) {
+        toast.error('文件上传失败: ' + data.error)
       }
     } catch (error: any) {
       console.error('上传失败:', error)
@@ -2344,7 +2355,7 @@ export default function ChatPanel({
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.json,.js,.ts,.jsx,.tsx,.py,.html,.css"
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.json,.js,.ts,.jsx,.tsx,.py,.html,.css,.zip,.rar,.7z,.tar,.gz,.tgz,.bz2"
                 onChange={handleFileSelect}
                 className="hidden"
               />
