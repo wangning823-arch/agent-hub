@@ -164,60 +164,99 @@ async function summarizeWithOpenCode(messages: SessionMessage[], workdir?: strin
 
 /**
  * 用 mimo CLI 生成摘要
+ * 注意：不能把长 prompt split 进 argv（会 spawn E2BIG）；统一走 stdin + --command，
+ * 并截断超长对话，避免摘要进程参数/内存失控。
  */
 async function summarizeWithMimo(messages: SessionMessage[], workdir?: string): Promise<SummaryResult> {
-  const conversationText = messages
+  const MAX_PROMPT_CHARS = 80_000; // 约 20k tokens，足够摘要要点
+  const MAX_MESSAGE_CHARS = 4_000;
+
+  const parts: string[] = [];
+  let used = 0;
+  // 从后往前保留最近消息，直到预算用完（摘要更看重近期上下文）
+  const selected = messages
     .filter(m => m.role === 'user' || m.role === 'assistant')
-    .map(m => {
-      const role = m.role === 'user' ? '用户' : '助手';
-      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-      return `[${role}]: ${content}`;
-    })
-    .join('\n\n');
+    .slice()
+    .reverse();
+
+  for (const m of selected) {
+    const role = m.role === 'user' ? '用户' : '助手';
+    let content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+    if (content.length > MAX_MESSAGE_CHARS) {
+      content = content.slice(0, MAX_MESSAGE_CHARS) + '\n…[截断]';
+    }
+    const line = `[${role}]: ${content}`;
+    if (used + line.length > MAX_PROMPT_CHARS) break;
+    parts.push(line);
+    used += line.length + 2;
+  }
+  parts.reverse();
+  const conversationText = parts.join('\n\n');
+  if (!conversationText) {
+    return { summary: '无足够对话内容可摘要' };
+  }
 
   const prompt = `请简洁地总结以下对话的要点，保留关键决策和技术细节，用中文回答：\n\n${conversationText}`;
-
   const mimoPath = process.env.MIMO_CLI_PATH || 'mimo';
 
   return new Promise((resolve, reject) => {
-    const args = ['run', '--format', 'json', ...prompt.split(/\s+/)];
+    // 与 MimoAgent 一致：消息经 stdin 传递，避免 argv 过长
+    const args = ['run', '--pure', '--format', 'json', '--command'];
     const proc = spawn(mimoPath, args, {
       cwd: workdir || process.env.HOME || '/root',
       env: { ...process.env },
       stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 60000
     });
-    proc.stdin.end();
 
     let stdout = '';
     let stderr = '';
+    let settled = false;
+    const timer = setTimeout(() => {
+      try { proc.kill('SIGKILL'); } catch { /* ignore */ }
+    }, 90_000);
+
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn();
+    };
+
     proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
     proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
 
+    proc.on('error', (err: Error) => {
+      finish(() => reject(new Error(`Mimo 摘要生成失败: ${err.message}`)));
+    });
+
     proc.on('close', (code) => {
-      // 尝试从 JSON 输出中提取文本
-      const lines = stdout.split('\n');
       let summary = '';
-      for (const line of lines) {
+      for (const line of stdout.split('\n')) {
         try {
           const msg = JSON.parse(line);
           if (msg.type === 'text' && msg.part?.text) {
             summary += msg.part.text;
+          } else if ((msg.type === 'message' || msg.type === 'assistant') && (msg.content || msg.text)) {
+            summary += String(msg.content || msg.text);
           }
-        } catch (e) {}
+        } catch { /* 非 JSON 行忽略 */ }
       }
-      if (summary) {
-        resolve({ summary });
-      } else if (code !== 0) {
-        reject(new Error(`Mimo 摘要生成失败: ${stderr || 'exit ' + code}`));
+      if (summary.trim()) {
+        finish(() => resolve({ summary: summary.trim() }));
+        return;
+      }
+      const errTail = (stderr || stdout).trim().slice(0, 500);
+      if (code !== 0 && code !== null) {
+        finish(() => reject(new Error(`Mimo 摘要生成失败(exit ${code}): ${errTail || '无输出'}`)));
       } else {
-        resolve({ summary: stdout.trim() || '无法生成摘要' });
+        finish(() => resolve({ summary: '无法生成摘要' }));
       }
     });
 
-    proc.on('error', (err: Error) => {
-      reject(new Error(`Mimo 摘要生成失败: ${err.message}`));
-    });
+    // 写入 prompt 并关闭 stdin（--command 模式从 stdin 读消息）
+    proc.stdin.on('error', () => { /* EPIPE 等在 close/error 处理 */ });
+    proc.stdin.write(prompt);
+    proc.stdin.end();
   });
 }
 
