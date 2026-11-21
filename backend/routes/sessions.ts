@@ -1,6 +1,7 @@
 import express, { Router, Request, Response } from 'express';
 import type { SessionData, AgentBase } from '../types/index';
 import { getDb } from '../db';
+import { summarizeSession } from '../summary-service';
 
 export default (sessionManager: any, projectManager?: any) => { // TODO: type this
   const router = Router();
@@ -296,35 +297,14 @@ export default (sessionManager: any, projectManager?: any) => { // TODO: type th
         return res.status(400).json({ error: 'Agent不支持此操作' });
       }
 
-      // OpenCode/Mimo run 模式不支持 /compact，通过重启会话并恢复记忆来清空上下文
+      // OpenCode/Mimo run 模式不支持内部 /compact：复用 SessionManager 逻辑
+      // （摘要成功后再清 session，失败保留原会话）
       if (session.agentType === 'opencode' || session.agentType === 'mimo') {
-        const agent = session.agent as any;
-        // 清除会话 ID，下次 send() 会创建新会话
-        if (agent.mimoSessionId) {
-          agent.mimoSessionId = null;
+        const result = await sessionManager._handleCompact(session);
+        if (!result.success) {
+          return res.status(500).json({ error: result.message, contextUsage: null });
         }
-        if (agent.opencodeSessionId) {
-          agent.opencodeSessionId = null;
-        }
-        // 恢复记忆：生成摘要并注入到 pendingHistory
-        if (session.messages.length >= 5) {
-          const { summarizeSession } = require('../summary-service');
-          const result = await summarizeSession(session.messages, session.agentType, session.workdir);
-          const summaryContent = `[之前对话的摘要]\n${result.summary}`;
-          // 保留最近10条，其余用摘要替代
-          const keepLast = Math.min(10, session.messages.length);
-          const recentMessages = session.messages.slice(-keepLast);
-          session.messages = [
-            { role: 'user', content: summaryContent, time: Date.now() },
-            { role: 'assistant', content: '已了解之前的对话内容，可以继续交流。', time: Date.now() },
-            ...recentMessages
-          ];
-          session.updatedAt = new Date();
-          sessionManager.saveSession(session);
-          // 注入摘要到 pendingHistory，下一条消息会带上
-          agent.pendingHistory = summaryContent;
-        }
-        res.json({ success: true, message: '上下文已重置并恢复记忆', contextUsage: null });
+        res.json({ success: true, message: result.message, contextUsage: null });
         return;
       }
 
@@ -394,7 +374,6 @@ export default (sessionManager: any, projectManager?: any) => { // TODO: type th
         return res.status(404).json({ error: '会话不存在' });
       }
 
-      const { summarizeSession } = require('../summary-service');
       const result = await summarizeSession(session.messages, session.agentType || 'claude-code', session.workdir);
 
       if (req.body.compact) {
@@ -446,7 +425,6 @@ export default (sessionManager: any, projectManager?: any) => { // TODO: type th
         return res.json({ success: true, message: '已有摘要，已注入到当前对话', summary: null });
       }
 
-      const { summarizeSession } = require('../summary-service');
       const result = await summarizeSession(session.messages, session.agentType || 'claude-code', session.workdir);
 
       const summaryContent = `[之前对话的摘要]\n${result.summary}`;

@@ -15,6 +15,7 @@ function rootSafePermsArg(): string[] {
 
 interface SummaryResult {
   summary: string;
+  compacted?: boolean;
 }
 
 // 查找 opencode 路径（复用 opencode.js 的逻辑）

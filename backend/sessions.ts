@@ -19,6 +19,7 @@ import type {
   LoopRun,
 } from './types';
 import { WebSocket } from 'ws';
+import { summarizeSession } from './summary-service';
 
 // ==================== Local Interfaces ====================
 
@@ -1591,49 +1592,59 @@ Violation of these rules will result in immediate termination of the session.
   }
 
   /**
-   * 处理 /compact 命令（由 agent 事件触发）
-   * mimo/opencode run 模式不支持内部命令，通过重置会话并恢复记忆来清空上下文
+   * 处理 /compact 命令（由 agent 事件触发 / REST 路由复用）
+   * mimo/opencode run 模式不支持内部命令：摘要成功后再重置 native session，
+   * 并通过 pendingHistory 注入摘要，避免记忆丢失。
    */
-  async _handleCompact(session: SessionInstance): Promise<void> {
+  async _handleCompact(session: SessionInstance): Promise<{ success: boolean; message: string }> {
     console.log(`[Compact] 处理会话 ${session.id} 的 compact 请求`);
 
     const agent = session.agent as any;
-    if (!agent) return;
-
-    // 清除会话 ID，下次 send() 会创建新会话
-    if (agent.mimoSessionId) {
-      agent.mimoSessionId = null;
-    }
-    if (agent.opencodeSessionId) {
-      agent.opencodeSessionId = null;
+    if (!agent) {
+      return { success: false, message: 'Agent不支持此操作' };
     }
 
-    // 恢复记忆：生成摘要并注入到 pendingHistory
-    if (session.messages.length >= 5) {
-      try {
-        const { summarizeSession } = require('../summary-service');
-        const result = await summarizeSession(session.messages, session.agentType, session.workdir);
-        const summaryContent = `[之前对话的摘要]\n${result.summary}`;
-        // 保留最近10条，其余用摘要替代
-        const keepLast = Math.min(10, session.messages.length);
-        const recentMessages = session.messages.slice(-keepLast);
-        session.messages = [
-          { role: 'user', content: summaryContent, time: Date.now() },
-          { role: 'assistant', content: '已了解之前的对话内容，可以继续交流。', time: Date.now() },
-          ...recentMessages
-        ];
-        session.updatedAt = new Date();
-        this.saveSession(session);
-        // 注入摘要到 pendingHistory，下一条消息会带上
-        agent.pendingHistory = summaryContent;
-        this.broadcast(session.id, { type: 'status', content: '✅ 上下文已重置并恢复记忆' });
-      } catch (err) {
-        console.error('[Compact] 摘要生成失败:', err);
-        this.broadcast(session.id, { type: 'status', content: '⚠️ 压缩失败，将在后续对话中自动管理上下文' });
-      }
-    } else {
-      // 消息太少，直接重置
+    // 摘要成功后才允许调用：清 native session id + conversationId，
+    // 否则下次 send() 会开新 session，或 resume 时用旧 conversationId 跳过 pendingHistory 重建。
+    const clearNativeSession = () => {
+      if (agent.mimoSessionId) agent.mimoSessionId = null;
+      if (agent.opencodeSessionId) agent.opencodeSessionId = null;
+      if (session.conversationId) session.conversationId = null;
+    };
+
+    // 消息太少：无需摘要，直接重置
+    if (session.messages.length < 5) {
+      clearNativeSession();
+      session.updatedAt = new Date();
+      this.saveSession(session);
       this.broadcast(session.id, { type: 'status', content: '✅ 上下文已重置' });
+      return { success: true, message: '上下文已重置' };
+    }
+
+    try {
+      const result = await summarizeSession(session.messages, session.agentType, session.workdir);
+      const summaryContent = `[之前对话的摘要]\n${result.summary}`;
+      const keepLast = Math.min(10, session.messages.length);
+      const recentMessages = session.messages.slice(-keepLast);
+      session.messages = [
+        { role: 'user', content: summaryContent, time: Date.now() },
+        { role: 'assistant', content: '已了解之前的对话内容，可以继续交流。', time: Date.now() },
+        ...recentMessages,
+      ];
+      // 注入摘要到 pendingHistory，下一条消息会带上
+      agent.pendingHistory = summaryContent;
+      // 摘要就绪后再重置会话，失败路径不会走到这里
+      clearNativeSession();
+      session.updatedAt = new Date();
+      this.saveSession(session);
+      this.broadcast(session.id, { type: 'status', content: '✅ 上下文已重置并恢复记忆' });
+      return { success: true, message: '上下文已重置并恢复记忆' };
+    } catch (err) {
+      const message = (err as Error).message || String(err);
+      console.error('[Compact] 摘要生成失败:', err);
+      // 不清 session id / conversationId，保留原上下文可重试
+      this.broadcast(session.id, { type: 'status', content: `⚠️ 压缩失败，已保留原会话: ${message}` });
+      return { success: false, message: `压缩失败: ${message}` };
     }
   }
 }

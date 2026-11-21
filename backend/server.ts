@@ -361,8 +361,8 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   const goalMonitor = new GoalMonitor(sessionManager);
   sessionManager.setGoalMonitor(goalMonitor);
 
-  // 设置摘要服务（延迟注入，避免循环依赖）
-  const { summarizeSession } = require('./summary-service');
+  // 设置摘要服务（静态 import，避免 dist 下 require 相对路径解析失败）
+  const { summarizeSession } = await import('./summary-service');
   goalMonitor.setSummaryService({ summarizeSession });
 
   // 设置 LLM 判断函数（使用 Anthropic SDK）
