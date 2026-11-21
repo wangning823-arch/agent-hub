@@ -39,8 +39,9 @@ function _findOpencodePath(): string {
   return 'opencode';
 }
 
-function _getEnvWithPath(): NodeJS.ProcessEnv {
+function _getEnvWithPath(cwd?: string): NodeJS.ProcessEnv {
   const env = { ...process.env };
+  if (cwd) env.PWD = cwd;
   try {
     const prefix = execSync('npm config get prefix', { encoding: 'utf-8' }).trim();
     const binDir = prefix + '/bin';
@@ -67,6 +68,7 @@ async function summarizeWithClaudeCode(messages: SessionMessage[], workdir?: str
   const prompt = `请简洁地总结以下对话的要点，保留关键决策和技术细节，用中文回答：\n\n${conversationText}`;
 
   const claudeBin = process.env.CLAUDE_CLI_PATH || 'claude';
+  const cwd = workdir || process.env.HOME || '/root';
 
   return new Promise((resolve, reject) => {
     const proc = spawn(claudeBin, [
@@ -74,9 +76,9 @@ async function summarizeWithClaudeCode(messages: SessionMessage[], workdir?: str
       ...rootSafePermsArg(),
       '-p', prompt
     ], {
-      cwd: workdir || process.env.HOME || '/root',
+      cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env },
+      env: { ...process.env, PWD: cwd },
       timeout: 60000
     });
 
@@ -118,12 +120,14 @@ async function summarizeWithOpenCode(messages: SessionMessage[], workdir?: strin
   const prompt = `请简洁地总结以下对话的要点，保留关键决策和技术细节，用中文回答：\n\n${conversationText}`;
 
   const opencodePath = _findOpencodePath();
-  const env = _getEnvWithPath();
+  const cwd = workdir || process.env.HOME || '/root';
+  const env = _getEnvWithPath(cwd);
 
   return new Promise((resolve, reject) => {
-    const args = ['run', '--pure', '--format', 'json', prompt];
+    // OpenCode v2.3+ 不支持 --pure；用 cwd 指定目录
+    const args = ['run', '--format', 'json', prompt];
     const proc = spawn(opencodePath, args, {
-      cwd: workdir || process.env.HOME || '/root',
+      cwd,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 60000
@@ -198,13 +202,14 @@ async function summarizeWithMimo(messages: SessionMessage[], workdir?: string): 
 
   const prompt = `请简洁地总结以下对话的要点，保留关键决策和技术细节，用中文回答：\n\n${conversationText}`;
   const mimoPath = process.env.MIMO_CLI_PATH || 'mimo';
+  const cwd = workdir || process.env.HOME || '/root';
 
   return new Promise((resolve, reject) => {
     // 与 MimoAgent 一致：消息经 stdin 传递，避免 argv 过长
     const args = ['run', '--pure', '--format', 'json', '--command'];
     const proc = spawn(mimoPath, args, {
-      cwd: workdir || process.env.HOME || '/root',
-      env: { ...process.env },
+      cwd,
+      env: { ...process.env, PWD: cwd },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 

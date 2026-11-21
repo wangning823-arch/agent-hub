@@ -314,7 +314,7 @@ class CodexAgent extends Agent {
       const proc: ChildProcess = spawn(codexPath, args, {
         cwd: this.workdir,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: getCodexEnv()
+        env: { ...getCodexEnv(), PWD: this.workdir }
       });
       this.activeProc = proc;
 

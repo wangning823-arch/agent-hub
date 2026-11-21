@@ -133,7 +133,7 @@ class ClaudeCodeAgent extends Agent {
       const proc: ChildProcess = spawn(claudePath, args, {
         cwd: this.workdir,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env }
+        env: { ...process.env, PWD: this.workdir }
       });
 
       let stderr = '';
@@ -316,7 +316,8 @@ Violation of these rules will result in session termination.`);
         cwd: this.workdir,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
-          ...process.env
+          ...process.env,
+          PWD: this.workdir
         }
       });
       // 超时提醒：10min 未响应则提示用户，可选择继续等待或点击停止按钮
@@ -514,7 +515,7 @@ Violation of these rules will result in session termination.`);
       const proc = spawn(claudePath, args, {
         cwd: this.workdir,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env }
+        env: { ...process.env, PWD: this.workdir }
       });
 
       let stdout = '';

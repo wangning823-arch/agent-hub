@@ -99,9 +99,11 @@ function findOpencodePath(): string {
 const OPENCODE_PATH: string = findOpencodePath();
 console.log('[OpenCode] 使用路径:', OPENCODE_PATH);
 
-// 确保 PATH 包含 npm 全局目录
-function getEnvWithPath(): NodeJS.ProcessEnv {
+// 确保 PATH 包含 npm 全局目录；cwd 变化时必须同步 PWD，
+// 否则子进程 env.PWD 仍是父进程目录（OpenCode 会读 PWD 导致工作目录错误）
+function getEnvWithPath(cwd?: string): NodeJS.ProcessEnv {
   const env = { ...process.env };
+  if (cwd) env.PWD = cwd;
   try {
     const prefix = execSync('npm config get prefix', { encoding: 'utf-8' }).trim();
     const binDir = prefix + '/bin';
@@ -139,24 +141,20 @@ function getOpenCodeContextWindow(modelId?: string): number {
       if (model?.limit?.context) return model.limit.context;
     }
 
-    // 配置文件没有，从 opencode models --verbose 获取
-    const output = execSync(`${OPENCODE_PATH} models --verbose`, {
-      encoding: 'utf-8',
-      timeout: 15000,
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-    const targetModel = modelId || 'opencode/mimo-v2.5-free';
-    const modelShort = targetModel.includes('/') ? targetModel.split('/').pop()! : targetModel;
-    // 按空行或模型名分割，找匹配的 JSON 块
-    const blocks = output.split(/(?=^opencode\/)/m);
-    for (const block of blocks) {
-      if (block.includes(modelShort) || block.includes(targetModel)) {
-        const jsonMatch = block.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const obj = JSON.parse(jsonMatch[0]);
-          if (obj.limit?.context) return obj.limit.context;
-        }
+    // 配置文件没有时尝试 opencode models（v2.3+ 无 --verbose，仅模型 ID 列表）
+    try {
+      const output = execSync(`${OPENCODE_PATH} models`, {
+        encoding: 'utf-8',
+        timeout: 15000,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      const targetModel = modelId || 'opencode/mimo-v2.5-free';
+      // 粗略启发：命中模型名则返回默认窗口（详细 limit 需配置文件）
+      if (output.includes(targetModel) || output.includes(targetModel.split('/').pop() || '')) {
+        return 200000;
       }
+    } catch (e) {
+      // ignore
     }
   } catch (e) {
     // ignore
@@ -261,14 +259,8 @@ class OpenCodeAgent extends Agent {
     }
 
     return new Promise((resolve, reject) => {
-      // 构建命令参数
+      // 构建命令参数（OpenCode v2.3+ 已移除 --pure/--dir，工作目录用 spawn cwd）
       const args: string[] = ['run'];
-
-      // 使用 --pure 避免 plugins 导致进程挂起
-      args.push('--pure');
-
-      // 显式指定工作目录，确保 CLI 在正确的项目路径下运行
-      args.push('--dir', this.workdir);
 
       // 恢复会话 - 只在有opencode自己的session ID时使用
       if (this.opencodeSessionId) {
@@ -280,10 +272,15 @@ class OpenCodeAgent extends Agent {
         args.push('--model', this.options.model);
       }
 
-      // 指定agent类型（build/plan）：优先用 agent，否则从 mode 映射
+      // 仅传合法 agent 名（build/plan）；mode=auto 等不要传 --agent auto
       const agentType = this.options.agent || this.options.mode;
-      if (agentType) {
-        args.push('--agent', agentType);
+      if (agentType && ['build', 'plan'].includes(String(agentType))) {
+        args.push('--agent', String(agentType));
+      }
+
+      // 权限：auto/bypassPermissions → --auto（v2.3+ 正式 flag）
+      if (this.options.mode === 'auto' || this.options.mode === 'bypassPermissions') {
+        args.push('--auto');
       }
 
       // 推理强度
@@ -297,10 +294,10 @@ class OpenCodeAgent extends Agent {
       // 添加用户消息
       args.push(finalMessage);
 
-      // 确保 PATH 包含 npm 全局目录
-      const env = getEnvWithPath();
+      // 确保 PATH 包含 npm 全局目录，并同步 PWD=cwd（OpenCode 依赖 PWD 解析工作目录）
+      const env = getEnvWithPath(this.workdir);
 
-      console.log('[OpenCode] spawn:', OPENCODE_PATH, args.slice(0, 6).join(' '), '...');
+      console.log('[OpenCode] spawn:', OPENCODE_PATH, args.slice(0, 6).join(' '), 'cwd=', this.workdir);
 
       // 直接用 spawn 传递参数数组，避免 shell 转义问题
       const proc: ChildProcess = spawn(OPENCODE_PATH, args, {

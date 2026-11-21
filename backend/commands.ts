@@ -193,61 +193,32 @@ function loadOpenCodeModels(): ModelOption[] {
     return String(tokens);
   };
 
-  // 1. 动态运行 opencode models --verbose 获取免费模型
+  // 1. 动态读取 opencode models（v2.3+ 不支持 --verbose，仅输出 provider/model 列表）
   try {
     const opencodeBin = findOpencodeBin();
     const npmBinPath = getNpmBinPath();
-    const output = execSync(`${opencodeBin} models --verbose`, {
+    const output = execSync(`${opencodeBin} models`, {
       encoding: 'utf-8',
       timeout: 30000,
       maxBuffer: 10 * 1024 * 1024,
       env: npmBinPath ? { ...process.env, PATH: npmBinPath + ':' + process.env.PATH } : process.env
     });
 
-    // 输出是多组 "名称\n{JSON}" 格式，用大括号计数解析
-    const lines = output.split('\n');
-    let jsonStart = -1;
-    let braceCount = 0;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (line.trim().startsWith('{') && jsonStart === -1) {
-        jsonStart = i;
-        braceCount = 0;
-      }
-      if (jsonStart !== -1) {
-        for (const ch of line) {
-          if (ch === '{') braceCount++;
-          if (ch === '}') braceCount--;
-        }
-        if (braceCount === 0) {
-          const jsonStr = lines.slice(jsonStart, i + 1).join('\n');
-          try {
-            const model = JSON.parse(jsonStr);
-            // 筛选免费模型：input 和 output cost 都为 0
-            if (model.id && model.providerID && model.cost && model.cost.input === 0 && model.cost.output === 0) {
-              const fullId = `${model.providerID}/${model.id}`;
-              if (!seen.has(fullId)) {
-                const ctx = formatCtx(model.limit?.context);
-                const caps: string[] = [];
-                if (model.capabilities?.reasoning) caps.push('推理');
-                if (model.capabilities?.input?.image) caps.push('图像');
-                models.push({
-                  id: fullId,
-                  name: model.name || model.id,
-                  description: `免费${ctx ? ' · ' + ctx + ' ctx' : ''}${caps.length ? ' · ' + caps.join('/') : ''}`,
-                  contextLimit: model.limit?.context || 0,
-                  free: true
-                });
-                seen.add(fullId);
-              }
-            }
-          } catch (e) { /* 忽略解析失败 */ }
-          jsonStart = -1;
-        }
-      }
+    for (const line of output.split('\n')) {
+      const fullId = line.trim();
+      if (!fullId || !fullId.includes('/')) continue;
+      if (seen.has(fullId)) continue;
+      // 无 cost JSON 时：ID 含 -free 视为免费模型
+      const isFree = /-free$/i.test(fullId) || fullId.includes('-free');
+      models.push({
+        id: fullId,
+        name: fullId.split('/').pop() || fullId,
+        description: isFree ? '免费' : 'OpenCode',
+        free: isFree
+      });
+      seen.add(fullId);
     }
-    console.log(`[OpenCode] 动态读取到 ${models.length} 个免费模型`);
+    console.log(`[OpenCode] 动态读取到 ${models.length} 个模型`);
   } catch (e: any) {
     console.warn('[OpenCode] 动态读取模型失败，使用硬编码列表:', e.message);
     // 降级：硬编码的免费模型

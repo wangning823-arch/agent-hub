@@ -211,7 +211,8 @@ class MimoAgent extends Agent {
 
       const proc: ChildProcess = spawn(MIMO_PATH, args, {
         cwd: this.workdir,
-        env: { ...process.env },
+        // PWD 必须与 cwd 一致，否则 CLI 可能读到父进程（agent-pilot）的目录
+        env: { ...process.env, PWD: this.workdir },
         stdio: ['pipe', 'pipe', 'pipe']
       });
 
